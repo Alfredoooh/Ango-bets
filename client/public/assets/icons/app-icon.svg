@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Block body -->
+  <rect x="10" y="25" width="75" height="65" rx="10" fill="#e8611a"/>
+  <!-- Block top face -->
+  <polygon points="10,25 25,10 90,10 85,25" fill="#f07030" opacity="0.9"/>
+  <!-- Block right face -->
+  <polygon points="85,25 90,10 90,70 85,85" fill="#c04810" opacity="0.9"/>
+  <!-- White square on front -->
+  <rect x="18" y="32" width="59" height="51" rx="7" fill="white" opacity="0.95"/>
+  <!-- Letter D -->
+  <text x="47" y="69" font-family="Georgia, serif" font-weight="900" font-size="36" fill="#e8611a" text-anchor="middle">D</text>
+</svg>

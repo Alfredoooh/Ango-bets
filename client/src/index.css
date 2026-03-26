@@ -27,163 +27,129 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* ── DOCTION BRAND COLOURS (match landing page) ── */
 :root {
-  /* Microsoft Fluent Design - Primary Blue */
-  --primary: #0078D4;
-  --primary-foreground: #FFFFFF;
-  --sidebar-primary: #0078D4;
-  --sidebar-primary-foreground: #FFFFFF;
-  --chart-1: #0078D4;
-  --chart-2: #0063B1;
-  --chart-3: #004A87;
-  --chart-4: #003D6B;
-  --chart-5: #002E50;
-  --radius: 0.5rem;
-  
-  /* Light Mode Colors */
-  --background: #FFFFFF;
-  --foreground: #323130;
-  --card: #FFFFFF;
-  --card-foreground: #323130;
-  --popover: #FFFFFF;
-  --popover-foreground: #323130;
-  --secondary: #F3F3F3;
-  --secondary-foreground: #323130;
-  --muted: #E8E8E8;
-  --muted-foreground: #605E5C;
-  --accent: #0078D4;
-  --accent-foreground: #FFFFFF;
-  --destructive: #D13438;
-  --destructive-foreground: #FFFFFF;
-  --border: #E1DFDD;
-  --input: #FFFFFF;
-  --ring: #0078D4;
-  --sidebar: #F3F3F3;
-  --sidebar-foreground: #323130;
-  --sidebar-accent: #E8E8E8;
-  --sidebar-accent-foreground: #323130;
-  --sidebar-border: #E1DFDD;
-  --sidebar-ring: #0078D4;
+  --brand:          #d4520a;
+  --brand-hover:    #e8732e;
+  --brand-pale:     #fdf1ea;
+  --brand-border:   #f0c0a0;
+  --ink:            #0e0c09;
+  --cream:          #faf8f4;
+  --warm:           #f3ede3;
+  --muted-text:     #8a847b;
+  --lp-border:      #e4ddd2;
+
+  /* Tailwind/shadcn mappings */
+  --primary:             #d4520a;
+  --primary-foreground:  #ffffff;
+  --background:          #faf8f4;
+  --foreground:          #0e0c09;
+  --card:                #ffffff;
+  --card-foreground:     #0e0c09;
+  --popover:             #ffffff;
+  --popover-foreground:  #0e0c09;
+  --secondary:           #f3ede3;
+  --secondary-foreground:#0e0c09;
+  --muted:               #e4ddd2;
+  --muted-foreground:    #8a847b;
+  --accent:              #d4520a;
+  --accent-foreground:   #ffffff;
+  --destructive:         #dc2626;
+  --destructive-foreground: #ffffff;
+  --border:              #e4ddd2;
+  --input:               #ffffff;
+  --ring:                #d4520a;
+  --radius:              0.625rem;
 }
 
-.dark {
-  --primary: #0078D4;
-  --primary-foreground: #FFFFFF;
-  --sidebar-primary: #0078D4;
-  --sidebar-primary-foreground: #FFFFFF;
-  --background: #1F1F1F;
-  --foreground: #E8E8E8;
-  --card: #2D2D2D;
-  --card-foreground: #E8E8E8;
-  --popover: #2D2D2D;
-  --popover-foreground: #E8E8E8;
-  --secondary: #3C3C3C;
-  --secondary-foreground: #E8E8E8;
-  --muted: #4A4A4A;
-  --muted-foreground: #A8A8A8;
-  --accent: #0078D4;
-  --accent-foreground: #FFFFFF;
-  --destructive: #F17062;
-  --destructive-foreground: #FFFFFF;
-  --border: #3C3C3C;
-  --input: #2D2D2D;
-  --ring: #0078D4;
-  --chart-1: #0078D4;
-  --chart-2: #0063B1;
-  --chart-3: #004A87;
-  --chart-4: #003D6B;
-  --chart-5: #002E50;
-  --sidebar: #2D2D2D;
-  --sidebar-foreground: #E8E8E8;
-  --sidebar-accent: #3C3C3C;
-  --sidebar-accent-foreground: #E8E8E8;
-  --sidebar-border: #3C3C3C;
-  --sidebar-ring: #0078D4;
+/* ── BASE ── */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
 }
 
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-  html {
-    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
-  }
-  code, pre {
-    font-family: 'Space Mono', monospace;
-  }
-  [contenteditable] {
-    font-family: 'Georgia', 'Times New Roman', serif;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-  button:not(:disabled),
-  [role="button"]:not([aria-disabled="true"]),
-  [type="button"]:not(:disabled),
-  [type="submit"]:not(:disabled),
-  [type="reset"]:not(:disabled),
-  a[href],
-  select:not(:disabled),
-  input[type="checkbox"]:not(:disabled),
-  input[type="radio"]:not(:disabled) {
-    @apply cursor-pointer;
-  }
+/* ── NATIVE ANIMATIONS ── */
+@keyframes slideUp   { from { opacity:0; transform:translateY(16px) } to { opacity:1; transform:none } }
+@keyframes slideDown { from { opacity:0; transform:translateY(-8px) } to { opacity:1; transform:none } }
+@keyframes fadeIn    { from { opacity:0 } to { opacity:1 } }
+@keyframes scaleIn   { from { opacity:0; transform:scale(.94) } to { opacity:1; transform:scale(1) } }
+@keyframes popIn     { from { opacity:0; transform:scale(.88) } to { opacity:1; transform:scale(1) } }
+@keyframes ripple    { to { transform:scale(4); opacity:0 } }
+@keyframes shimmer   { from { background-position: -200% 0 } to { background-position: 200% 0 } }
+@keyframes pageFlip  { 0%{transform:rotateY(0)} 50%{transform:rotateY(-8deg)} 100%{transform:rotateY(0)} }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── NATIVE BUTTON FEEL ── */
+.native-btn {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  cursor: pointer;
+  transition: transform .12s cubic-bezier(.34,1.56,.64,1), opacity .12s;
+}
+.native-btn:active { transform: scale(.94) !important; opacity: .85; }
+
+/* ── TOOLBAR SCROLLBAR HIDE ── */
+.toolbar-scroll::-webkit-scrollbar { display: none; }
+.toolbar-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── EDITOR CONTENT EDITABLE PLACEHOLDER ── */
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  pointer-events: none;
+  font-style: italic;
 }
 
-@layer components {
-  /**
-   * Custom container utility that centers content and adds responsive padding.
-   *
-   * This overrides Tailwind's default container behavior to:
-   * - Auto-center content (mx-auto)
-   * - Add responsive horizontal padding
-   * - Set max-width for large screens
-   *
-   * Usage: <div className="container">...</div>
-   *
-   * For custom widths, use max-w-* utilities directly:
-   * <div className="max-w-6xl mx-auto px-4">...</div>
-   */
-  .container {
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 1rem; /* 16px - mobile padding */
-    padding-right: 1rem;
-  }
+/* ── PAPER SHADOW ── */
+.doc-paper {
+  box-shadow: 0 1px 3px rgba(14,12,9,.08), 0 4px 16px rgba(14,12,9,.1), 0 20px 48px rgba(14,12,9,.06);
+}
 
-  .flex {
-    min-height: 0;
-    min-width: 0;
-  }
+/* ── NATIVE HAPTIC-STYLE BOUNCE ── */
+@keyframes haptic { 0%{transform:scale(1)} 40%{transform:scale(.96)} 70%{transform:scale(1.02)} 100%{transform:scale(1)} }
+.haptic { animation: haptic .2s cubic-bezier(.36,.07,.19,.97); }
 
-  @media (min-width: 640px) {
-    .container {
-      padding-left: 1.5rem; /* 24px - tablet padding */
-      padding-right: 1.5rem;
-    }
-  }
+/* ── BOTTOM SHEET ── */
+.bottom-sheet {
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 32px rgba(14,12,9,.12);
+}
 
-  @media (min-width: 1024px) {
-    .container {
-      padding-left: 2rem; /* 32px - desktop padding */
-      padding-right: 2rem;
-      max-width: 1280px; /* Standard content width */
-    }
-  }
+/* ── TOOLTIP ── */
+[data-tooltip] { position: relative; }
+[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #fff;
+  font-size: .68rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 9999;
+  animation: fadeIn .15s ease;
+}
+
+/* ── FOCUS RING ── */
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+/* ── RIPPLE ── */
+.ripple-container { position: relative; overflow: hidden; }
+.ripple-effect {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(212,82,10,.2);
+  pointer-events: none;
+  animation: ripple .5s ease-out forwards;
 }

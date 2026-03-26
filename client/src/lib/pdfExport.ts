@@ -1,21 +1,15 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
-// ─── PDF EXPORT (real, página a página A4) ────────────────────────────────────
-export async function exportToPDF(
-  documentName: string,
-  editorElement: HTMLElement
-): Promise<void> {
-  // Temporarily force white background and remove transform/zoom
-  const originalStyle = editorElement.style.cssText;
-  editorElement.style.transform = "none";
-  editorElement.style.background = "#ffffff";
+// ── PDF — página a página, margens A4 reais ───────────────────────────────────
+export async function exportToPDF(docName: string, editorEl: HTMLElement): Promise<void> {
+  // Find parent page container
+  const pageEl = (editorEl.closest(".doc-paper") as HTMLElement) ?? editorEl;
 
-  // Find the actual page element (794px wide white div)
-  const pageEl =
-    (editorElement.closest(".doc-page") as HTMLElement) ||
-    (editorElement.parentElement?.querySelector(".doc-page") as HTMLElement) ||
-    editorElement;
+  // Temporarily remove transform/zoom so html2canvas renders at 1:1
+  const wrapper = editorEl.closest<HTMLElement>('[style*="transform"]');
+  const prevTransform = wrapper?.style.transform ?? "";
+  if (wrapper) wrapper.style.transform = "none";
 
   const canvas = await html2canvas(pageEl, {
     scale: 2,
@@ -23,174 +17,78 @@ export async function exportToPDF(
     allowTaint: true,
     logging: false,
     backgroundColor: "#ffffff",
-    width: pageEl.scrollWidth,
-    height: pageEl.scrollHeight,
     windowWidth: pageEl.scrollWidth,
     windowHeight: pageEl.scrollHeight,
   });
 
-  editorElement.style.cssText = originalStyle;
+  if (wrapper) wrapper.style.transform = prevTransform;
 
-  const A4_WIDTH_MM = 210;
-  const A4_HEIGHT_MM = 297;
-  const MARGIN_MM = 15;
+  const MM = { w: 210, h: 297 };  // A4
+  const MARGIN = 12;               // mm each side
+  const printW = MM.w - MARGIN * 2;
+  const printH = MM.h - MARGIN * 2;
 
-  const pdf = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4",
-  });
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-  const printableWidth = A4_WIDTH_MM - MARGIN_MM * 2;
-  const printableHeight = A4_HEIGHT_MM - MARGIN_MM * 2;
+  // px per mm at canvas scale
+  const pxPerMm = (canvas.width / 2) / printW;
+  const sliceH_px = Math.round(printH * pxPerMm);  // height in canvas px per A4 page
+  let yPx = 0;
+  let firstPage = true;
 
-  // Convert canvas to image
-  const imgData = canvas.toDataURL("image/jpeg", 0.95);
-  const imgWidthPx = canvas.width;
-  const imgHeightPx = canvas.height;
+  while (yPx < canvas.height) {
+    if (!firstPage) pdf.addPage();
+    firstPage = false;
 
-  // Scale: fit to printable width
-  const scaleRatio = printableWidth / ((imgWidthPx / 2) * (A4_WIDTH_MM / 210));
-  // Simpler: mm per px
-  const pxPerMm = imgWidthPx / 2 / printableWidth; // canvas is @2x
-  const totalHeightMm = imgHeightPx / 2 / pxPerMm;
+    const actualSliceH = Math.min(sliceH_px, canvas.height - yPx);
+    const actualSliceH_mm = actualSliceH / pxPerMm;
 
-  let yOffset = 0; // pixels from top of canvas already printed
-  let isFirstPage = true;
+    // Crop slice
+    const slice = document.createElement("canvas");
+    slice.width = canvas.width;
+    slice.height = actualSliceH;
+    const ctx = slice.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, slice.width, slice.height);
+    ctx.drawImage(canvas, 0, yPx, canvas.width, actualSliceH, 0, 0, canvas.width, actualSliceH);
 
-  while (yOffset < imgHeightPx / 2) {
-    if (!isFirstPage) pdf.addPage();
-    isFirstPage = false;
-
-    // Slice height in px (at 1x)
-    const sliceHeightPx = printableHeight * pxPerMm; // height in source px
-    const actualSliceHeightPx = Math.min(
-      sliceHeightPx,
-      imgHeightPx / 2 - yOffset
-    );
-    const actualSliceHeightMm = actualSliceHeightPx / pxPerMm;
-
-    // Create a sub-canvas for this slice
-    const sliceCanvas = document.createElement("canvas");
-    sliceCanvas.width = imgWidthPx;
-    sliceCanvas.height = Math.round(actualSliceHeightPx * 2); // back to @2x
-    const ctx = sliceCanvas.getContext("2d")!;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-    ctx.drawImage(
-      canvas,
-      0,
-      Math.round(yOffset * 2), // source y (@2x)
-      imgWidthPx,
-      Math.round(actualSliceHeightPx * 2), // source h (@2x)
-      0,
-      0,
-      imgWidthPx,
-      Math.round(actualSliceHeightPx * 2)
-    );
-
-    const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.95);
-    pdf.addImage(
-      sliceData,
-      "JPEG",
-      MARGIN_MM,
-      MARGIN_MM,
-      printableWidth,
-      actualSliceHeightMm
-    );
-
-    yOffset += sliceHeightPx;
+    pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", MARGIN, MARGIN, printW, actualSliceH_mm);
+    yPx += sliceH_px;
   }
 
-  pdf.save(`${documentName}.pdf`);
+  pdf.save(`${docName}.pdf`);
 }
 
-// ─── DOCX EXPORT (via HTML → blob) ───────────────────────────────────────────
-export function exportToDocx(
-  documentName: string,
-  htmlContent: string
-): void {
-  // Build a minimal Word-compatible HTML document
-  const docHtml = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office'
-      xmlns:w='urn:schemas-microsoft-com:office:word'
-      xmlns='http://www.w3.org/TR/REC-html40'>
-<head>
-  <meta charset='utf-8'>
-  <title>${documentName}</title>
-  <!--[if gte mso 9]>
-  <xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
-  <![endif]-->
-  <style>
-    @page { size: A4; margin: 2cm; }
-    body { font-family: Calibri, sans-serif; font-size: 12pt; line-height: 1.5; }
-    h1 { font-size: 20pt; } h2 { font-size: 16pt; } h3 { font-size: 14pt; }
-    table { border-collapse: collapse; width: 100%; }
-    td, th { border: 1px solid #999; padding: 6px 10px; }
-  </style>
-</head>
-<body>${htmlContent}</body>
-</html>`;
-
-  const blob = new Blob(["\ufeff", docHtml], {
+// ── DOCX (Word-compatible HTML blob) ─────────────────────────────────────────
+export function exportToDocx(docName: string, htmlContent: string): void {
+  const blob = new Blob([`\ufeff<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${docName}</title><style>@page{size:A4;margin:2cm}body{font-family:Calibri,sans-serif;font-size:12pt;line-height:1.5}h1{font-size:20pt}h2{font-size:16pt}h3{font-size:14pt}table{border-collapse:collapse;width:100%}td,th{border:1px solid #999;padding:6px 10px}</style></head><body>${htmlContent}</body></html>`], {
     type: "application/msword",
   });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${documentName}.doc`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  _download(blob, `${docName}.doc`);
 }
 
-// ─── TXT EXPORT ───────────────────────────────────────────────────────────────
-export function exportToTxt(documentName: string, htmlContent: string): void {
-  // Strip HTML tags
+// ── TXT ───────────────────────────────────────────────────────────────────────
+export function exportToTxt(docName: string, htmlContent: string): void {
   const tmp = document.createElement("div");
   tmp.innerHTML = htmlContent;
-  const text = tmp.innerText || tmp.textContent || "";
-
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${documentName}.txt`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  _download(new Blob([tmp.innerText || ""], { type: "text/plain;charset=utf-8" }), `${docName}.txt`);
 }
 
-// ─── RTF EXPORT (basic) ──────────────────────────────────────────────────────
-export function exportToRtf(documentName: string, htmlContent: string): void {
+// ── RTF ───────────────────────────────────────────────────────────────────────
+export function exportToRtf(docName: string, htmlContent: string): void {
   const tmp = document.createElement("div");
   tmp.innerHTML = htmlContent;
-  const plainText = (tmp.innerText || "")
-    .replace(/\\/g, "\\\\")
-    .replace(/\{/g, "\\{")
-    .replace(/\}/g, "\\}");
+  const plain = (tmp.innerText || "")
+    .replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
+  const rtf = `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Calibri;}}{\\f0\\fs24 ${plain.replace(/\n/g, "\\par ")}}}`;
+  _download(new Blob([rtf], { type: "application/rtf" }), `${docName}.rtf`);
+}
 
-  const rtf = `{\\rtf1\\ansi\\deff0
-{\\fonttbl{\\f0 Calibri;}}
-{\\f0\\fs24 ${plainText.replace(/\n/g, "\\par ")}}
-}`;
-
-  const blob = new Blob([rtf], { type: "application/rtf" });
+function _download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${documentName}.rtf`;
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-export function calculatePages(
-  contentLength: number,
-  charsPerPage: number = 1800
-): number {
-  return Math.max(1, Math.ceil(contentLength / charsPerPage));
 }

@@ -10,14 +10,22 @@ import DocumentGallery from "./pages/DocumentGallery";
 import DesignStudio from "./pages/DesignStudio";
 import AIAssistant from "./pages/AIAssistant";
 
+// Load Fraunces & DM Sans fonts (matching landing page)
+if (typeof document !== "undefined") {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,900;1,9..144,900&family=DM+Sans:wght@300;400;500;600&display=swap";
+  document.head.appendChild(link);
+}
+
 function Router() {
   return (
     <Switch>
-      {/* Landing page — apresentação do produto */}
+      {/* Landing page */}
       <Route path="/" component={DoctionLanding} />
-      {/* Home page principal — editor (destino do "Começar" e do botão Voltar) */}
+      {/* Main app — editor (home page) */}
       <Route path="/home" component={EditorPage} />
-      {/* Rota legada /editor redireciona para /home */}
+      {/* Legacy */}
       <Route path="/editor" component={EditorPage} />
       <Route path="/gallery" component={DocumentGallery} />
       <Route path="/design" component={DesignStudio} />
@@ -28,17 +36,27 @@ function Router() {
   );
 }
 
-function App() {
+export default function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <Toaster />
+          <Toaster
+            position="top-center"
+            toastOptions={{
+              style: {
+                background: "var(--cream)",
+                border: "1px solid var(--lp-border, #e4ddd2)",
+                color: "var(--ink, #0e0c09)",
+                borderRadius: 12,
+                fontSize: ".87rem",
+                fontFamily: "'DM Sans', sans-serif",
+              },
+            }}
+          />
           <Router />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );
 }
-
-export default App;
