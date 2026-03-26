@@ -1,522 +1,310 @@
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import {
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-  AlignJustify,
-  List,
-  ListOrdered,
-  Link,
-  Image,
-  Table,
-  Undo2,
-  Redo2,
-  Save,
-  FileText,
-  Download,
-  Share2,
-  Trash2,
-  Plus,
-  Palette,
-  Type,
-  Code,
-  Quote,
-  Minus,
-  Heading1,
-  Heading2,
-  Heading3,
-  Highlighter,
-} from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 
-interface EditorToolbarProps {
-  onBold: () => void;
-  onItalic: () => void;
-  onUnderline: () => void;
-  onStrikethrough?: () => void;
-  onAlignLeft: () => void;
-  onAlignCenter: () => void;
-  onAlignRight: () => void;
-  onAlignJustify?: () => void;
-  onBulletList: () => void;
-  onNumberedList: () => void;
-  onLink: () => void;
-  onImage: () => void;
-  onTable: () => void;
-  onSave: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  onNewDocument: () => void;
-  onOpenDocument: () => void;
-  onDownload: () => void;
-  onShare: () => void;
-  onHeading1?: () => void;
-  onHeading2?: () => void;
-  onHeading3?: () => void;
-  onCode?: () => void;
-  onQuote?: () => void;
-  onHighlight?: () => void;
-  onSuperscript?: () => void;
-  onSubscript?: () => void;
-  onClearFormatting?: () => void;
-  onExportPDF?: () => void;
-  onAddNote?: () => void;
-  onColorPicker?: () => void;
+// SVG icon from assets
+const Ico = ({ name, size = 16 }: { name: string; size?: number }) => (
+  <img src={`/assets/icons/svg/${name}.svg`} alt="" style={{ width: size, height: size, display: "inline-block", flexShrink: 0 }} />
+);
+
+// Toolbar button
+const TB = ({
+  icon, title, onClick, active = false, children
+}: {
+  icon?: string; title: string; onClick?: () => void; active?: boolean; children?: React.ReactNode;
+}) => (
+  <button
+    onMouseDown={(e) => { e.preventDefault(); onClick?.(); }}
+    title={title}
+    style={{
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
+      padding: "0 7px", height: 28, borderRadius: 6, border: "none", cursor: "pointer",
+      background: active ? "var(--secondary, #f4f4f5)" : "transparent",
+      color: active ? "var(--foreground, #111)" : "var(--muted-foreground, #777)",
+      fontSize: ".78rem", fontWeight: 500, transition: "background .12s",
+      flexShrink: 0,
+    }}
+    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--secondary, #f4f4f5)")}
+    onMouseLeave={(e) => (e.currentTarget.style.background = active ? "var(--secondary, #f4f4f5)" : "transparent")}
+  >
+    {icon && <Ico name={icon} size={15} />}
+    {children}
+  </button>
+);
+
+// Separator
+const Sep = () => (
+  <div style={{ width: 1, height: 20, background: "var(--border, #e5e7eb)", margin: "0 2px", flexShrink: 0 }} />
+);
+
+// Dropdown group
+function DropGroup({ label, icon, children }: { label?: string; icon?: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  return (
+    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); setOpen((v) => !v); }}
+        style={{
+          display: "flex", alignItems: "center", gap: 3,
+          padding: "0 7px", height: 28, borderRadius: 6, border: "none", cursor: "pointer",
+          background: open ? "var(--secondary, #f4f4f5)" : "transparent",
+          color: "var(--muted-foreground, #777)", fontSize: ".78rem", fontWeight: 500,
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--secondary, #f4f4f5)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = open ? "var(--secondary, #f4f4f5)" : "transparent")}
+      >
+        {icon && <Ico name={icon} size={15} />}
+        {label && <span>{label}</span>}
+        <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor" style={{ opacity: .5 }}>
+          <path d="M5 7L1 3h8z"/>
+        </svg>
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 500,
+          background: "var(--background, #fff)", border: "1px solid var(--border, #e5e7eb)",
+          borderRadius: 10, boxShadow: "0 6px 24px rgba(0,0,0,.12)", minWidth: 190, padding: "5px 0",
+          animation: "tbDropIn .13s ease",
+        }}>
+          <style>{`@keyframes tbDropIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}`}</style>
+          {children}
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default function EditorToolbar({
-  onBold,
-  onItalic,
-  onUnderline,
-  onStrikethrough,
-  onAlignLeft,
-  onAlignCenter,
-  onAlignRight,
-  onAlignJustify,
-  onBulletList,
-  onNumberedList,
-  onLink,
-  onImage,
-  onTable,
-  onSave,
-  onUndo,
-  onRedo,
-  onNewDocument,
-  onOpenDocument,
-  onDownload,
-  onShare,
-  onHeading1,
-  onHeading2,
-  onHeading3,
-  onCode,
-  onQuote,
-  onHighlight,
-  onSuperscript,
-  onSubscript,
-  onClearFormatting,
-  onExportPDF,
-  onAddNote,
-  onColorPicker,
-}: EditorToolbarProps) {
+// Dropdown item
+const DI = ({ icon, label, onClick, kbd }: { icon?: string; label: string; onClick?: () => void; kbd?: string }) => (
+  <button
+    onMouseDown={(e) => { e.preventDefault(); onClick?.(); }}
+    style={{
+      display: "flex", alignItems: "center", gap: 9, width: "100%",
+      padding: "8px 12px", background: "none", border: "none", cursor: "pointer",
+      fontSize: ".83rem", color: "var(--foreground, #111)", textAlign: "left",
+    }}
+    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--secondary, #f4f4f5)")}
+    onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+  >
+    {icon && <Ico name={icon} size={15} />}
+    <span style={{ flex: 1 }}>{label}</span>
+    {kbd && <span style={{ fontSize: ".72rem", opacity: .4 }}>{kbd}</span>}
+  </button>
+);
+
+const DSep = () => <div style={{ height: 1, background: "var(--border, #e5e7eb)", margin: "3px 0" }} />;
+
+// Font size selector
+const FontSizes = ["8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "32", "36", "48", "72"];
+// Font families
+const Fonts = [
+  { label: "Calibri", value: "Calibri, sans-serif" },
+  { label: "Arial", value: "Arial, sans-serif" },
+  { label: "Times New Roman", value: "'Times New Roman', serif" },
+  { label: "Georgia", value: "Georgia, serif" },
+  { label: "Courier New", value: "'Courier New', monospace" },
+  { label: "Verdana", value: "Verdana, sans-serif" },
+  { label: "Trebuchet MS", value: "'Trebuchet MS', sans-serif" },
+  { label: "Garamond", value: "Garamond, serif" },
+];
+
+interface EditorToolbarProps {
+  onBold: () => void; onItalic: () => void; onUnderline: () => void;
+  onStrikethrough?: () => void; onAlignLeft: () => void; onAlignCenter: () => void;
+  onAlignRight: () => void; onAlignJustify?: () => void;
+  onBulletList: () => void; onNumberedList: () => void;
+  onLink: () => void; onImage: () => void; onTable: () => void;
+  onSave: () => void; onUndo: () => void; onRedo: () => void;
+  onNewDocument: () => void; onOpenDocument: () => void;
+  onDownload: () => void; onShare: () => void;
+  onHeading1?: () => void; onHeading2?: () => void; onHeading3?: () => void;
+  onCode?: () => void; onQuote?: () => void; onHighlight?: () => void;
+  onSuperscript?: () => void; onSubscript?: () => void;
+  onClearFormatting?: () => void; onExportPDF?: () => void;
+  onAddNote?: () => void; onColorPicker?: () => void;
+}
+
+export default function EditorToolbar(props: EditorToolbarProps) {
+  const {
+    onBold, onItalic, onUnderline, onStrikethrough, onAlignLeft, onAlignCenter,
+    onAlignRight, onAlignJustify, onBulletList, onNumberedList, onLink, onImage,
+    onTable, onSave, onUndo, onRedo, onNewDocument, onOpenDocument, onDownload,
+    onShare, onHeading1, onHeading2, onHeading3, onCode, onQuote, onHighlight,
+    onSuperscript, onSubscript, onClearFormatting, onExportPDF, onAddNote, onColorPicker,
+  } = props;
+
+  const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
+
+  const handleFontSize = (size: string) => exec("fontSize", "7"); // placeholder then override
+  const applyFontSize = (size: string) => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    exec("insertHTML", `<span style="font-size:${size}pt">${sel.toString()}</span>`);
+  };
+  const applyFont = (font: string) => exec("fontName", font);
+
   return (
-    <div className="flex flex-col bg-background border-b border-border">
-      {/* Top Bar - File Operations */}
-      <div className="flex items-center h-12 px-2 sm:px-4 gap-1 overflow-x-auto bg-secondary/20 border-b border-border">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-muted-foreground hover:text-foreground"
-            >
-              <FileText className="w-4 h-4" />
-              <span className="hidden sm:inline text-xs">Ficheiro</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={onNewDocument} className="gap-2">
-              <Plus className="w-4 h-4" />
-              Novo Documento
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onOpenDocument} className="gap-2">
-              <FileText className="w-4 h-4" />
-              Abrir Documento
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onSave} className="gap-2">
-              <Save className="w-4 h-4" />
-              Guardar
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onDownload} className="gap-2">
-              <Download className="w-4 h-4" />
-              Transferir TXT
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onShare} className="gap-2">
-              <Share2 className="w-4 h-4" />
-              Partilhar
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+    <div style={{
+      borderBottom: "1px solid var(--border, #e5e7eb)",
+      background: "var(--background, #fff)",
+      flexShrink: 0,
+      overflowX: "auto",
+      overflowY: "hidden",
+    }}>
+      {/* Row 1: File ops + history + headings + font */}
+      <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "4px 8px", flexWrap: "nowrap" }}>
 
-        <div className="w-px h-6 bg-border" />
+        {/* File */}
+        <DropGroup icon="folder-open" label="Ficheiro">
+          <DI icon="document-add" label="Novo documento" onClick={onNewDocument} kbd="Ctrl+N" />
+          <DI icon="folder-open" label="Abrir documento" onClick={onOpenDocument} />
+          <DSep />
+          <DI icon="save" label="Guardar" onClick={onSave} kbd="Ctrl+S" />
+          <DI icon="download" label="Exportar PDF" onClick={onExportPDF} />
+          <DI icon="document-text" label="Exportar Word (.doc)" onClick={onDownload} />
+          <DSep />
+          <DI icon="share-social" label="Partilhar" onClick={onShare} />
+        </DropGroup>
 
-        {/* Undo/Redo */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onUndo}
-          title="Desfazer (Ctrl+Z)"
-          className="gap-2 text-muted-foreground hover:text-foreground"
-        >
-          <Undo2 className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onRedo}
-          title="Refazer (Ctrl+Y)"
-          className="gap-2 text-muted-foreground hover:text-foreground"
-        >
-          <Redo2 className="w-4 h-4" />
-        </Button>
+        <Sep />
 
-        <div className="w-px h-6 bg-border" />
+        {/* Undo / Redo */}
+        <TB icon="arrow-undo" title="Desfazer (Ctrl+Z)" onClick={onUndo} />
+        <TB icon="arrow-redo" title="Refazer (Ctrl+Y)" onClick={onRedo} />
 
-        {/* Save Button */}
-        <Button
-          variant="default"
-          size="sm"
-          onClick={onSave}
-          className="gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
-        >
-          <Save className="w-4 h-4" />
-          <span className="hidden sm:inline text-xs">Guardar</span>
-        </Button>
+        <Sep />
+
+        {/* Headings */}
+        <DropGroup icon="text" label="Estilos">
+          <DI icon="text" label="Parágrafo normal" onClick={() => exec("formatBlock", "<p>")} />
+          <DSep />
+          <DI icon="heading" label="Título 1" onClick={onHeading1} />
+          <DI icon="heading" label="Título 2" onClick={onHeading2} />
+          <DI icon="heading" label="Título 3" onClick={onHeading3} />
+          <DI icon="heading" label="Título 4" onClick={() => exec("formatBlock", "<h4>")} />
+          <DI icon="heading" label="Título 5" onClick={() => exec("formatBlock", "<h5>")} />
+          <DSep />
+          <DI icon="quote" label="Citação" onClick={onQuote} />
+          <DI icon="code-slash" label="Bloco de código" onClick={onCode} />
+        </DropGroup>
+
+        {/* Font family */}
+        <DropGroup icon="text" label="Fonte">
+          {Fonts.map((f) => (
+            <DI key={f.value} label={f.label} onClick={() => applyFont(f.value)} />
+          ))}
+        </DropGroup>
+
+        {/* Font size */}
+        <DropGroup icon="resize" label="Tamanho">
+          {FontSizes.map((s) => (
+            <DI key={s} label={`${s} pt`} onClick={() => applyFontSize(s)} />
+          ))}
+        </DropGroup>
+
+        <Sep />
+        <TB icon="save" title="Guardar (Ctrl+S)" onClick={onSave} />
       </div>
 
-      {/* Format Bar - Text Formatting */}
-      <div className="flex items-center h-12 px-2 sm:px-4 gap-1 overflow-x-auto bg-background">
-        {/* Text Styles */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-2 text-xs"
-              title="Estilos de texto"
-            >
-              <Type className="w-4 h-4" />
-              <span className="hidden sm:inline">Estilo</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={onHeading1} className="gap-2">
-              <Heading1 className="w-4 h-4" />
-              Título 1
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onHeading2} className="gap-2">
-              <Heading2 className="w-4 h-4" />
-              Título 2
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onHeading3} className="gap-2">
-              <Heading3 className="w-4 h-4" />
-              Título 3
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() => document.execCommand("formatBlock", false, "<p>")}
-              className="gap-2"
-            >
-              Parágrafo
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      {/* Row 2: Formatting tools */}
+      <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 8px 5px", flexWrap: "nowrap", overflowX: "auto" }}>
 
-        <div className="w-px h-6 bg-border" />
+        {/* Bold / Italic / Underline / Strike */}
+        <TB icon="bold" title="Negrito (Ctrl+B)" onClick={onBold} />
+        <TB icon="italic" title="Itálico (Ctrl+I)" onClick={onItalic} />
+        <TB icon="underline" title="Sublinhado (Ctrl+U)" onClick={onUnderline} />
+        <TB icon="strikethrough" title="Riscado" onClick={onStrikethrough} />
+        <TB icon="superscript" title="Sobrescrito" onClick={onSuperscript} />
+        <TB icon="subscript" title="Subscrito" onClick={onSubscript} />
 
-        {/* Text Formatting */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onBold}
-          title="Negrito (Ctrl+B)"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Bold className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onItalic}
-          title="Itálico (Ctrl+I)"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Italic className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onUnderline}
-          title="Sublinhado (Ctrl+U)"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Underline className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onStrikethrough || (() => document.execCommand("strikethrough"))}
-          title="Riscado"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Strikethrough className="w-4 h-4" />
-        </Button>
+        <Sep />
 
-        <div className="w-px h-6 bg-border" />
+        {/* Color */}
+        <TB icon="color-palette" title="Cor do texto" onClick={onColorPicker} />
+        <TB icon="highlighter" title="Realçar texto" onClick={onHighlight} />
 
-        {/* Colors */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              title="Cor do texto"
-              className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-            >
-              <Palette className="w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-40">
-            <div className="grid grid-cols-6 gap-2 p-2">
-              {[
-                "#000000",
-                "#FF0000",
-                "#00FF00",
-                "#0000FF",
-                "#FFFF00",
-                "#FF00FF",
-                "#00FFFF",
-                "#FFA500",
-                "#800080",
-                "#FFC0CB",
-                "#A52A2A",
-                "#808080",
-              ].map((color) => (
-                <button
-                  key={color}
-                  onClick={() => document.execCommand("foreColor", false, color)}
-                  className="w-6 h-6 rounded border border-border hover:scale-110 transition-transform"
-                  style={{ backgroundColor: color }}
-                  title={color}
-                />
-              ))}
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <Sep />
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onHighlight || (() => document.execCommand("hiliteColor", false, "yellow"))}
-          title="Destaque"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Highlighter className="w-4 h-4" />
-        </Button>
+        {/* Align */}
+        <TB icon="align-left" title="Alinhar à esquerda" onClick={onAlignLeft} />
+        <TB icon="align-center" title="Centrar" onClick={onAlignCenter} />
+        <TB icon="align-right" title="Alinhar à direita" onClick={onAlignRight} />
+        <TB icon="align-justify" title="Justificar" onClick={onAlignJustify} />
 
-        <div className="w-px h-6 bg-border" />
+        <Sep />
 
-        {/* Alignment */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onAlignLeft}
-          title="Alinhar à esquerda"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <AlignLeft className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onAlignCenter}
-          title="Alinhar ao centro"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <AlignCenter className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onAlignRight}
-          title="Alinhar à direita"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <AlignRight className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onAlignJustify || (() => document.execCommand("justifyFull"))}
-          title="Justificar"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <AlignJustify className="w-4 h-4" />
-        </Button>
+        {/* Lists & indent */}
+        <TB icon="list-bullet" title="Lista com marcadores" onClick={onBulletList} />
+        <TB icon="list-number" title="Lista numerada" onClick={onNumberedList} />
+        <TB icon="list-check" title="Lista de tarefas" onClick={() => exec("insertHTML", "<ul style='list-style:none'><li><input type='checkbox' /> Tarefa</li></ul>")} />
+        <TB icon="indent-increase" title="Aumentar indentação" onClick={() => exec("indent")} />
+        <TB icon="indent-decrease" title="Diminuir indentação" onClick={() => exec("outdent")} />
 
-        <div className="w-px h-6 bg-border" />
+        <Sep />
 
-        {/* Lists */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onBulletList}
-          title="Lista com marcadores"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <List className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onNumberedList}
-          title="Lista numerada"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <ListOrdered className="w-4 h-4" />
-        </Button>
+        {/* Insert */}
+        <TB icon="link" title="Inserir ligação" onClick={onLink} />
+        <TB icon="image" title="Inserir imagem" onClick={onImage} />
+        <TB icon="table" title="Inserir tabela" onClick={onTable} />
+        <TB icon="code-slash" title="Código inline" onClick={() => exec("insertHTML", "<code>código</code>")} />
+        <TB icon="remove" title="Linha horizontal" onClick={() => exec("insertHorizontalRule")} />
 
-        {/* Indent */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => document.execCommand("indent")}
-          title="Aumentar indentação"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Plus className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => document.execCommand("outdent")}
-          title="Diminuir indentação"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Minus className="w-4 h-4" />
-        </Button>
-
-        <div className="w-px h-6 bg-border" />
-
-        {/* Insert Elements */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onLink}
-          title="Inserir ligação"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Link className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onImage}
-          title="Inserir imagem"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Image className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onTable}
-          title="Inserir tabela"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Table className="w-4 h-4" />
-        </Button>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCode || (() => document.execCommand("formatBlock", false, "<pre>"))}
-          title="Bloco de código"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Code className="w-4 h-4" />
-        </Button>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onQuote || (() => document.execCommand("formatBlock", false, "<blockquote>"))}
-          title="Citação"
-          className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary"
-        >
-          <Quote className="w-4 h-4" />
-        </Button>
-
-        <div className="w-px h-6 bg-border" />
+        <Sep />
 
         {/* Advanced */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-muted-foreground hover:text-foreground hover:bg-secondary text-xs"
-            >
-              Mais
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={onSuperscript || (() => document.execCommand("superscript"))}
-              className="gap-2"
-            >
-              Sobrescrito
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={onSubscript || (() => document.execCommand("subscript"))}
-              className="gap-2"
-            >
-              Subscrito
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={onClearFormatting || (() => document.execCommand("removeFormat"))}
-              className="gap-2"
-            >
-              <Trash2 className="w-4 h-4" />
-              Limpar Formatação
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => document.execCommand("insertHorizontalRule")}
-              className="gap-2"
-            >
-              Linha Horizontal
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                const text = prompt("Introduza o texto especial:");
-                if (text) document.execCommand("insertHTML", false, text);
-              }}
-              className="gap-2"
-            >
-              Símbolo Especial
-            </DropdownMenuItem>
-            {onColorPicker && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onColorPicker} className="gap-2">
-                  🎨 Seletor de Cores
-                </DropdownMenuItem>
-              </>
-            )}
-            {onAddNote && (
-              <DropdownMenuItem onClick={onAddNote} className="gap-2">
-                📝 Adicionar Nota
-              </DropdownMenuItem>
-            )}
-            {onExportPDF && (
-              <DropdownMenuItem onClick={onExportPDF} className="gap-2">
-                📄 Exportar PDF
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <DropGroup icon="apps" label="Inserir">
+          <DI icon="document-add" label="Nota de rodapé" onClick={() => exec("insertHTML", `<sup style="color:#888;font-size:.7em">[nota]</sup>`)} />
+          <DI icon="bookmark" label="Marcador" onClick={() => exec("insertHTML", `<mark style="background:#fef9c3;padding:0 2px">texto marcado</mark>`)} />
+          <DI icon="alert-circle" label="Aviso / Alerta" onClick={() => exec("insertHTML", `<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;margin:8px 0;border-radius:4px;font-size:.92em"><strong>⚠️ Atenção:</strong> Escreve aqui o aviso.</div>`)} />
+          <DI icon="information-circle" label="Caixa de informação" onClick={() => exec("insertHTML", `<div style="background:#eff6ff;border-left:4px solid #3b82f6;padding:12px 16px;margin:8px 0;border-radius:4px;font-size:.92em"><strong>ℹ️ Info:</strong> Escreve aqui.</div>`)} />
+          <DI icon="checkmark-circle" label="Caixa de sucesso" onClick={() => exec("insertHTML", `<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px 16px;margin:8px 0;border-radius:4px;font-size:.92em"><strong>✅ Sucesso:</strong> Escreve aqui.</div>`)} />
+          <DI icon="close-circle" label="Caixa de erro" onClick={() => exec("insertHTML", `<div style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px 16px;margin:8px 0;border-radius:4px;font-size:.92em"><strong>❌ Erro:</strong> Escreve aqui.</div>`)} />
+          <DSep />
+          <DI icon="stats-chart" label="Página em branco (quebra)" onClick={() => exec("insertHTML", `<div style="page-break-after:always;border-bottom:2px dashed #ddd;margin:24px 0;text-align:center;color:#bbb;font-size:.75em;padding-bottom:8px">— Quebra de página —</div>`)} />
+          <DI icon="text" label="Data/hora atual" onClick={() => exec("insertText", new Date().toLocaleString("pt-PT"))} />
+          <DSep />
+          <DI icon="pencil" label="Adicionar nota" onClick={onAddNote} />
+        </DropGroup>
+
+        <DropGroup icon="options" label="Formatar">
+          <DI icon="remove-formatting" label="Limpar formatação" onClick={onClearFormatting} />
+          <DSep />
+          <DI icon="text" label="MAIÚSCULAS" onClick={() => {
+            const s = window.getSelection();
+            if (s && !s.isCollapsed) exec("insertText", s.toString().toUpperCase());
+          }} />
+          <DI icon="text" label="minúsculas" onClick={() => {
+            const s = window.getSelection();
+            if (s && !s.isCollapsed) exec("insertText", s.toString().toLowerCase());
+          }} />
+          <DI icon="text" label="Primeira Maiúscula" onClick={() => {
+            const s = window.getSelection();
+            if (s && !s.isCollapsed) exec("insertText", s.toString().replace(/\b\w/g, (c) => c.toUpperCase()));
+          }} />
+          <DSep />
+          <DI icon="swap-horizontal" label="Localizar e substituir" onClick={() => {
+            const find = prompt("Localizar:");
+            if (!find) return;
+            const replace = prompt("Substituir por:") ?? "";
+            const el = document.querySelector("[contenteditable]") as HTMLElement;
+            if (el) el.innerHTML = el.innerHTML.replaceAll(find, replace);
+          }} />
+          <DI icon="stats-chart" label="Contar palavras" onClick={() => {
+            const el = document.querySelector("[contenteditable]") as HTMLElement;
+            if (!el) return;
+            const text = el.innerText.trim();
+            const words = text.split(/\s+/).filter(Boolean).length;
+            alert(`Palavras: ${words}\nCaracteres: ${text.length}\nLinhas: ${text.split(/\n/).length}`);
+          }} />
+        </DropGroup>
+
+        <Sep />
+        <TB icon="remove-formatting" title="Limpar formatação" onClick={onClearFormatting} />
       </div>
     </div>
   );

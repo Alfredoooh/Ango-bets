@@ -1,6 +1,4 @@
-import { useRef, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { ZoomIn, ZoomOut, Lock, Unlock } from "lucide-react";
+import { useRef, useEffect, useState, useCallback } from "react";
 
 interface DocumentEditorProps {
   content?: string;
@@ -10,7 +8,34 @@ interface DocumentEditorProps {
   onZoomChange?: (zoom: number) => void;
 }
 
-const CHARS_PER_PAGE = 300; // Aproximadamente 300 caracteres por página A4
+// ── Device-aware default zoom ──────────────────────────────────────────────
+// A4 page is 794px wide. We compute the ideal zoom so the page fits nicely.
+// Offset: some devices need extra breathing room (negative = smaller).
+function getAdaptiveZoom(containerWidth: number): number {
+  const PAGE_WIDTH = 794; // A4 width in px
+  const PADDING = 40;     // horizontal padding around the page
+
+  // Raw fit zoom
+  const raw = ((containerWidth - PADDING) / PAGE_WIDTH) * 100;
+
+  // Device-specific corrections (device width → correction offset)
+  // itel A70: ~360–375px screen → needs ~-42 correction
+  const corrections: Array<{ maxW: number; offset: number }> = [
+    { maxW: 380, offset: -42 },  // itel A70, budget Android phones
+    { maxW: 400, offset: -32 },  // small Android
+    { maxW: 430, offset: -20 },  // iPhone SE / small phones
+    { maxW: 480, offset: -10 },  // mid-range phones
+    { maxW: 600, offset: 0 },    // large phones
+    { maxW: 768, offset: 5 },    // small tablets
+    { maxW: 1024, offset: 8 },   // tablets
+    { maxW: 99999, offset: 0 },  // desktop
+  ];
+
+  const correction = corrections.find((c) => containerWidth <= c.maxW)?.offset ?? 0;
+  return Math.max(20, Math.min(200, Math.round(raw + correction)));
+}
+
+const CHARS_PER_PAGE = 1800;
 
 export default function DocumentEditor({
   content = "",
@@ -21,156 +46,148 @@ export default function DocumentEditor({
 }: DocumentEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isFocused, setIsFocused] = useState(false);
   const [zoom, setZoom] = useState(externalZoom || 100);
-  const [zoomLocked, setZoomLocked] = useState(false);
   const [pages, setPages] = useState(1);
 
+  // Pinch-to-zoom state
+  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
+
+  // ── Sync external zoom ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (externalZoom !== undefined) setZoom(externalZoom);
+  }, [externalZoom]);
+
+  // ── Adaptive zoom on mount & resize ────────────────────────────────────
+  useEffect(() => {
+    if (externalZoom !== undefined) return; // controlled externally
+    const recalc = () => {
+      if (!containerRef.current) return;
+      const w = containerRef.current.clientWidth;
+      const adapted = getAdaptiveZoom(w);
+      setZoom(adapted);
+      onZoomChange?.(adapted);
+    };
+    recalc();
+    const ro = new ResizeObserver(recalc);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [externalZoom, onZoomChange]);
+
+  // ── Sync content ────────────────────────────────────────────────────────
   useEffect(() => {
     if (editorRef.current && content !== editorRef.current.innerHTML) {
       editorRef.current.innerHTML = content;
     }
   }, [content]);
 
-  // Calcular número de páginas
+  // ── Page count ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (content) {
-      const textContent = content.replace(/<[^>]*>/g, "").trim();
-      const pageCount = Math.max(1, Math.ceil(textContent.length / CHARS_PER_PAGE));
-      setPages(pageCount);
-    }
+    const text = content.replace(/<[^>]*>/g, "").trim();
+    setPages(Math.max(1, Math.ceil(text.length / CHARS_PER_PAGE)));
   }, [content]);
 
-  // Ajustar zoom para responsividade
+  const applyZoom = useCallback(
+    (newZoom: number) => {
+      const clamped = Math.max(20, Math.min(200, Math.round(newZoom)));
+      setZoom(clamped);
+      onZoomChange?.(clamped);
+    },
+    [onZoomChange]
+  );
+
+  // ── Pinch-to-zoom (touch) ────────────────────────────────────────────────
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchRef.current = {
+        startDist: Math.hypot(dx, dy),
+        startZoom: zoom,
+      };
+    }
+  }, [zoom]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchRef.current) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const ratio = dist / pinchRef.current.startDist;
+      applyZoom(pinchRef.current.startZoom * ratio);
+    }
+  }, [applyZoom]);
+
+  const handleTouchEnd = useCallback(() => {
+    pinchRef.current = null;
+  }, []);
+
+  // ── Ctrl+Scroll zoom (desktop) ───────────────────────────────────────────
   useEffect(() => {
-    if (!zoomLocked && containerRef.current && !externalZoom) {
-      const containerWidth = containerRef.current.clientWidth;
-      const pageWidth = 834; // 794px + 40px padding
-      const newZoom = Math.max(25, Math.min(200, (containerWidth / pageWidth) * 100));
-      setZoom(newZoom);
-      onZoomChange?.(newZoom);
-    }
-  }, [externalZoom, onZoomChange, zoomLocked]);
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        applyZoom(zoom + (e.deltaY < 0 ? 10 : -10));
+      }
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoom, applyZoom]);
 
-  const handleInput = () => {
-    if (editorRef.current) {
-      onChange?.(editorRef.current.innerHTML);
-    }
-  };
-
+  // ── Keyboard shortcuts ───────────────────────────────────────────────────
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Tab") {
       e.preventDefault();
       document.execCommand("insertHTML", false, "&nbsp;&nbsp;&nbsp;&nbsp;");
     }
-
-    if (e.ctrlKey && e.key === "b") {
-      e.preventDefault();
-      document.execCommand("bold");
+    if (e.ctrlKey || e.metaKey) {
+      if (e.key === "b") { e.preventDefault(); document.execCommand("bold"); }
+      if (e.key === "i") { e.preventDefault(); document.execCommand("italic"); }
+      if (e.key === "u") { e.preventDefault(); document.execCommand("underline"); }
+      if (e.key === "=" && e.shiftKey) { e.preventDefault(); applyZoom(zoom + 10); }
+      if (e.key === "-") { e.preventDefault(); applyZoom(zoom - 10); }
+      if (e.key === "0") { e.preventDefault(); applyZoom(100); }
     }
-
-    if (e.ctrlKey && e.key === "i") {
-      e.preventDefault();
-      document.execCommand("italic");
-    }
-
-    if (e.ctrlKey && e.key === "u") {
-      e.preventDefault();
-      document.execCommand("underline");
-    }
-
-    if ((e.ctrlKey || e.metaKey) && e.key === "+") {
-      e.preventDefault();
-      const newZoom = Math.min(200, zoom + 10);
-      setZoom(newZoom);
-      onZoomChange?.(newZoom);
-    }
-
-    if ((e.ctrlKey || e.metaKey) && e.key === "-") {
-      e.preventDefault();
-      const newZoom = Math.max(25, zoom - 10);
-      setZoom(newZoom);
-      onZoomChange?.(newZoom);
-    }
-
-    if ((e.ctrlKey || e.metaKey) && e.key === "0") {
-      e.preventDefault();
-      setZoom(100);
-      onZoomChange?.(100);
-    }
-  };
-
-  const handleZoomChange = (value: number) => {
-    setZoom(value);
-    onZoomChange?.(value);
-  };
-
-  const toggleZoomLock = () => {
-    setZoomLocked(!zoomLocked);
   };
 
   return (
     <div
       ref={containerRef}
       className="flex-1 flex flex-col overflow-hidden bg-muted/20"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{ touchAction: "pan-y" }}
     >
-      {/* Zoom Controls */}
-      <div className="h-12 px-4 bg-secondary/30 border-b border-border flex items-center justify-between text-xs text-muted-foreground gap-4">
+      {/* Zoom indicator — tap to reset */}
+      <div className="h-9 px-4 bg-secondary/30 border-b border-border flex items-center justify-between text-xs text-muted-foreground">
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleZoomChange(Math.max(25, zoom - 10))}
-            title="Zoom Out (Ctrl+-)"
-            className="gap-1"
+          <button
+            onClick={() => applyZoom(zoom - 10)}
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-secondary transition-colors"
+            title="Diminuir zoom (Ctrl+-)"
           >
-            <ZoomOut className="w-4 h-4" />
-          </Button>
-          <input
-            type="range"
-            min="25"
-            max="200"
-            value={zoom}
-            onChange={(e) => handleZoomChange(Number(e.target.value))}
-            className="w-32"
-            title="Zoom (25% - 200%)"
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleZoomChange(Math.min(200, zoom + 10))}
-            title="Zoom In (Ctrl++)"
-            className="gap-1"
+            <img src="/assets/icons/svg/zoom-out.svg" alt="−" style={{ width: 15, height: 15 }} />
+          </button>
+          <button
+            onClick={() => applyZoom(100)}
+            className="px-2 h-7 rounded hover:bg-secondary transition-colors font-semibold min-w-[46px] text-center"
+            title="Repor zoom"
           >
-            <ZoomIn className="w-4 h-4" />
-          </Button>
-          <span className="w-12 text-right font-semibold">{Math.round(zoom)}%</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleZoomChange(100)}
-            className="text-xs"
-            title="Reset Zoom (Ctrl+0)"
+            {Math.round(zoom)}%
+          </button>
+          <button
+            onClick={() => applyZoom(zoom + 10)}
+            className="w-7 h-7 flex items-center justify-center rounded hover:bg-secondary transition-colors"
+            title="Aumentar zoom (Ctrl++)"
           >
-            Reset
-          </Button>
-          <div className="w-px h-6 bg-border" />
-          <Button
-            variant={zoomLocked ? "default" : "ghost"}
-            size="sm"
-            onClick={toggleZoomLock}
-            title={zoomLocked ? "Desbloquear zoom" : "Bloquear zoom"}
-            className="gap-1"
-          >
-            {zoomLocked ? (
-              <Lock className="w-4 h-4" />
-            ) : (
-              <Unlock className="w-4 h-4" />
-            )}
-          </Button>
+            <img src="/assets/icons/svg/zoom-in.svg" alt="+" style={{ width: 15, height: 15 }} />
+          </button>
         </div>
-        <span className="text-xs">
-          {pages} página{pages > 1 ? "s" : ""} • {Math.round(zoom)}%
+        <span className="text-xs opacity-60">
+          {pages} página{pages > 1 ? "s" : ""} · Ctrl+scroll ou pitada para zoom
         </span>
       </div>
 
@@ -180,21 +197,19 @@ export default function DocumentEditor({
           style={{
             transform: `scale(${zoom / 100})`,
             transformOrigin: "top center",
-            transition: "transform 0.2s ease",
+            transition: "transform 0.15s ease",
           }}
         >
-          {/* Render multiple pages */}
           {Array.from({ length: pages }).map((_, pageIndex) => (
             <div key={pageIndex} className="mb-8">
-              {/* Document Page - A4 Size: 794px × 1123px */}
+              {/* A4 page */}
               <div
-                className="bg-white rounded-sm shadow-2xl"
+                className="doc-page bg-white rounded-sm"
                 style={{
-                  width: "794px",
-                  minHeight: "1123px",
+                  width: 794,
+                  minHeight: 1123,
                   padding: "94px",
-                  boxShadow:
-                    "0 1px 6px rgba(0,0,0,.2), 0 4px 20px rgba(0,0,0,.12)",
+                  boxShadow: "0 1px 6px rgba(0,0,0,.2), 0 4px 20px rgba(0,0,0,.12)",
                 }}
               >
                 {pageIndex === 0 ? (
@@ -202,35 +217,34 @@ export default function DocumentEditor({
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    onInput={handleInput}
+                    onInput={() => editorRef.current && onChange?.(editorRef.current.innerHTML)}
                     onKeyDown={handleKeyDown}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => setIsFocused(false)}
                     className={`
                       w-full min-h-full focus:outline-none
-                      text-foreground text-base leading-relaxed
-                      font-serif
-                      [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-4 [&_h1]:font-sans
-                      [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-3 [&_h2]:font-sans
-                      [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:font-sans
+                      text-foreground text-base leading-relaxed font-serif
+                      [&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mb-4 [&_h1]:font-sans [&_h1]:border-b [&_h1]:border-border [&_h1]:pb-2
+                      [&_h2]:text-2xl [&_h2]:font-semibold [&_h2]:mb-3 [&_h2]:font-sans
+                      [&_h3]:text-xl [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:font-sans
+                      [&_h4]:text-lg [&_h4]:font-semibold [&_h4]:mb-2 [&_h4]:font-sans
                       [&_p]:mb-4 [&_p]:text-base
                       [&_ul]:list-disc [&_ul]:ml-6 [&_ul]:mb-4
                       [&_ol]:list-decimal [&_ol]:ml-6 [&_ol]:mb-4
                       [&_li]:mb-2
                       [&_a]:text-primary [&_a]:underline hover:[&_a]:text-primary/80
-                      [&_blockquote]:border-l-4 [&_blockquote]:border-primary [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:mb-4 [&_blockquote]:text-gray-600
+                      [&_blockquote]:border-l-4 [&_blockquote]:border-primary [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:mb-4 [&_blockquote]:text-muted-foreground
                       [&_code]:bg-secondary [&_code]:px-2 [&_code]:py-1 [&_code]:rounded [&_code]:font-mono [&_code]:text-sm
                       [&_pre]:bg-secondary [&_pre]:p-4 [&_pre]:rounded [&_pre]:overflow-x-auto [&_pre]:mb-4 [&_pre]:font-mono
                       [&_table]:border-collapse [&_table]:w-full [&_table]:mb-4
                       [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:bg-secondary [&_th]:text-left [&_th]:font-semibold
                       [&_td]:border [&_td]:border-border [&_td]:p-2
                       [&_img]:max-w-full [&_img]:h-auto [&_img]:rounded [&_img]:my-4
+                      [&_hr]:border-border [&_hr]:my-6
                     `}
                     data-placeholder={placeholder}
                   />
                 ) : (
-                  <div className="text-muted-foreground text-sm">
-                    Página {pageIndex + 1}
+                  <div className="text-muted-foreground text-sm text-center pt-8 opacity-40">
+                    — Página {pageIndex + 1} —
                   </div>
                 )}
               </div>
@@ -240,12 +254,12 @@ export default function DocumentEditor({
       </div>
 
       {/* Status Bar */}
-      <div className="h-8 px-4 bg-secondary/30 border-t border-border flex items-center text-xs text-muted-foreground gap-4">
+      <div className="h-7 px-4 bg-secondary/30 border-t border-border flex items-center text-xs text-muted-foreground gap-3">
         <span>Pronto</span>
-        <span>•</span>
+        <span>·</span>
         <span>Página 1 de {pages}</span>
-        <span>•</span>
-        <span>{zoomLocked ? "🔒" : "🔓"} {Math.round(zoom)}% zoom</span>
+        <span>·</span>
+        <span>{Math.round(zoom)}% zoom</span>
       </div>
     </div>
   );
