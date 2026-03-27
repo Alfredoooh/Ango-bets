@@ -2,346 +2,395 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { ZoomIn, ZoomOut } from "lucide-react";
 
 interface DocumentEditorProps {
-  content?: string;
-  onChange?: (content: string) => void;
+  content: string;
+  onChange: (content: string) => void;
   placeholder?: string;
-  zoom?: number;
-  onZoomChange?: (zoom: number) => void;
-  isMobile?: boolean;
+  zoom: number;
+  onZoomChange: (z: number) => void;
 }
 
-// ── A4 dimensions ──────────────────────────────────────────────────────────────
-const A4_W = 794;   // px
-const A4_H = 1123;  // px
-const PAGE_PAD_H = 80; // px top+bottom padding each side
-const PAGE_PAD_V = 94; // px left+right padding each side
-const CONTENT_H = A4_H - PAGE_PAD_H * 2;  // usable content height per page
-const LINE_H = 28; // px per line (approx at 16px font, 1.6 line-height)
-const LINES_PER_PAGE = Math.floor(CONTENT_H / LINE_H); // ~34 lines
+// A4 page at 96dpi: 794 × 1123 px
+// With 96px (1in) margins on each side: content area = 602 × 931 px
+const PAGE_W = 794;
+const PAGE_H = 1123;
+const PAGE_MARGIN_PX = 96; // 1 inch = 96px at 96dpi
+const CONTENT_W = PAGE_W - PAGE_MARGIN_PX * 2; // 602px
+const CONTENT_H = PAGE_H - PAGE_MARGIN_PX * 2; // 931px
 
-// ── Device zoom calibration ────────────────────────────────────────────────────
-// Maps container width → optimal zoom so the page fits with breathing room
-function getAdaptiveZoom(containerWidth: number): number {
-  // A4 page + padding we want around it
-  const target = A4_W + 48;
-  let raw = (containerWidth / target) * 100;
-  // Device-specific corrections
-  if (containerWidth <= 375) raw -= 44;       // itel A70, budget phones (360–375px)
-  else if (containerWidth <= 390) raw -= 36;  // iPhone SE
-  else if (containerWidth <= 430) raw -= 24;  // iPhone Pro
-  else if (containerWidth <= 480) raw -= 14;  // large phones
-  else if (containerWidth <= 600) raw -= 6;   // phablets
-  else if (containerWidth <= 768) raw += 0;   // small tablets
-  else raw += 2;                              // desktop
-  return Math.max(18, Math.min(200, Math.round(raw)));
+// Compute zoom so the page fits nicely in the container
+function computeAdaptiveZoom(containerW: number): number {
+  // We want the page (794px) + some padding (32px each side) to fit
+  const available = containerW - 32;
+  const raw = (available / PAGE_W) * 100;
+  return Math.max(25, Math.min(150, Math.round(raw)));
 }
 
 export default function DocumentEditor({
-  content = "",
+  content,
   onChange,
-  placeholder = "Comece a escrever aqui...",
-  zoom: externalZoom,
+  placeholder = "Comece a escrever...",
+  zoom,
   onZoomChange,
-  isMobile = false,
 }: DocumentEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [zoom, setZoom] = useState(externalZoom ?? 100);
   const [pageCount, setPageCount] = useState(1);
-  const [pages, setPages] = useState<string[]>([""]);
-  const pinchRef = useRef<{ startDist: number; startZoom: number } | null>(null);
-  const isComposing = useRef(false);
+  const [activePageIdx, setActivePageIdx] = useState(0);
+  // Store each page's content separately
+  const pagesContent = useRef<string[]>([""]);
+  const pinchRef = useRef<{ dist: number; startZoom: number } | null>(null);
+  const isInternalChange = useRef(false);
 
-  // ── Sync external zoom ────────────────────────────────────────────────────
+  // ── Adaptive zoom on mount/resize ─────────────────────────────────────────
   useEffect(() => {
-    if (externalZoom !== undefined) setZoom(externalZoom);
-  }, [externalZoom]);
-
-  // ── Adaptive zoom on mount & resize ──────────────────────────────────────
-  useEffect(() => {
-    if (externalZoom !== undefined) return;
-    const recalc = () => {
+    const calc = () => {
       if (!containerRef.current) return;
-      const z = getAdaptiveZoom(containerRef.current.clientWidth);
-      setZoom(z);
-      onZoomChange?.(z);
+      const adapted = computeAdaptiveZoom(containerRef.current.clientWidth);
+      onZoomChange(adapted);
     };
-    recalc();
-    const ro = new ResizeObserver(recalc);
+    calc();
+    const ro = new ResizeObserver(calc);
     if (containerRef.current) ro.observe(containerRef.current);
     return () => ro.disconnect();
-  }, [externalZoom, onZoomChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const applyZoom = useCallback((v: number) => {
-    const z = Math.max(18, Math.min(200, Math.round(v)));
-    setZoom(z);
-    onZoomChange?.(z);
-  }, [onZoomChange]);
-
-  // ── Pinch-to-zoom ─────────────────────────────────────────────────────────
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      pinchRef.current = { startDist: d, startZoom: zoom };
+  // ── Sync content to first page on external change ─────────────────────────
+  useEffect(() => {
+    if (isInternalChange.current) { isInternalChange.current = false; return; }
+    const el = pageRefs.current[0];
+    if (el && el.innerHTML !== content) {
+      el.innerHTML = content;
+      pagesContent.current[0] = content;
     }
-  }, [zoom]);
+  }, [content]);
 
-  const onTouchMove = useCallback((e: React.TouchEvent) => {
+  // ── Handle typing: detect overflow and move excess to next page ───────────
+  const handlePageInput = useCallback((pageIdx: number) => {
+    const el = pageRefs.current[pageIdx];
+    if (!el) return;
+
+    // Save current content
+    pagesContent.current[pageIdx] = el.innerHTML;
+
+    // Check overflow
+    if (el.scrollHeight > CONTENT_H + 20) {
+      // Page overflowed — need a new page or push content to next
+      const overflow = detectOverflowedNodes(el, CONTENT_H);
+      if (overflow.length > 0) {
+        // Move overflowed nodes to next page
+        const nextIdx = pageIdx + 1;
+        if (nextIdx >= pageCount) {
+          setPageCount((c) => c + 1);
+          pagesContent.current[nextIdx] = "";
+        }
+        // Build HTML for next page prefix
+        const overflowHTML = overflow.map((n) => {
+          const tmp = document.createElement("div");
+          tmp.appendChild(n.cloneNode(true));
+          n.parentNode?.removeChild(n);
+          return tmp.innerHTML;
+        }).join("");
+
+        pagesContent.current[pageIdx] = el.innerHTML;
+        const nextEl = pageRefs.current[nextIdx];
+        if (nextEl) {
+          nextEl.innerHTML = overflowHTML + (pagesContent.current[nextIdx] || "");
+          pagesContent.current[nextIdx] = nextEl.innerHTML;
+        } else {
+          // Will be set when page renders
+          pagesContent.current[nextIdx] = overflowHTML + (pagesContent.current[nextIdx] || "");
+        }
+      }
+    }
+
+    // Report content of page 0 upward
+    isInternalChange.current = true;
+    onChange(pagesContent.current[0] || "");
+  }, [pageCount, onChange]);
+
+  // ── Detect nodes that overflow the container height ────────────────────────
+  function detectOverflowedNodes(el: HTMLDivElement, maxH: number): Node[] {
+    const overflowed: Node[] = [];
+    const children = Array.from(el.childNodes);
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (el.scrollHeight <= maxH + 10) break;
+      const child = children[i];
+      overflowed.unshift(child);
+      el.removeChild(child);
+    }
+    return overflowed;
+  }
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, pageIdx: number) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      document.execCommand("insertHTML", false, "&nbsp;&nbsp;&nbsp;&nbsp;");
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      switch (e.key) {
+        case "b": e.preventDefault(); document.execCommand("bold"); break;
+        case "i": e.preventDefault(); document.execCommand("italic"); break;
+        case "u": e.preventDefault(); document.execCommand("underline"); break;
+        case "=": e.preventDefault(); onZoomChange(Math.min(200, zoom + 10)); break;
+        case "-": e.preventDefault(); onZoomChange(Math.max(25, zoom - 10)); break;
+        case "0": e.preventDefault(); onZoomChange(100); break;
+      }
+    }
+    // Enter at end of full page → move to next page
+    if (e.key === "Enter") {
+      const el = pageRefs.current[pageIdx];
+      if (el && el.scrollHeight >= CONTENT_H - 20) {
+        e.preventDefault();
+        const nextIdx = pageIdx + 1;
+        if (nextIdx >= pageCount) setPageCount((c) => c + 1);
+        setTimeout(() => {
+          const nextEl = pageRefs.current[nextIdx];
+          if (nextEl) { nextEl.focus(); placeCursorAtStart(nextEl); }
+        }, 50);
+      }
+    }
+  };
+
+  function placeCursorAtStart(el: HTMLElement) {
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.setStart(el, 0);
+    range.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
+
+  // ── Pinch zoom ─────────────────────────────────────────────────────────────
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchRef.current = { dist: Math.hypot(dx, dy), startZoom: zoom };
+    }
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
     if (e.touches.length === 2 && pinchRef.current) {
       e.preventDefault();
-      const d = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      applyZoom(pinchRef.current.startZoom * (d / pinchRef.current.startDist));
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const newZoom = Math.max(25, Math.min(200, Math.round(pinchRef.current.startZoom * (dist / pinchRef.current.dist))));
+      onZoomChange(newZoom);
     }
-  }, [applyZoom]);
+  };
+  const onTouchEnd = () => { pinchRef.current = null; };
 
-  // ── Ctrl+wheel zoom ───────────────────────────────────────────────────────
+  // ── Ctrl+wheel zoom ────────────────────────────────────────────────────────
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const fn = (e: WheelEvent) => {
+    const handler = (e: WheelEvent) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        applyZoom(zoom + (e.deltaY < 0 ? 10 : -10));
+        onZoomChange(Math.max(25, Math.min(200, zoom + (e.deltaY < 0 ? 10 : -10))));
       }
     };
-    el.addEventListener("wheel", fn, { passive: false });
-    return () => el.removeEventListener("wheel", fn);
-  }, [zoom, applyZoom]);
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [zoom, onZoomChange]);
 
-  // ── Page overflow logic ───────────────────────────────────────────────────
-  // Called after each input to detect overflow and split into pages
-  const reflowPages = useCallback(() => {
-    const els = pageRefs.current.filter(Boolean) as HTMLDivElement[];
-    if (!els.length) return;
-
-    let overflowed = false;
-    const newPages = [...pages];
-
-    els.forEach((el, idx) => {
-      if (!el) return;
-      const maxH = CONTENT_H;
-      if (el.scrollHeight > maxH + 10) {
-        // Find the last child that fits
-        overflowed = true;
-        const children = Array.from(el.childNodes);
-        let accumulated = 0;
-        let splitIdx = children.length;
-
-        // Binary search: find where content overflows
-        for (let i = 0; i < children.length; i++) {
-          const child = children[i] as HTMLElement;
-          const h = child.nodeType === Node.ELEMENT_NODE
-            ? (child as HTMLElement).offsetHeight
-            : LINE_H;
-          if (accumulated + h > maxH) {
-            splitIdx = i;
-            break;
-          }
-          accumulated += h;
-        }
-
-        // Split: keep first part, move rest to next page
-        const keepNodes = children.slice(0, splitIdx);
-        const spillNodes = children.slice(splitIdx);
-
-        const keepHTML = keepNodes.map(n =>
-          n.nodeType === Node.TEXT_NODE
-            ? n.textContent || ""
-            : (n as HTMLElement).outerHTML
-        ).join("");
-
-        const spillHTML = spillNodes.map(n =>
-          n.nodeType === Node.TEXT_NODE
-            ? n.textContent || ""
-            : (n as HTMLElement).outerHTML
-        ).join("");
-
-        newPages[idx] = keepHTML;
-        if (idx + 1 < newPages.length) {
-          newPages[idx + 1] = spillHTML + newPages[idx + 1];
-        } else {
-          newPages.push(spillHTML);
-        }
-
-        el.innerHTML = keepHTML;
-      }
-    });
-
-    if (overflowed) {
-      setPages(newPages);
-      setPageCount(newPages.length);
-      // Emit combined content
-      onChange?.(newPages.join('<div class="page-break"></div>'));
+  // ── Init new pages with saved content ─────────────────────────────────────
+  const initPage = useCallback((el: HTMLDivElement | null, idx: number) => {
+    if (!el) return;
+    pageRefs.current[idx] = el;
+    if (el.innerHTML !== (pagesContent.current[idx] || "")) {
+      el.innerHTML = pagesContent.current[idx] || "";
     }
-  }, [pages, onChange]);
-
-  // ── Handle input on a specific page ──────────────────────────────────────
-  const handleInput = useCallback((idx: number) => {
-    const el = pageRefs.current[idx];
-    if (!el || isComposing.current) return;
-    const newPages = [...pages];
-    newPages[idx] = el.innerHTML;
-    setPages(newPages);
-    onChange?.(newPages.join('<div class="page-break"></div>'));
-
-    // Check overflow with slight delay
-    requestAnimationFrame(() => reflowPages());
-  }, [pages, onChange, reflowPages]);
-
-  // ── Init content from prop ────────────────────────────────────────────────
-  useEffect(() => {
-    if (!content) return;
-    const parts = content.split('<div class="page-break"></div>');
-    setPages(parts.length ? parts : [""]);
-    setPageCount(parts.length || 1);
-  }, []); // only on mount
-
-  // ── Keyboard shortcuts ────────────────────────────────────────────────────
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Tab") {
-      e.preventDefault();
-      document.execCommand("insertHTML", false, "\u00a0\u00a0\u00a0\u00a0");
-    }
-    if (e.ctrlKey || e.metaKey) {
-      if (e.key === "=") { e.preventDefault(); applyZoom(zoom + 10); }
-      if (e.key === "-") { e.preventDefault(); applyZoom(zoom - 10); }
-      if (e.key === "0") { e.preventDefault(); applyZoom(100); }
-    }
-  };
+  }, []);
 
   return (
     <div
       ref={containerRef}
-      className="flex-1 flex flex-col overflow-hidden"
-      style={{ background: "var(--warm, #f3ede3)" }}
+      className="flex-1 flex flex-col overflow-hidden bg-[#f0f0f0]"
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
-      onTouchEnd={() => { pinchRef.current = null; }}
+      onTouchEnd={onTouchEnd}
+      style={{ touchAction: "pan-y pinch-zoom" }}
     >
-      {/* Zoom bar */}
-      <div style={{
-        height: 36,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 12px",
-        borderBottom: "1px solid var(--border)",
-        background: "var(--cream, #faf8f4)",
-        flexShrink: 0,
-        zIndex: 10,
-      }}>
+      {/* Zoom bar — compact, above pages */}
+      <div
+        style={{
+          height: 36,
+          background: "#fff",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 12px",
+          flexShrink: 0,
+          zIndex: 10,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
           <button
-            onMouseDown={(e) => { e.preventDefault(); applyZoom(zoom - 10); }}
-            className="native-btn"
-            style={{ width: 28, height: 28, borderRadius: 7, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-            data-tooltip="Diminuir zoom"
+            onMouseDown={(e) => { e.preventDefault(); onZoomChange(Math.max(25, zoom - 10)); }}
+            style={{ width: 28, height: 28, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#666" }}
+            title="Diminuir (Ctrl+-)"
           >
-            <ZoomOut size={14} style={{ color: "var(--muted-foreground)" }} />
+            <ZoomOut size={15} />
           </button>
           <button
-            onMouseDown={(e) => { e.preventDefault(); applyZoom(100); }}
-            className="native-btn"
-            style={{
-              minWidth: 52, height: 24, borderRadius: 6, border: "1px solid var(--border)",
-              background: "var(--cream)", cursor: "pointer",
-              fontSize: ".72rem", fontWeight: 600, color: "var(--foreground)",
-            }}
+            onMouseDown={(e) => { e.preventDefault(); onZoomChange(100); }}
+            style={{ fontSize: 12, fontWeight: 600, color: "#444", padding: "0 6px", height: 28, border: "1px solid #e0e0e0", borderRadius: 6, background: "#f8f8f8", cursor: "pointer", minWidth: 52, textAlign: "center" }}
+            title="Repor zoom"
           >
             {Math.round(zoom)}%
           </button>
           <button
-            onMouseDown={(e) => { e.preventDefault(); applyZoom(zoom + 10); }}
-            className="native-btn"
-            style={{ width: 28, height: 28, borderRadius: 7, border: "none", background: "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-            data-tooltip="Aumentar zoom"
+            onMouseDown={(e) => { e.preventDefault(); onZoomChange(Math.min(200, zoom + 10)); }}
+            style={{ width: 28, height: 28, border: "none", background: "transparent", cursor: "pointer", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#666" }}
+            title="Aumentar (Ctrl++)"
           >
-            <ZoomIn size={14} style={{ color: "var(--muted-foreground)" }} />
+            <ZoomIn size={15} />
           </button>
         </div>
-        <span style={{ fontSize: ".67rem", color: "var(--muted-foreground)", opacity: .7 }}>
-          {pageCount} pág · pitada p/ zoom
+        <span style={{ fontSize: 11, color: "#999" }}>
+          {pageCount} página{pageCount !== 1 ? "s" : ""} · pitada ou Ctrl+scroll p/ zoom
         </span>
       </div>
 
-      {/* Pages scroll area */}
+      {/* Scrollable page area */}
       <div
-        className="flex-1 overflow-auto toolbar-scroll"
-        style={{ padding: isMobile ? "16px 8px 80px" : "24px 16px 32px" }}
-      >
-        <div style={{
-          transform: `scale(${zoom / 100})`,
-          transformOrigin: "top center",
-          transition: "transform .15s cubic-bezier(.25,.46,.45,.94)",
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          overflowX: "auto",
+          padding: "24px 16px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           gap: 24,
-        }}>
-          {pages.map((pageContent, idx) => (
-            <div
-              key={idx}
-              className="doc-paper"
-              style={{
-                width: A4_W,
-                minHeight: A4_H,
-                background: "#fff",
-                borderRadius: 4,
-                position: "relative",
-                overflow: "hidden",
-                animation: idx > 0 ? "pageFlip .3s ease" : undefined,
-              }}
-            >
-              {/* Page number */}
-              {idx > 0 && (
+        }}
+      >
+        {/* Zoom wrapper — scales from top-center */}
+        <div
+          className="zoom-wrapper"
+          style={{
+            transform: `scale(${zoom / 100})`,
+            transformOrigin: "top center",
+            transition: "transform 0.15s ease",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 24,
+            // Compensate layout height so scroll works correctly
+            marginBottom: `${(zoom / 100 - 1) * pageCount * (PAGE_H + 24) * 0.5}px`,
+          }}
+        >
+          {Array.from({ length: pageCount }).map((_, idx) => (
+            <div key={idx} style={{ position: "relative" }}>
+              {/* Page number badge */}
+              {pageCount > 1 && (
                 <div style={{
-                  position: "absolute", top: 24, right: PAGE_PAD_V,
-                  fontSize: ".68rem", color: "#ccc", fontFamily: "Georgia, serif",
+                  position: "absolute", top: -20, left: 0, right: 0,
+                  textAlign: "center", fontSize: 11, color: "#999", userSelect: "none",
                 }}>
-                  {idx + 1}
+                  Página {idx + 1}
                 </div>
               )}
 
-              {/* Content area */}
+              {/* A4 Page */}
               <div
-                ref={(el) => { pageRefs.current[idx] = el; }}
-                contentEditable
-                suppressContentEditableWarning
-                onInput={() => handleInput(idx)}
-                onKeyDown={handleKeyDown}
-                onCompositionStart={() => { isComposing.current = true; }}
-                onCompositionEnd={() => { isComposing.current = false; handleInput(idx); }}
-                data-placeholder={idx === 0 ? placeholder : ""}
+                className="doc-page"
                 style={{
-                  padding: `${PAGE_PAD_H}px ${PAGE_PAD_V}px`,
-                  minHeight: A4_H,
-                  maxHeight: A4_H,
+                  width: PAGE_W,
+                  height: PAGE_H,
+                  background: "#fff",
+                  boxShadow: "0 2px 8px rgba(0,0,0,.18), 0 8px 32px rgba(0,0,0,.10)",
+                  position: "relative",
                   overflow: "hidden",
-                  outline: "none",
-                  fontFamily: "Georgia, 'Times New Roman', serif",
-                  fontSize: 16,
-                  lineHeight: "1.75",
-                  color: "#0e0c09",
-                  wordBreak: "break-word",
-                  // Text formatting classes applied via execCommand
+                  flexShrink: 0,
                 }}
-                dangerouslySetInnerHTML={{ __html: pageContent }}
-              />
-
-              {/* Page overflow indicator */}
-              {idx < pages.length - 1 && (
+              >
+                {/* Page ruler lines (subtle) */}
                 <div style={{
-                  position: "absolute", bottom: 0, left: 0, right: 0,
-                  height: 3, background: "linear-gradient(90deg, var(--brand), var(--brand-hover))",
-                  opacity: .4,
+                  position: "absolute", inset: 0, pointerEvents: "none",
+                  backgroundImage: "repeating-linear-gradient(transparent, transparent 31px, #f0f0f0 31px, #f0f0f0 32px)",
+                  backgroundPosition: `0 ${PAGE_MARGIN_PX}px`,
+                  opacity: activePageIdx === idx ? 0.5 : 0,
+                  transition: "opacity 0.2s",
                 }} />
-              )}
+
+                {/* Editable content area */}
+                <div
+                  ref={(el) => initPage(el, idx)}
+                  contentEditable
+                  suppressContentEditableWarning
+                  data-placeholder={idx === 0 ? placeholder : ""}
+                  onFocus={() => setActivePageIdx(idx)}
+                  onInput={() => handlePageInput(idx)}
+                  onKeyDown={(e) => handleKeyDown(e, idx)}
+                  style={{
+                    position: "absolute",
+                    top: PAGE_MARGIN_PX,
+                    left: PAGE_MARGIN_PX,
+                    width: CONTENT_W,
+                    height: CONTENT_H,
+                    outline: "none",
+                    overflow: "hidden", // CRITICAL: prevents page from growing
+                    fontFamily: "Georgia, 'Times New Roman', serif",
+                    fontSize: 14,
+                    lineHeight: "1.6",
+                    color: "#1a1a1a",
+                    wordBreak: "break-word",
+                    whiteSpace: "pre-wrap",
+                  }}
+                  className="
+                    [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-3 [&_h1]:mt-2 [&_h1]:font-sans [&_h1]:leading-tight
+                    [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-2 [&_h2]:font-sans
+                    [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:font-sans
+                    [&_h4]:text-base [&_h4]:font-semibold [&_h4]:mb-1 [&_h4]:font-sans
+                    [&_p]:mb-3
+                    [&_ul]:list-disc [&_ul]:ml-5 [&_ul]:mb-3
+                    [&_ol]:list-decimal [&_ol]:ml-5 [&_ol]:mb-3
+                    [&_li]:mb-1
+                    [&_a]:text-blue-600 [&_a]:underline
+                    [&_blockquote]:border-l-4 [&_blockquote]:border-orange-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-3
+                    [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-sm
+                    [&_pre]:bg-gray-100 [&_pre]:p-3 [&_pre]:rounded [&_pre]:font-mono [&_pre]:text-sm [&_pre]:my-3 [&_pre]:overflow-x-auto
+                    [&_table]:border-collapse [&_table]:w-full [&_table]:my-3
+                    [&_th]:border [&_th]:border-gray-300 [&_th]:p-2 [&_th]:bg-gray-50 [&_th]:font-semibold [&_th]:text-left
+                    [&_td]:border [&_td]:border-gray-300 [&_td]:p-2
+                    [&_img]:max-w-full [&_img]:h-auto [&_img]:my-2
+                    [&_hr]:border-gray-200 [&_hr]:my-4
+                  "
+                />
+
+                {/* Placeholder */}
+                {idx === 0 && !content && (
+                  <div style={{
+                    position: "absolute",
+                    top: PAGE_MARGIN_PX,
+                    left: PAGE_MARGIN_PX,
+                    color: "#b0b0b0",
+                    fontSize: 14,
+                    fontFamily: "Georgia, serif",
+                    lineHeight: "1.6",
+                    pointerEvents: "none",
+                    userSelect: "none",
+                  }}>
+                    {placeholder}
+                  </div>
+                )}
+
+                {/* Page border guide (faint) */}
+                <div style={{
+                  position: "absolute",
+                  top: PAGE_MARGIN_PX - 1,
+                  left: PAGE_MARGIN_PX - 1,
+                  width: CONTENT_W + 2,
+                  height: CONTENT_H + 2,
+                  border: "1px dashed #e8e8e8",
+                  pointerEvents: "none",
+                }} />
+              </div>
             </div>
           ))}
         </div>
@@ -349,16 +398,22 @@ export default function DocumentEditor({
 
       {/* Status bar */}
       <div style={{
-        height: 28, display: "flex", alignItems: "center", gap: 12,
-        padding: "0 14px", borderTop: "1px solid var(--border)",
-        background: "var(--cream)", flexShrink: 0,
-        fontSize: ".67rem", color: "var(--muted-foreground)",
+        height: 26,
+        background: "#d4520a",
+        borderTop: "none",
+        display: "flex",
+        alignItems: "center",
+        padding: "0 12px",
+        gap: 12,
+        flexShrink: 0,
       }}>
-        <span>Pág 1 de {pageCount}</span>
-        <span>·</span>
-        <span>{Math.round(zoom)}% zoom</span>
-        <span>·</span>
-        <span>{LINES_PER_PAGE} linhas/pág</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.9)" }}>Pronto</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>·</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.9)" }}>
+          Pág. {activePageIdx + 1} / {pageCount}
+        </span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>·</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.9)" }}>{Math.round(zoom)}%</span>
       </div>
     </div>
   );

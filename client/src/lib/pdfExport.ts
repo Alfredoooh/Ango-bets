@@ -1,94 +1,110 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
-// ── PDF — página a página, margens A4 reais ───────────────────────────────────
-export async function exportToPDF(docName: string, editorEl: HTMLElement): Promise<void> {
-  // Find parent page container
-  const pageEl = (editorEl.closest(".doc-paper") as HTMLElement) ?? editorEl;
+// A4 dimensions in mm
+const A4_W = 210;
+const A4_H = 297;
+const MARGIN = 20; // mm
 
-  // Temporarily remove transform/zoom so html2canvas renders at 1:1
-  const wrapper = editorEl.closest<HTMLElement>('[style*="transform"]');
-  const prevTransform = wrapper?.style.transform ?? "";
-  if (wrapper) wrapper.style.transform = "none";
-
-  const canvas = await html2canvas(pageEl, {
-    scale: 2,
-    useCORS: true,
-    allowTaint: true,
-    logging: false,
-    backgroundColor: "#ffffff",
-    windowWidth: pageEl.scrollWidth,
-    windowHeight: pageEl.scrollHeight,
-  });
-
-  if (wrapper) wrapper.style.transform = prevTransform;
-
-  const MM = { w: 210, h: 297 };  // A4
-  const MARGIN = 12;               // mm each side
-  const printW = MM.w - MARGIN * 2;
-  const printH = MM.h - MARGIN * 2;
+/**
+ * Export the document to PDF.
+ * Renders each .doc-page element separately to avoid scale/transform issues.
+ */
+export async function exportToPDF(
+  documentName: string,
+  _ignored?: HTMLElement
+): Promise<void> {
+  const pages = Array.from(document.querySelectorAll(".doc-page")) as HTMLElement[];
+  if (!pages.length) throw new Error("Nenhuma página encontrada");
 
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const printW = A4_W - MARGIN * 2;
 
-  // px per mm at canvas scale
-  const pxPerMm = (canvas.width / 2) / printW;
-  const sliceH_px = Math.round(printH * pxPerMm);  // height in canvas px per A4 page
-  let yPx = 0;
-  let firstPage = true;
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+    // Snapshot at native size (no transform)
+    const canvas = await html2canvas(page, {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      // Ignore any CSS transform on parent
+      ignoreElements: (el) => el.classList.contains("zoom-wrapper"),
+    });
 
-  while (yPx < canvas.height) {
-    if (!firstPage) pdf.addPage();
-    firstPage = false;
+    const imgData = canvas.toDataURL("image/jpeg", 0.92);
+    const ratio = canvas.height / canvas.width;
+    const imgH = printW * ratio;
 
-    const actualSliceH = Math.min(sliceH_px, canvas.height - yPx);
-    const actualSliceH_mm = actualSliceH / pxPerMm;
+    if (i > 0) pdf.addPage();
 
-    // Crop slice
-    const slice = document.createElement("canvas");
-    slice.width = canvas.width;
-    slice.height = actualSliceH;
-    const ctx = slice.getContext("2d")!;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, slice.width, slice.height);
-    ctx.drawImage(canvas, 0, yPx, canvas.width, actualSliceH, 0, 0, canvas.width, actualSliceH);
-
-    pdf.addImage(slice.toDataURL("image/jpeg", 0.92), "JPEG", MARGIN, MARGIN, printW, actualSliceH_mm);
-    yPx += sliceH_px;
+    // If content fits in one A4 page height
+    const maxH = A4_H - MARGIN * 2;
+    if (imgH <= maxH) {
+      pdf.addImage(imgData, "JPEG", MARGIN, MARGIN, printW, imgH);
+    } else {
+      // Slice into A4 pages
+      const sliceRatio = maxH / imgH;
+      let srcY = 0;
+      let isFirst = true;
+      while (srcY < canvas.height) {
+        const sliceH = Math.min(canvas.height * sliceRatio, canvas.height - srcY);
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = Math.ceil(sliceH);
+        const ctx = sliceCanvas.getContext("2d")!;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.92);
+        const sliceImgH = (sliceH / canvas.height) * imgH;
+        if (!isFirst) pdf.addPage();
+        pdf.addImage(sliceData, "JPEG", MARGIN, MARGIN, printW, sliceImgH);
+        srcY += sliceH;
+        isFirst = false;
+      }
+    }
   }
 
-  pdf.save(`${docName}.pdf`);
+  pdf.save(`${documentName}.pdf`);
 }
 
-// ── DOCX (Word-compatible HTML blob) ─────────────────────────────────────────
-export function exportToDocx(docName: string, htmlContent: string): void {
-  const blob = new Blob([`\ufeff<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>${docName}</title><style>@page{size:A4;margin:2cm}body{font-family:Calibri,sans-serif;font-size:12pt;line-height:1.5}h1{font-size:20pt}h2{font-size:16pt}h3{font-size:14pt}table{border-collapse:collapse;width:100%}td,th{border:1px solid #999;padding:6px 10px}</style></head><body>${htmlContent}</body></html>`], {
-    type: "application/msword",
-  });
-  _download(blob, `${docName}.doc`);
+/** Export as Word-compatible HTML */
+export function exportToDocx(documentName: string, htmlContent: string): void {
+  const doc = `<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><meta charset='utf-8'><title>${documentName}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>@page{size:A4;margin:2cm} body{font-family:Calibri,sans-serif;font-size:12pt;line-height:1.5} h1{font-size:20pt} h2{font-size:16pt} h3{font-size:14pt} table{border-collapse:collapse;width:100%} td,th{border:1px solid #999;padding:6px 10px}</style>
+</head><body>${htmlContent}</body></html>`;
+  download(new Blob(["\ufeff", doc], { type: "application/msword" }), `${documentName}.doc`);
 }
 
-// ── TXT ───────────────────────────────────────────────────────────────────────
-export function exportToTxt(docName: string, htmlContent: string): void {
+/** Export as plain text */
+export function exportToTxt(documentName: string, htmlContent: string): void {
   const tmp = document.createElement("div");
   tmp.innerHTML = htmlContent;
-  _download(new Blob([tmp.innerText || ""], { type: "text/plain;charset=utf-8" }), `${docName}.txt`);
+  download(new Blob([tmp.innerText || ""], { type: "text/plain;charset=utf-8" }), `${documentName}.txt`);
 }
 
-// ── RTF ───────────────────────────────────────────────────────────────────────
-export function exportToRtf(docName: string, htmlContent: string): void {
+/** Export as RTF */
+export function exportToRtf(documentName: string, htmlContent: string): void {
   const tmp = document.createElement("div");
   tmp.innerHTML = htmlContent;
-  const plain = (tmp.innerText || "")
-    .replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
-  const rtf = `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Calibri;}}{\\f0\\fs24 ${plain.replace(/\n/g, "\\par ")}}}`;
-  _download(new Blob([rtf], { type: "application/rtf" }), `${docName}.rtf`);
+  const text = (tmp.innerText || "").replace(/\\/g, "\\\\").replace(/[{}]/g, (c) => `\\${c}`);
+  const rtf = `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Calibri;}}{\\f0\\fs24 ${text.replace(/\n/g, "\\par ")}}}`;
+  download(new Blob([rtf], { type: "application/rtf" }), `${documentName}.rtf`);
 }
 
-function _download(blob: Blob, name: string) {
+function download(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
-  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  const a = Object.assign(document.createElement("a"), { href: url, download: filename });
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export function calculatePages(contentLength: number): number {
+  return Math.max(1, Math.ceil(contentLength / 1800));
 }

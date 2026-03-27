@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import EditorToolbar from "@/components/EditorToolbar";
 import DocumentEditor from "@/components/DocumentEditor";
@@ -8,133 +8,106 @@ import TableDialog from "@/components/TableDialog";
 import ImageDialog from "@/components/ImageDialog";
 import ColorPickerModal from "@/components/ColorPickerModal";
 import { toast } from "sonner";
-import { exportToPDF, exportToDocx, exportToTxt, exportToRtf } from "@/lib/pdfExport";
+import { exportToPDF, exportToDocx, exportToTxt } from "@/lib/pdfExport";
 import {
-  ArrowLeft, MoreVertical, Save, FileDown, FileText as FileTextIcon,
-  Share2, FileCode, PlusCircle, FolderOpen,
+  ArrowLeft, MoreVertical, Save, Download, Share2,
+  FilePlus, FolderOpen, FileText, Moon, Sun,
 } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
 
-// ── SVG icon with Lucide fallback ─────────────────────────────────────────────
-function Ico({ svg, Fallback, size = 18 }: { svg?: string; Fallback: React.ComponentType<{ size?: number }>; size?: number }) {
-  const [ok, setOk] = useState(true);
-  if (svg && ok) return (
-    <img src={`/assets/icons/svg/${svg}.svg`} alt="" width={size} height={size}
-      style={{ display: "inline-block" }} onError={() => setOk(false)} />
-  );
-  return <Fallback size={size} />;
-}
-
-// ── Native ripple ─────────────────────────────────────────────────────────────
-function ripple(e: React.MouseEvent<HTMLButtonElement>) {
-  const btn = e.currentTarget;
-  const rect = btn.getBoundingClientRect();
-  const d = Math.max(rect.width, rect.height);
-  const r = document.createElement("span");
-  r.style.cssText = `position:absolute;width:${d}px;height:${d}px;left:${e.clientX - rect.left - d / 2}px;top:${e.clientY - rect.top - d / 2}px;background:rgba(212,82,10,.2);border-radius:50%;pointer-events:none;animation:ripple .5s ease-out forwards`;
-  btn.appendChild(r);
-  setTimeout(() => r.remove(), 500);
-}
-
-// ── AppBar popup menu ─────────────────────────────────────────────────────────
+// ── Native popup menu ─────────────────────────────────────────────────────────
 function AppMenu({
-  onSave, onNewDoc, onOpenDoc, onExportPDF, onExportDocx, onExportTxt, onExportRtf, onShare,
+  onSave, onExportPDF, onExportDocx, onExportTxt, onShare, onNewDocument, onOpenDocument,
 }: {
-  onSave: () => void; onNewDoc: () => void; onOpenDoc: () => void;
-  onExportPDF: () => void; onExportDocx: () => void;
-  onExportTxt: () => void; onExportRtf: () => void; onShare: () => void;
+  onSave: () => void; onExportPDF: () => void; onExportDocx: () => void;
+  onExportTxt: () => void; onShare: () => void; onNewDocument: () => void; onOpenDocument: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 52, right: 12 });
-  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const { theme, toggleTheme, switchable } = useTheme();
 
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (btnRef.current && !btnRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    const close = () => setOpen(false);
+    document.addEventListener("click", close, true);
+    return () => document.removeEventListener("click", close, true);
   }, [open]);
 
-  const toggle = (e: React.MouseEvent<HTMLButtonElement>) => {
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
-    }
-    setOpen(v => !v);
-    ripple(e);
-  };
-
   const items = [
-    { icon: "save", Fb: Save, label: "Guardar", action: onSave, kbd: "Ctrl+S" },
-    { icon: "document-add", Fb: PlusCircle, label: "Novo documento", action: onNewDoc },
-    { icon: "folder-open", Fb: FolderOpen, label: "Abrir documento", action: onOpenDoc },
+    { icon: <FilePlus size={15} />, label: "Novo documento", action: onNewDocument },
+    { icon: <FolderOpen size={15} />, label: "Abrir documento", action: onOpenDocument },
     null,
-    { icon: "download", Fb: FileDown, label: "Exportar PDF", action: onExportPDF },
-    { icon: "document-text", Fb: FileTextIcon, label: "Exportar Word (.doc)", action: onExportDocx },
-    { icon: "code-slash", Fb: FileCode, label: "Exportar Texto (.txt)", action: onExportTxt },
-    { icon: "document", Fb: FileTextIcon, label: "Exportar RTF", action: onExportRtf },
+    { icon: <Save size={15} />, label: "Guardar", kbd: "Ctrl+S", action: onSave },
     null,
-    { icon: "share-social", Fb: Share2, label: "Partilhar", action: onShare },
+    { icon: <Download size={15} />, label: "Exportar PDF", action: onExportPDF },
+    { icon: <FileText size={15} />, label: "Exportar Word (.doc)", action: onExportDocx },
+    { icon: <FileText size={15} />, label: "Exportar Texto (.txt)", action: onExportTxt },
+    null,
+    { icon: <Share2 size={15} />, label: "Partilhar", action: onShare },
+    ...(switchable ? [null, { icon: theme === "dark" ? <Sun size={15} /> : <Moon size={15} />, label: theme === "dark" ? "Modo claro" : "Modo escuro", action: toggleTheme ?? (() => {}) }] : []),
   ];
 
   return (
-    <>
+    <div style={{ position: "relative" }}>
       <button
-        ref={btnRef}
-        onClick={toggle}
-        className="native-btn ripple-container"
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         style={{
-          width: 36, height: 36, borderRadius: 10, border: "none",
-          background: open ? "rgba(212,82,10,.12)" : "transparent",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer", position: "relative", overflow: "hidden",
-          color: open ? "var(--brand)" : "var(--muted-foreground)",
+          width: 36, height: 36, borderRadius: 8, border: "none",
+          background: open ? "rgba(212,82,10,.1)" : "transparent",
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#d4520a", transition: "background 0.15s",
         }}
-        aria-label="Menu"
+        title="Menu"
       >
-        <Ico svg="ellipsis-vertical" Fallback={MoreVertical} size={18} />
+        <MoreVertical size={18} />
       </button>
 
       {open && (
-        <div style={{
-          position: "fixed", top: pos.top, right: pos.right, zIndex: 99999,
-          background: "var(--cream)", border: "1px solid var(--lp-border, #e4ddd2)",
-          borderRadius: 14, boxShadow: "0 8px 40px rgba(14,12,9,.18), 0 2px 8px rgba(14,12,9,.08)",
-          minWidth: 230, padding: "6px 0",
-          animation: "popIn .18s cubic-bezier(.34,1.56,.64,1)",
-        }}>
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "fixed",
+            top: 52, right: 8,
+            zIndex: 99999,
+            background: "#fff",
+            border: "1px solid #e8e8e8",
+            borderRadius: 14,
+            boxShadow: "0 12px 48px rgba(0,0,0,.18), 0 4px 16px rgba(0,0,0,.1)",
+            minWidth: 230,
+            padding: "6px 0",
+            animation: "menuIn 0.18s cubic-bezier(.34,1.56,.64,1)",
+          }}
+        >
+          <style>{`@keyframes menuIn{from{opacity:0;transform:scale(.92) translateY(-8px)}to{opacity:1;transform:none}}`}</style>
           {items.map((item, i) =>
             item === null ? (
-              <div key={i} style={{ height: 1, background: "var(--lp-border)", margin: "4px 0" }} />
+              <div key={i} style={{ height: 1, background: "#f0f0f0", margin: "4px 0" }} />
             ) : (
               <button
                 key={i}
-                onMouseDown={(e) => { e.preventDefault(); item.action(); setOpen(false); }}
+                onClick={() => { item.action(); setOpen(false); }}
                 style={{
-                  display: "flex", alignItems: "center", gap: 10, width: "100%",
-                  padding: "10px 14px", background: "none", border: "none", cursor: "pointer",
-                  fontSize: ".87rem", color: "var(--ink)", textAlign: "left",
+                  display: "flex", alignItems: "center", gap: 11,
+                  width: "100%", padding: "10px 16px",
+                  background: "none", border: "none", cursor: "pointer",
+                  fontSize: 14, color: "#1a1a1a", textAlign: "left",
+                  transition: "background 0.1s",
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = "var(--warm)")}
-                onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#faf5f2")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
               >
-                <Ico svg={item.icon} Fallback={item.Fb} size={16} />
+                <span style={{ color: "#d4520a", flexShrink: 0 }}>{item.icon}</span>
                 <span style={{ flex: 1 }}>{item.label}</span>
-                {item.kbd && <span style={{ fontSize: ".7rem", opacity: .35 }}>{item.kbd}</span>}
+                {item.kbd && <span style={{ fontSize: 11, color: "#bbb", fontFamily: "monospace" }}>{item.kbd}</span>}
               </button>
             )
           )}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
-// Import React for useRef in AppMenu
-import React from "react";
-
-// ── Main EditorPage ───────────────────────────────────────────────────────────
+// ── EditorPage ─────────────────────────────────────────────────────────────────
 export default function EditorPage() {
   const [, setLocation] = useLocation();
   const [documentName, setDocumentName] = useState("Documento sem título");
@@ -148,291 +121,260 @@ export default function EditorPage() {
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const [isEditingName, setIsEditingName] = useState(false);
 
-  // Detect mobile
-  useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 768);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
+  const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
 
-  // Word/char count
+  // Word / char count
   useEffect(() => {
-    const text = content.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
-    setWordCount(text.split(" ").filter(Boolean).length);
+    const text = content.replace(/<[^>]*>/g, "").trim();
+    setWordCount(text.split(/\s+/).filter(Boolean).length);
     setCharacterCount(text.length);
     setLastModified("Agora");
   }, [content]);
 
   // Ctrl+S
   useEffect(() => {
-    const fn = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); } };
-    window.addEventListener("keydown", fn);
-    return () => window.removeEventListener("keydown", fn);
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   });
 
-  const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
-
-  const handleSave = useCallback(() => {
+  const handleSave = () => {
     const docs = JSON.parse(localStorage.getItem("documents") || "[]");
     const idx = docs.findIndex((d: any) => d.name === documentName);
     const entry = { name: documentName, content, lastModified: new Date().toLocaleString("pt-PT") };
     if (idx >= 0) docs[idx] = entry; else docs.push(entry);
     localStorage.setItem("documents", JSON.stringify(docs));
-    toast.success("✓ Documento guardado!");
-  }, [documentName, content]);
+    toast.success("Documento guardado!");
+  };
 
-  const handleExportPDF = useCallback(async () => {
+  const handleExportPDF = async () => {
     try {
-      const el = document.querySelector("[contenteditable]") as HTMLElement;
-      if (!el) { toast.error("Editor não encontrado"); return; }
       toast.info("A gerar PDF...");
-      await exportToPDF(documentName, el);
-      toast.success("PDF exportado com sucesso!");
-    } catch { toast.error("Erro ao exportar PDF"); }
-  }, [documentName]);
+      await exportToPDF(documentName);
+      toast.success("PDF exportado!");
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao exportar PDF");
+    }
+  };
 
-  const handleNewDoc = () => {
+  const handleExportDocx = () => { exportToDocx(documentName, content); toast.success("Word exportado!"); };
+  const handleExportTxt = () => { exportToTxt(documentName, content); toast.success("Texto exportado!"); };
+
+  const handleNewDocument = () => {
     if (content && !confirm("Descartar documento atual?")) return;
     setDocumentName("Documento sem título");
     setContent("");
   };
 
-  const handleOpenDoc = () => {
+  const handleOpenDocument = () => {
     const docs = JSON.parse(localStorage.getItem("documents") || "[]");
     if (!docs.length) { toast.error("Nenhum documento guardado"); return; }
     const name = prompt("Documentos:\n" + docs.map((d: any) => d.name).join("\n") + "\n\nNome:");
-    if (name) {
-      const doc = docs.find((d: any) => d.name === name);
-      if (doc) { setDocumentName(doc.name); setContent(doc.content); toast.success("Documento aberto!"); }
-      else toast.error("Não encontrado");
-    }
+    if (!name) return;
+    const doc = docs.find((d: any) => d.name === name);
+    if (doc) { setDocumentName(doc.name); setContent(doc.content); toast.success("Documento aberto!"); }
+    else toast.error("Não encontrado");
   };
+
+  const handleShare = () => toast.info("Partilha em desenvolvimento");
 
   const handleLinkInsert = (url: string, text: string) => {
     const sel = window.getSelection();
     if (sel?.toString()) exec("createLink", url);
-    else exec("insertHTML", `<a href="${url}" style="color:var(--brand)">${text || url}</a>`);
+    else exec("insertHTML", `<a href="${url}" target="_blank">${text || url}</a>`);
   };
 
   const handleImageInsert = (url: string) => exec("insertImage", url);
 
   const handleTableInsert = (rows: number, cols: number) => {
-    let html = `<table style='border-collapse:collapse;width:100%;margin:8px 0'><tbody>`;
+    let html = `<table style="border-collapse:collapse;width:100%;margin:8px 0"><tbody>`;
     for (let r = 0; r < rows; r++) {
       html += "<tr>";
       for (let c = 0; c < cols; c++)
-        html += `<td style='border:1px solid #e4ddd2;padding:8px 12px;min-width:60px'>${r === 0 ? `<strong>Coluna ${c + 1}</strong>` : "Célula"}</td>`;
+        html += r === 0
+          ? `<th style="border:1px solid #ccc;padding:8px 10px;background:#f5f5f5;font-weight:600;text-align:left">Cabeçalho</th>`
+          : `<td style="border:1px solid #ccc;padding:8px 10px">Célula</td>`;
       html += "</tr>";
     }
-    exec("insertHTML", html + "</tbody></table><p></p>");
+    exec("insertHTML", html + "</tbody></table><br>");
   };
 
-  const appBarH = 52;
-  const toolbarH = isMobile ? 0 : undefined;
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100dvh", background: "var(--background)", overflow: "hidden" }}>
-
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100dvh",
+        background: "var(--background, #fff)",
+        overflow: "hidden",
+      }}
+    >
       {/* ── AppBar ── */}
       <div style={{
-        height: appBarH, display: "flex", alignItems: "center", gap: 6,
-        padding: "0 8px", borderBottom: "1px solid var(--border)",
-        background: "var(--cream)", flexShrink: 0, zIndex: 100,
-        animation: "slideDown .2s ease",
+        height: 48,
+        background: "#fff",
+        borderBottom: "1px solid #eee",
+        display: "flex",
+        alignItems: "center",
+        padding: "0 8px",
+        gap: 4,
+        flexShrink: 0,
+        zIndex: 50,
+        boxShadow: "0 1px 4px rgba(0,0,0,.06)",
       }}>
-        {/* Back */}
+        {/* Back button */}
         <button
           onClick={() => setLocation("/home")}
-          onMouseDown={(e) => ripple(e as any)}
-          className="native-btn ripple-container"
           style={{
-            width: 36, height: 36, borderRadius: 10, border: "none",
-            background: "transparent", display: "flex", alignItems: "center",
-            justifyContent: "center", cursor: "pointer", position: "relative", overflow: "hidden",
-            color: "var(--muted-foreground)", flexShrink: 0,
+            width: 36, height: 36, borderRadius: 8, border: "none",
+            background: "transparent", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#d4520a", transition: "background 0.15s",
+            flexShrink: 0,
           }}
-          title="Voltar"
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#fdf1ea")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          title="Voltar ao início"
         >
-          <Ico svg="arrow-back" Fallback={ArrowLeft} size={18} />
+          <ArrowLeft size={20} />
         </button>
 
         {/* App icon */}
-        <img
-          src="/assets/icons/app-icon.svg"
-          alt="Doction"
-          style={{ width: 28, height: 28, flexShrink: 0 }}
-        />
-
-        {/* Document name — editable inline */}
-        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
-          {isEditingName ? (
-            <input
-              autoFocus
-              value={documentName}
-              onChange={(e) => setDocumentName(e.target.value)}
-              onBlur={() => setIsEditingName(false)}
-              onKeyDown={(e) => { if (e.key === "Enter") setIsEditingName(false); }}
-              style={{
-                flex: 1, maxWidth: 280, border: "none", borderBottom: "2px solid var(--brand)",
-                background: "transparent", outline: "none", fontSize: ".9rem",
-                fontWeight: 600, color: "var(--foreground)", padding: "2px 4px",
-              }}
-            />
-          ) : (
-            <button
-              onClick={() => setIsEditingName(true)}
-              style={{
-                background: "none", border: "none", cursor: "text", padding: "2px 4px",
-                fontSize: ".9rem", fontWeight: 600, color: "var(--foreground)",
-                maxWidth: isMobile ? 160 : 280, overflow: "hidden",
-                textOverflow: "ellipsis", whiteSpace: "nowrap",
-                borderRadius: 6, transition: "background .12s",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--secondary)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "none")}
-              title="Clica para renomear"
-            >
-              {documentName}
-            </button>
-          )}
+        <div style={{
+          width: 28, height: 28, borderRadius: 6, overflow: "hidden",
+          flexShrink: 0, background: "#d4520a",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <img src="/app-icon.png" alt="D" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => {
+            (e.target as HTMLImageElement).style.display = "none";
+          }} />
         </div>
 
-        {/* Stats (desktop) */}
-        {!isMobile && (
-          <span style={{ fontSize: ".72rem", color: "var(--muted-foreground)", flexShrink: 0 }}>
-            {wordCount} palavras
-          </span>
-        )}
+        {/* Document title */}
+        <input
+          value={documentName}
+          onChange={(e) => setDocumentName(e.target.value)}
+          onBlur={handleSave}
+          style={{
+            flex: 1,
+            fontSize: 15, fontWeight: 600,
+            color: "#1a1a1a",
+            border: "none", outline: "none",
+            background: "transparent",
+            padding: "4px 6px",
+            borderRadius: 6,
+            minWidth: 0,
+            transition: "background 0.15s",
+          }}
+          onFocus={(e) => (e.target.style.background = "#f5f5f5")}
+          onBlurCapture={(e) => (e.target.style.background = "transparent")}
+          title="Nome do documento"
+        />
+
+        {/* Word count — hidden on small mobile */}
+        <span style={{
+          fontSize: 12, color: "#999",
+          flexShrink: 0, whiteSpace: "nowrap",
+          display: window.innerWidth < 400 ? "none" : "block",
+        }}>
+          {wordCount}p
+        </span>
 
         {/* Menu */}
         <AppMenu
           onSave={handleSave}
-          onNewDoc={handleNewDoc}
-          onOpenDoc={handleOpenDoc}
           onExportPDF={handleExportPDF}
-          onExportDocx={() => { exportToDocx(documentName, content); toast.success("Word exportado!"); }}
-          onExportTxt={() => { exportToTxt(documentName, content); toast.success("TXT exportado!"); }}
-          onExportRtf={() => { exportToRtf(documentName, content); toast.success("RTF exportado!"); }}
-          onShare={() => toast.info("Partilha em desenvolvimento")}
+          onExportDocx={handleExportDocx}
+          onExportTxt={handleExportTxt}
+          onShare={handleShare}
+          onNewDocument={handleNewDocument}
+          onOpenDocument={handleOpenDocument}
         />
       </div>
 
-      {/* ── Toolbar (desktop only) ── */}
-      {!isMobile && (
-        <EditorToolbar
-          isMobile={false}
-          onBold={() => exec("bold")}
-          onItalic={() => exec("italic")}
-          onUnderline={() => exec("underline")}
-          onStrikethrough={() => exec("strikethrough")}
-          onAlignLeft={() => exec("justifyLeft")}
-          onAlignCenter={() => exec("justifyCenter")}
-          onAlignRight={() => exec("justifyRight")}
-          onAlignJustify={() => exec("justifyFull")}
-          onBulletList={() => exec("insertUnorderedList")}
-          onNumberedList={() => exec("insertOrderedList")}
-          onLink={() => setLinkDialogOpen(true)}
-          onImage={() => setImageDialogOpen(true)}
-          onTable={() => setTableDialogOpen(true)}
-          onSave={handleSave}
-          onUndo={() => exec("undo")}
-          onRedo={() => exec("redo")}
-          onNewDocument={handleNewDoc}
-          onOpenDocument={handleOpenDoc}
-          onDownload={() => { exportToDocx(documentName, content); toast.success("Word exportado!"); }}
-          onShare={() => toast.info("Partilha em desenvolvimento")}
-          onHeading1={() => exec("formatBlock", "<h1>")}
-          onHeading2={() => exec("formatBlock", "<h2>")}
-          onHeading3={() => exec("formatBlock", "<h3>")}
-          onCode={() => exec("formatBlock", "<pre>")}
-          onQuote={() => exec("formatBlock", "<blockquote>")}
-          onHighlight={() => setHighlightPickerOpen(true)}
-          onSuperscript={() => exec("superscript")}
-          onSubscript={() => exec("subscript")}
-          onClearFormatting={() => exec("removeFormat")}
-          onExportPDF={handleExportPDF}
-          onAddNote={() => {
-            const note = prompt("Texto da nota:");
-            if (note) exec("insertHTML", `<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;margin:8px 0;border-radius:6px"><strong>📝 Nota:</strong> ${note}</div><p></p>`);
-          }}
-          onColorPicker={() => setColorPickerOpen(true)}
-        />
-      )}
-
-      {/* Dialogs */}
+      {/* ── Dialogs ── */}
       <LinkDialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen} onInsert={handleLinkInsert} />
       <TableDialog open={tableDialogOpen} onOpenChange={setTableDialogOpen} onInsert={handleTableInsert} />
       <ImageDialog open={imageDialogOpen} onOpenChange={setImageDialogOpen} onInsert={handleImageInsert} />
-      <ColorPickerModal open={colorPickerOpen} onOpenChange={setColorPickerOpen} onSelect={(c) => exec("foreColor", c)} title="Cor do Texto" />
-      <ColorPickerModal open={highlightPickerOpen} onOpenChange={setHighlightPickerOpen} onSelect={(c) => exec("hiliteColor", c)} title="Cor de Realce" />
+      <ColorPickerModal open={colorPickerOpen} onOpenChange={setColorPickerOpen} onSelect={(c) => exec("foreColor", c)} title="Cor do texto" />
+      <ColorPickerModal open={highlightPickerOpen} onOpenChange={setHighlightPickerOpen} onSelect={(c) => exec("hiliteColor", c)} title="Cor de realce" />
 
-      {/* ── Main content ── */}
-      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+      {/* ── Toolbar (desktop top / mobile bottom) ── */}
+      <EditorToolbar
+        onBold={() => exec("bold")}
+        onItalic={() => exec("italic")}
+        onUnderline={() => exec("underline")}
+        onStrikethrough={() => exec("strikethrough")}
+        onAlignLeft={() => exec("justifyLeft")}
+        onAlignCenter={() => exec("justifyCenter")}
+        onAlignRight={() => exec("justifyRight")}
+        onAlignJustify={() => exec("justifyFull")}
+        onBulletList={() => exec("insertUnorderedList")}
+        onNumberedList={() => exec("insertOrderedList")}
+        onLink={() => setLinkDialogOpen(true)}
+        onImage={() => setImageDialogOpen(true)}
+        onTable={() => setTableDialogOpen(true)}
+        onSave={handleSave}
+        onUndo={() => exec("undo")}
+        onRedo={() => exec("redo")}
+        onNewDocument={handleNewDocument}
+        onOpenDocument={handleOpenDocument}
+        onDownload={handleExportDocx}
+        onShare={handleShare}
+        onHeading1={() => exec("formatBlock", "<h1>")}
+        onHeading2={() => exec("formatBlock", "<h2>")}
+        onHeading3={() => exec("formatBlock", "<h3>")}
+        onCode={() => exec("formatBlock", "<pre>")}
+        onQuote={() => exec("formatBlock", "<blockquote>")}
+        onHighlight={() => setHighlightPickerOpen(true)}
+        onSuperscript={() => exec("superscript")}
+        onSubscript={() => exec("subscript")}
+        onClearFormatting={() => exec("removeFormat")}
+        onExportPDF={handleExportPDF}
+        onAddNote={() => {
+          const note = prompt("Texto da nota:");
+          if (note) exec("insertHTML", `<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;margin:8px 0;border-radius:6px"><strong>📝 Nota:</strong> ${note}</div>`);
+        }}
+        onColorPicker={() => setColorPickerOpen(true)}
+      />
+
+      {/* ── Main area ── */}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          overflow: "hidden",
+          // On mobile, add padding for the bottom bar
+        }}
+        className="md:flex-row flex-col"
+      >
         <DocumentEditor
           content={content}
           onChange={setContent}
-          placeholder="Comece a escrever o seu documento..."
+          placeholder="Comece a escrever o seu documento aqui..."
           zoom={zoom}
           onZoomChange={setZoom}
-          isMobile={isMobile}
         />
-        {!isMobile && (
+
+        {/* Side panel — desktop only */}
+        <div className="hidden lg:block">
           <SidePanel
             documentName={documentName}
             lastModified={lastModified}
             wordCount={wordCount}
             characterCount={characterCount}
             onDocumentNameChange={setDocumentName}
-            onShare={() => toast.info("Partilha em desenvolvimento")}
+            onShare={handleShare}
           />
-        )}
+        </div>
       </div>
 
-      {/* ── Mobile bottom toolbar ── */}
-      {isMobile && (
-        <EditorToolbar
-          isMobile={true}
-          onBold={() => exec("bold")}
-          onItalic={() => exec("italic")}
-          onUnderline={() => exec("underline")}
-          onStrikethrough={() => exec("strikethrough")}
-          onAlignLeft={() => exec("justifyLeft")}
-          onAlignCenter={() => exec("justifyCenter")}
-          onAlignRight={() => exec("justifyRight")}
-          onAlignJustify={() => exec("justifyFull")}
-          onBulletList={() => exec("insertUnorderedList")}
-          onNumberedList={() => exec("insertOrderedList")}
-          onLink={() => setLinkDialogOpen(true)}
-          onImage={() => setImageDialogOpen(true)}
-          onTable={() => setTableDialogOpen(true)}
-          onSave={handleSave}
-          onUndo={() => exec("undo")}
-          onRedo={() => exec("redo")}
-          onNewDocument={handleNewDoc}
-          onOpenDocument={handleOpenDoc}
-          onDownload={() => { exportToTxt(documentName, content); toast.success("TXT exportado!"); }}
-          onShare={() => toast.info("Partilha em desenvolvimento")}
-          onHeading1={() => exec("formatBlock", "<h1>")}
-          onHeading2={() => exec("formatBlock", "<h2>")}
-          onHeading3={() => exec("formatBlock", "<h3>")}
-          onCode={() => exec("formatBlock", "<pre>")}
-          onQuote={() => exec("formatBlock", "<blockquote>")}
-          onHighlight={() => setHighlightPickerOpen(true)}
-          onSuperscript={() => exec("superscript")}
-          onSubscript={() => exec("subscript")}
-          onClearFormatting={() => exec("removeFormat")}
-          onExportPDF={handleExportPDF}
-          onAddNote={() => {
-            const note = prompt("Nota:");
-            if (note) exec("insertHTML", `<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;margin:8px 0;border-radius:6px"><strong>📝</strong> ${note}</div>`);
-          }}
-          onColorPicker={() => setColorPickerOpen(true)}
-        />
-      )}
+      {/* Mobile bottom bar spacer — so content isn't hidden under toolbar */}
+      <div className="md:hidden" style={{ height: 90, flexShrink: 0 }} />
     </div>
   );
 }
