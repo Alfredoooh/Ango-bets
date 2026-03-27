@@ -10,7 +10,7 @@ import {
   BookOpen, Bookmark, AlertTriangle, Info, CheckCircle, XCircle,
   ClipboardList, Calendar, ChevronDown, Settings2, AlignVerticalJustifyStart,
   Zap, Eye, PenLine, Users, BarChart3, ZoomIn, ZoomOut, Maximize2,
-  Cloud, CloudUpload, CloudCheck, Star, Heart, Tag, ArrowLeft,
+  Cloud, CloudUpload, CloudCog, Star, Heart, Tag, ArrowLeft,
 } from "lucide-react";
 
 /* ─────────────────────────── CSS Keyframes (injected once) ─────────────────── */
@@ -859,7 +859,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
           <DI icon="download" Fallback={FileDown} label="Exportar PDF" onClick={onExportPDF} />
           <DI icon="document-text" Fallback={FileText} label="Exportar Word" onClick={onDownload} />
           <DI icon="cloud-upload" Fallback={CloudUpload} label="Guardar na nuvem" onClick={onSave} />
-          <DI icon="cloud-done" Fallback={CloudCheck} label="Estado da nuvem" onClick={() => {}} />
+          <DI icon="cloud-done" Fallback={CloudCog} label="Estado da nuvem" onClick={() => {}} />
           <DSep />
           <DI icon="logo-twitter" Fallback={Share2} label="Publicar no X" onClick={() => {}} />
           <DI icon="logo-linkedin" Fallback={Users} label="Publicar no LinkedIn" onClick={() => {}} />
