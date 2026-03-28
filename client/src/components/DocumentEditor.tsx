@@ -3,12 +3,12 @@ import { useRef, useEffect, useState, useCallback } from "react";
 interface DocumentEditorProps {
   content: string;
   onChange: (content: string) => void;
+  placeholder?: string;
   zoom: number;
   onZoomChange: (z: number) => void;
   isMobile?: boolean;
 }
 
-// A4 page at 96dpi
 const PAGE_W = 794;
 const PAGE_H = 1123;
 const PAGE_MARGIN_PX = 96;
@@ -16,14 +16,156 @@ const CONTENT_W = PAGE_W - PAGE_MARGIN_PX * 2;
 const CONTENT_H = PAGE_H - PAGE_MARGIN_PX * 2;
 
 function computeAdaptiveZoom(containerW: number): number {
-  const available = containerW - 48;
+  const available = containerW - 32;
   const raw = (available / PAGE_W) * 100;
   return Math.max(25, Math.min(150, Math.round(raw)));
 }
 
+/* ── Zoom Modal — mobile only ────────────────────────────────────── */
+function ZoomModal({
+  zoom,
+  onZoomChange,
+  onClose,
+}: {
+  zoom: number;
+  onZoomChange: (z: number) => void;
+  onClose: () => void;
+}) {
+  const startY = useRef<number | null>(null);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    startY.current = e.touches[0].clientY;
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (startY.current === null) return;
+    const dy = e.touches[0].clientY - startY.current;
+    if (dy > 60) onClose();
+  };
+  const onTouchEnd = () => { startY.current = null; };
+
+  const PRESETS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
+
+  return (
+    <>
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed", inset: 0, zIndex: 9998,
+          background: "rgba(0,0,0,.5)",
+          animation: "zmFadeIn .16s ease both",
+        }}
+      />
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999,
+          background: "#191919",
+          borderRadius: "20px 20px 0 0",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)",
+          animation: "zmSlideUp .22s cubic-bezier(.25,.46,.45,.94) both",
+          boxShadow: "0 -4px 48px rgba(0,0,0,.5)",
+        }}
+      >
+        <style>{`
+          @keyframes zmFadeIn{from{opacity:0}to{opacity:1}}
+          @keyframes zmSlideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        `}</style>
+
+        {/* Handlebar */}
+        <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
+          <div style={{
+            width: 38, height: 4, borderRadius: 99,
+            background: "rgba(255,255,255,.15)",
+          }} />
+        </div>
+
+        {/* Title */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          gap: 9, padding: "6px 24px 18px",
+        }}>
+          <img
+            src="/assets/icons/svg/zoom-in.svg"
+            alt="" width={17} height={17}
+            style={{ filter: "invert(1)", opacity: .7 }}
+          />
+          <span style={{
+            fontSize: ".87rem", fontWeight: 700,
+            color: "#e8e8e8", letterSpacing: ".01em",
+          }}>
+            Zoom · {Math.round(zoom)}%
+          </span>
+        </div>
+
+        {/* Controls */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 20px 4px" }}>
+          <button
+            onClick={() => onZoomChange(Math.max(25, zoom - 10))}
+            style={{
+              width: 46, height: 46, borderRadius: 13,
+              border: "1.5px solid rgba(255,255,255,.1)",
+              background: "rgba(255,255,255,.06)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <img src="/assets/icons/svg/zoom-out.svg" alt="–" width={20} height={20}
+              style={{ filter: "invert(1)", opacity: .8 }} />
+          </button>
+
+          <div style={{
+            flex: 1, display: "flex", gap: 6, overflowX: "auto",
+            scrollbarWidth: "none", padding: "2px 0",
+          }}>
+            {PRESETS.map(p => (
+              <button
+                key={p}
+                onClick={() => onZoomChange(p)}
+                style={{
+                  flexShrink: 0,
+                  height: 46, padding: "0 14px",
+                  borderRadius: 12,
+                  border: zoom === p
+                    ? "1.5px solid rgba(255,255,255,.75)"
+                    : "1.5px solid rgba(255,255,255,.09)",
+                  background: zoom === p ? "rgba(255,255,255,.15)" : "rgba(255,255,255,.04)",
+                  color: zoom === p ? "#fff" : "rgba(255,255,255,.4)",
+                  fontSize: ".8rem", fontWeight: zoom === p ? 700 : 500,
+                  cursor: "pointer",
+                  transition: "all .12s",
+                }}
+              >
+                {p}%
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => onZoomChange(Math.min(200, zoom + 10))}
+            style={{
+              width: 46, height: 46, borderRadius: 13,
+              border: "1.5px solid rgba(255,255,255,.1)",
+              background: "rgba(255,255,255,.06)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <img src="/assets/icons/svg/zoom-in.svg" alt="+" width={20} height={20}
+              style={{ filter: "invert(1)", opacity: .8 }} />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ── Main ─────────────────────────────────────────────────────────── */
 export default function DocumentEditor({
   content,
   onChange,
+  placeholder = "Comece a escrever...",
   zoom,
   onZoomChange,
   isMobile = false,
@@ -35,26 +177,21 @@ export default function DocumentEditor({
   const pagesContent = useRef<string[]>([""]);
   const pinchRef = useRef<{ dist: number; startZoom: number } | null>(null);
   const isInternalChange = useRef(false);
-  const hasInitialized = useRef(false);
+  const [showZoomModal, setShowZoomModal] = useState(false);
 
-  // Adaptive zoom: on mobile always adapt, on desktop default to 100%
   useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
-
-    if (isMobile) {
-      const calc = () => {
-        if (!containerRef.current) return;
-        onZoomChange(computeAdaptiveZoom(containerRef.current.clientWidth));
-      };
-      calc();
-      const ro = new ResizeObserver(calc);
-      if (containerRef.current) ro.observe(containerRef.current);
-      return () => ro.disconnect();
-    } else {
-      // Desktop: always 100% default
-      onZoomChange(100);
-    }
+    const calc = () => {
+      if (!containerRef.current) return;
+      // Desktop: always 100%. Mobile: adaptive to container width.
+      const adapted = isMobile
+        ? computeAdaptiveZoom(containerRef.current.clientWidth)
+        : 100;
+      onZoomChange(adapted);
+    };
+    calc();
+    const ro = new ResizeObserver(calc);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobile]);
 
@@ -149,7 +286,6 @@ export default function DocumentEditor({
     sel?.addRange(range);
   }
 
-  // Pinch zoom (mobile)
   const onTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
@@ -169,7 +305,6 @@ export default function DocumentEditor({
   };
   const onTouchEnd = () => { pinchRef.current = null; };
 
-  // Ctrl+wheel zoom (desktop)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -195,18 +330,23 @@ export default function DocumentEditor({
     <div
       ref={containerRef}
       className="flex-1 flex flex-col overflow-hidden"
-      style={{ background: "#1a1a1a" }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      style={{ background: "#1c1c1c", touchAction: "pan-y pinch-zoom" }}
     >
+      {/* Zoom modal — mobile only */}
+      {showZoomModal && isMobile && (
+        <ZoomModal zoom={zoom} onZoomChange={onZoomChange} onClose={() => setShowZoomModal(false)} />
+      )}
+
       {/* Scrollable page area */}
       <div
         style={{
           flex: 1,
           overflowY: "auto",
           overflowX: "auto",
-          padding: "28px 16px",
+          padding: "24px 16px",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
@@ -230,25 +370,24 @@ export default function DocumentEditor({
               {pageCount > 1 && (
                 <div style={{
                   position: "absolute", top: -20, left: 0, right: 0,
-                  textAlign: "center", fontSize: 11, color: "#555", userSelect: "none",
+                  textAlign: "center", fontSize: 11, color: "#666", userSelect: "none",
                 }}>
                   Página {idx + 1}
                 </div>
               )}
 
-              {/* A4 Page — clean white, no lines, no placeholder text */}
+              {/* A4 Page — clean, no lines, no placeholder text, no border guide */}
               <div
                 style={{
                   width: PAGE_W,
                   height: PAGE_H,
                   background: "#ffffff",
-                  boxShadow: "0 2px 12px rgba(0,0,0,.5), 0 12px 48px rgba(0,0,0,.35)",
+                  boxShadow: "0 2px 12px rgba(0,0,0,.5), 0 8px 40px rgba(0,0,0,.3)",
                   position: "relative",
                   overflow: "hidden",
                   flexShrink: 0,
                 }}
               >
-                {/* Editable content area — clean, no placeholder, no lines */}
                 <div
                   ref={(el) => initPage(el, idx)}
                   contentEditable
@@ -297,24 +436,40 @@ export default function DocumentEditor({
         </div>
       </div>
 
-      {/* Status bar — dark */}
+      {/* Status bar */}
       <div style={{
         height: 26,
-        background: "#111111",
-        borderTop: "1px solid #2a2a2a",
+        background: "#111",
+        borderTop: "1px solid rgba(255,255,255,.05)",
         display: "flex",
         alignItems: "center",
-        padding: "0 14px",
-        gap: 12,
+        padding: "0 12px",
+        gap: 10,
         flexShrink: 0,
       }}>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.45)" }}>Pronto</span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.2)" }}>·</span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.45)" }}>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>Pronto</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.15)" }}>·</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>
           Pág. {activePageIdx + 1} / {pageCount}
         </span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.2)" }}>·</span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.45)" }}>{Math.round(zoom)}%</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,.15)" }}>·</span>
+        {/* Zoom label — clickable on mobile opens modal */}
+        <button
+          onClick={() => isMobile && setShowZoomModal(true)}
+          style={{
+            fontSize: 11, color: "rgba(255,255,255,.4)",
+            background: "none", border: "none",
+            cursor: isMobile ? "pointer" : "default",
+            padding: 0,
+            display: "flex", alignItems: "center", gap: 4,
+          }}
+        >
+          {isMobile && (
+            <img src="/assets/icons/svg/zoom-in.svg" alt="" width={10} height={10}
+              style={{ filter: "invert(1)", opacity: .35 }} />
+          )}
+          {Math.round(zoom)}%
+        </button>
       </div>
     </div>
   );
