@@ -158,4 +158,4 @@ Esta abordagem foi escolhida porque:
 2. A paleta azul corporativa transmite confiança e profissionalismo
 3. O layout com ribbon simplificado é familiar para utilizadores de Office
 4. A hierarquia visual clara facilita a navegação entre ferramentas
-5. O espaçamento generoso torna a interface menos claustrofóbica durante longas sessões de edição
+5. O espaçamento generoso torna a interface menos claustrofóbica durante longas sessões de edição.
