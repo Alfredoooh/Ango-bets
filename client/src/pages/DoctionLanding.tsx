@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 // ── Official Doction App Icon — loaded from assets/icons/app_icon.svg ────────
 const DoctionIcon = ({ size = 30, className = "" }: { size?: number; className?: string }) => (
   <img
-    src="/assets/app_icon"
+    src="/assets/icons/app_icon.svg"
     alt="Doction"
     width={size}
     height={size}
