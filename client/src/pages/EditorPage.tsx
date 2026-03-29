@@ -18,7 +18,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 /* ── App Icon — imported from assets/icons/app-icon.svg ────────────── */
 const AppIcon = ({ size = 32, dark = false }: { size?: number; dark?: boolean }) => (
   <img
-    src="assets/icons/app_icon.svg"
+    src="/assets/app_icon.svg"
     alt="Doction"
     width={size}
     height={size}

@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface DocumentEditorProps {
   content: string;
@@ -170,6 +171,9 @@ export default function DocumentEditor({
   onZoomChange,
   isMobile = false,
 }: DocumentEditorProps) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [pageCount, setPageCount] = useState(1);
@@ -179,10 +183,20 @@ export default function DocumentEditor({
   const isInternalChange = useRef(false);
   const [showZoomModal, setShowZoomModal] = useState(false);
 
+  /* ── colour tokens ── */
+  const canvasBg  = isDark ? "#1c1c1c" : "#e8e8e8";
+  const statusBg  = isDark ? "#111"    : "#f0f0f0";
+  const statusBdr = isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.08)";
+  const statusClr = isDark ? "rgba(255,255,255,.4)"  : "rgba(0,0,0,.4)";
+  const statusSep = isDark ? "rgba(255,255,255,.15)" : "rgba(0,0,0,.15)";
+  const pageShadow = isDark
+    ? "0 2px 12px rgba(0,0,0,.5), 0 8px 40px rgba(0,0,0,.3)"
+    : "0 2px 8px rgba(0,0,0,.12), 0 8px 32px rgba(0,0,0,.08)";
+  const pageNumClr = isDark ? "#666" : "#aaa";
+
   useEffect(() => {
     const calc = () => {
       if (!containerRef.current) return;
-      // Desktop: always 100%. Mobile: adaptive to container width.
       const adapted = isMobile
         ? computeAdaptiveZoom(containerRef.current.clientWidth)
         : 100;
@@ -333,7 +347,7 @@ export default function DocumentEditor({
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
-      style={{ background: "#1c1c1c", touchAction: "pan-y pinch-zoom" }}
+      style={{ background: canvasBg, touchAction: "pan-y pinch-zoom" }}
     >
       {/* Zoom modal — mobile only */}
       {showZoomModal && isMobile && (
@@ -370,19 +384,19 @@ export default function DocumentEditor({
               {pageCount > 1 && (
                 <div style={{
                   position: "absolute", top: -20, left: 0, right: 0,
-                  textAlign: "center", fontSize: 11, color: "#666", userSelect: "none",
+                  textAlign: "center", fontSize: 11, color: pageNumClr, userSelect: "none",
                 }}>
                   Página {idx + 1}
                 </div>
               )}
 
-              {/* A4 Page — clean, no lines, no placeholder text, no border guide */}
+              {/* A4 Page */}
               <div
                 style={{
                   width: PAGE_W,
                   height: PAGE_H,
                   background: "#ffffff",
-                  boxShadow: "0 2px 12px rgba(0,0,0,.5), 0 8px 40px rgba(0,0,0,.3)",
+                  boxShadow: pageShadow,
                   position: "relative",
                   overflow: "hidden",
                   flexShrink: 0,
@@ -439,25 +453,24 @@ export default function DocumentEditor({
       {/* Status bar */}
       <div style={{
         height: 26,
-        background: "#111",
-        borderTop: "1px solid rgba(255,255,255,.05)",
+        background: statusBg,
+        borderTop: `1px solid ${statusBdr}`,
         display: "flex",
         alignItems: "center",
         padding: "0 12px",
         gap: 10,
         flexShrink: 0,
       }}>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>Pronto</span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.15)" }}>·</span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>
+        <span style={{ fontSize: 11, color: statusClr }}>Pronto</span>
+        <span style={{ fontSize: 11, color: statusSep }}>·</span>
+        <span style={{ fontSize: 11, color: statusClr }}>
           Pág. {activePageIdx + 1} / {pageCount}
         </span>
-        <span style={{ fontSize: 11, color: "rgba(255,255,255,.15)" }}>·</span>
-        {/* Zoom label — clickable on mobile opens modal */}
+        <span style={{ fontSize: 11, color: statusSep }}>·</span>
         <button
           onClick={() => isMobile && setShowZoomModal(true)}
           style={{
-            fontSize: 11, color: "rgba(255,255,255,.4)",
+            fontSize: 11, color: statusClr,
             background: "none", border: "none",
             cursor: isMobile ? "pointer" : "default",
             padding: 0,
@@ -466,7 +479,7 @@ export default function DocumentEditor({
         >
           {isMobile && (
             <img src="/assets/icons/svg/zoom-in.svg" alt="" width={10} height={10}
-              style={{ filter: "invert(1)", opacity: .35 }} />
+              style={{ filter: isDark ? "invert(1)" : "invert(0)", opacity: .35 }} />
           )}
           {Math.round(zoom)}%
         </button>
