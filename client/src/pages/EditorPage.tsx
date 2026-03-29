@@ -1,19 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
-import Link from "@tiptap/extension-link";
-import Image from "@tiptap/extension-image";
-import Table from "@tiptap/extension-table";
-import TableRow from "@tiptap/extension-table-row";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
-import TextStyle from "@tiptap/extension-text-style";
-import Highlight from "@tiptap/extension-highlight";
-import Color from "@tiptap/extension-color";
-
 import EditorToolbar from "@/components/EditorToolbar";
+import DocumentEditor from "@/components/DocumentEditor";
 import SidePanel from "@/components/SidePanel";
 import LinkDialog from "@/components/LinkDialog";
 import TableDialog from "@/components/TableDialog";
@@ -21,42 +9,54 @@ import ImageDialog from "@/components/ImageDialog";
 import ColorPickerModal from "@/components/ColorPickerModal";
 import { toast } from "sonner";
 import { exportToPDF, exportToDocx, exportToTxt } from "@/lib/pdfExport";
+import {
+  MoreVertical, Save, Download, Share2,
+  FilePlus, FolderOpen, FileText, Moon, Sun,
+} from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
-import { MoreVertical, Save, Download, Share2, FilePlus, FolderOpen, FileText, Moon, Sun } from "lucide-react";
-import AppIcon from "@/components/AppIcon"; // assumindo que foi extraído
-import ArrowBackIcon from "@/components/ArrowBackIcon"; // idem
 
-/* ── Hook personalizado para documentos ── */
-function useDocuments() {
-  const [documents, setDocuments] = useState<{ name: string; content: string; lastModified: string }[]>([]);
+/* ── App Icon — imported from assets/icons/app-icon.svg ────────────── */
+const AppIcon = ({ size = 32, dark = false }: { size?: number; dark?: boolean }) => (
+  <img
+    src="assets/icons/app_icon.svg"
+    alt="Doction"
+    width={size}
+    height={size}
+    style={{
+      display: "block",
+      flexShrink: 0,
+      /* Adapts to dark/light — force black or white rendering */
+      filter: dark ? "invert(0)" : "invert(1)",
+    }}
+  />
+);
 
+/* ── Arrow icon — from assets ────────────────────────────────────── */
+const ArrowBackIcon = ({ size = 20, dark = false }: { size?: number; dark?: boolean }) => (
+  <img
+    src="/assets/icons/svg/arrow-back.svg"
+    alt="Voltar"
+    width={size}
+    height={size}
+    style={{
+      display: "block",
+      filter: dark ? "invert(0)" : "invert(1)",
+    }}
+  />
+);
+
+/* ── useIsMobile ─────────────────────────────────────────────────── */
+function useIsMobile() {
+  const [mob, setMob] = useState(() => window.innerWidth <= 767);
   useEffect(() => {
-    const stored = localStorage.getItem("documents");
-    if (stored) setDocuments(JSON.parse(stored));
+    const fn = () => setMob(window.innerWidth <= 767);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
   }, []);
-
-  const saveDocument = useCallback((name: string, content: string) => {
-    const updated = [...documents];
-    const index = updated.findIndex(d => d.name === name);
-    const entry = { name, content, lastModified: new Date().toLocaleString("pt-PT") };
-    if (index >= 0) updated[index] = entry;
-    else updated.push(entry);
-    setDocuments(updated);
-    localStorage.setItem("documents", JSON.stringify(updated));
-    toast.success("Documento guardado!");
-  }, [documents]);
-
-  const loadDocument = useCallback((name: string) => {
-    const doc = documents.find(d => d.name === name);
-    return doc ? { name: doc.name, content: doc.content } : null;
-  }, [documents]);
-
-  const getDocumentNames = useCallback(() => documents.map(d => d.name), [documents]);
-
-  return { documents, saveDocument, loadDocument, getDocumentNames };
+  return mob;
 }
 
-/* ── Componente do menu ⋮ ── */
+/* ── App Menu ⋮ ──────────────────────────────────────────────────── */
 function AppMenu({
   onSave, onExportPDF, onExportDocx, onExportTxt, onShare, onNewDocument, onOpenDocument,
   isDark,
@@ -75,17 +75,23 @@ function AppMenu({
     return () => document.removeEventListener("click", close, true);
   }, [open]);
 
-  const items = useMemo(() => [
-    { icon: <FilePlus size={15} />, label: "Novo documento", action: onNewDocument },
-    { icon: <FolderOpen size={15} />, label: "Abrir documento", action: onOpenDocument },
+  const menuBg  = isDark ? "#1e1e1e" : "#ffffff";
+  const menuBdr = isDark ? "#2c2c2c" : "#ebebeb";
+  const itemClr = isDark ? "#e0e0e0" : "#1a1a1a";
+  const iconClr = isDark ? "#e0e0e0" : "#333";
+  const hoverBg = isDark ? "rgba(255,255,255,.06)" : "#f5f5f5";
+
+  const items: ({ icon: React.ReactNode; label: string; kbd?: string; action: () => void } | null)[] = [
+    { icon: <FilePlus size={15} />,   label: "Novo documento",        action: onNewDocument },
+    { icon: <FolderOpen size={15} />, label: "Abrir documento",       action: onOpenDocument },
     null,
-    { icon: <Save size={15} />, label: "Guardar", kbd: "Ctrl+S", action: onSave },
+    { icon: <Save size={15} />,       label: "Guardar",  kbd: "Ctrl+S", action: onSave },
     null,
-    { icon: <Download size={15} />, label: "Exportar PDF", action: onExportPDF },
-    { icon: <FileText size={15} />, label: "Exportar Word (.doc)", action: onExportDocx },
-    { icon: <FileText size={15} />, label: "Exportar Texto (.txt)", action: onExportTxt },
+    { icon: <Download size={15} />,   label: "Exportar PDF",          action: onExportPDF },
+    { icon: <FileText size={15} />,   label: "Exportar Word (.doc)",  action: onExportDocx },
+    { icon: <FileText size={15} />,   label: "Exportar Texto (.txt)", action: onExportTxt },
     null,
-    { icon: <Share2 size={15} />, label: "Partilhar", action: onShare },
+    { icon: <Share2 size={15} />,     label: "Partilhar",             action: onShare },
     ...(switchable
       ? [null, {
           icon: theme === "dark" ? <Sun size={15} /> : <Moon size={15} />,
@@ -93,21 +99,22 @@ function AppMenu({
           action: toggleTheme ?? (() => {}),
         }]
       : []),
-  ], [onSave, onExportPDF, onExportDocx, onExportTxt, onShare, onNewDocument, onOpenDocument, switchable, theme, toggleTheme]);
-
-  const menuBg = isDark ? "bg-[#1e1e1e]" : "bg-white";
-  const menuBdr = isDark ? "border-[#2c2c2c]" : "border-[#ebebeb]";
-  const itemClr = isDark ? "text-[#e0e0e0]" : "text-[#1a1a1a]";
-  const hoverBg = isDark ? "hover:bg-white/10" : "hover:bg-gray-100";
+  ];
 
   return (
-    <div className="relative">
+    <div style={{ position: "relative" }}>
       <button
         onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
-        className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-          open ? (isDark ? "bg-white/10" : "bg-black/5") : "bg-transparent"
-        }`}
-        aria-label="Menu"
+        style={{
+          width: 36, height: 36, borderRadius: 9, border: "none",
+          background: open
+            ? (isDark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.07)")
+            : "transparent",
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          color: isDark ? "#ccc" : "#555",
+          transition: "background 0.15s",
+        }}
+        title="Menu"
       >
         <MoreVertical size={18} />
       </button>
@@ -115,22 +122,41 @@ function AppMenu({
       {open && (
         <div
           onClick={e => e.stopPropagation()}
-          className={`fixed top-12 right-2 z-[99999] ${menuBg} border ${menuBdr} rounded-2xl shadow-lg min-w-[238px] py-1.5 animate-in fade-in zoom-in-95 duration-150`}
+          style={{
+            position: "fixed", top: 52, right: 8, zIndex: 99999,
+            background: menuBg,
+            border: `1px solid ${menuBdr}`,
+            borderRadius: 16,
+            boxShadow: isDark
+              ? "0 4px 6px rgba(0,0,0,.2),0 20px 60px rgba(0,0,0,.5)"
+              : "0 4px 6px rgba(0,0,0,.04),0 16px 48px rgba(0,0,0,.14)",
+            minWidth: 238, padding: "6px 0",
+            animation: "menuIn 0.18s cubic-bezier(.34,1.56,.64,1)",
+          }}
         >
+          <style>{`@keyframes menuIn{from{opacity:0;transform:scale(.92) translateY(-8px)}to{opacity:1;transform:none}}`}</style>
           {items.map((item, i) =>
-            item === null ? (
-              <hr key={i} className={`my-1 mx-1.5 ${menuBdr}`} />
-            ) : (
-              <button
-                key={i}
-                onClick={() => { item.action(); setOpen(false); }}
-                className={`flex items-center gap-3 w-full px-4 py-2.5 text-sm ${itemClr} transition-colors ${hoverBg}`}
-              >
-                <span className="flex-shrink-0">{item.icon}</span>
-                <span className="flex-1 text-left">{item.label}</span>
-                {item.kbd && <span className="text-xs font-mono text-gray-400">{item.kbd}</span>}
-              </button>
-            )
+            item === null
+              ? <div key={i} style={{ height: 1, background: menuBdr, margin: "4px 6px" }} />
+              : (
+                <button
+                  key={i}
+                  onClick={() => { item.action(); setOpen(false); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 11,
+                    width: "100%", padding: "10px 16px",
+                    background: "none", border: "none", cursor: "pointer",
+                    fontSize: 14, color: itemClr, textAlign: "left",
+                    transition: "background 0.1s",
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
+                  onMouseLeave={e => (e.currentTarget.style.background = "none")}
+                >
+                  <span style={{ color: iconClr, flexShrink: 0 }}>{item.icon}</span>
+                  <span style={{ flex: 1 }}>{item.label}</span>
+                  {item.kbd && <span style={{ fontSize: 11, color: isDark ? "#555" : "#c0c0c0", fontFamily: "monospace" }}>{item.kbd}</span>}
+                </button>
+              )
           )}
         </div>
       )}
@@ -138,235 +164,205 @@ function AppMenu({
   );
 }
 
-/* ── Página principal do editor ── */
+/* ══════════════════════════════════════════════════════════════════
+   EDITOR PAGE
+══════════════════════════════════════════════════════════════════ */
 export default function EditorPage() {
-  const [, setLocation] = useLocation();
-  const { theme } = useTheme();
-  const isDark = theme === "dark";
-  const isMobile = useMediaQuery("(max-width: 767px)");
+  const [, setLocation]  = useLocation();
+  const isMobile         = useIsMobile();
+  const { theme }        = useTheme();
+  const isDark           = theme === "dark";
 
-  const [documentName, setDocumentName] = useState("Documento sem título");
-  const [zoom, setZoom] = useState(100);
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [tableDialogOpen, setTableDialogOpen] = useState(false);
-  const [imageDialogOpen, setImageDialogOpen] = useState(false);
-  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [documentName, setDocumentName]         = useState("Documento sem título");
+  const [content, setContent]                   = useState("");
+  const [wordCount, setWordCount]               = useState(0);
+  const [characterCount, setCharacterCount]     = useState(0);
+  const [lastModified, setLastModified]         = useState("Agora");
+  const [zoom, setZoom]                         = useState(100);
+  const [linkDialogOpen,      setLinkDialogOpen]      = useState(false);
+  const [tableDialogOpen,     setTableDialogOpen]     = useState(false);
+  const [imageDialogOpen,     setImageDialogOpen]     = useState(false);
+  const [colorPickerOpen,     setColorPickerOpen]     = useState(false);
   const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
 
-  const { saveDocument, loadDocument, getDocumentNames } = useDocuments();
+  const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
 
-  // Configuração do editor TipTap
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Underline,
-      Link.configure({ openOnClick: false }),
-      Image,
-      Table.configure({ resizable: true }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      TextStyle,
-      Highlight,
-      Color,
-    ],
-    content: "",
-    onUpdate: ({ editor }) => {
-      // O conteúdo já está sincronizado com o estado via setContent no onChange
-    },
-    editorProps: {
-      attributes: {
-        class: "prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none",
-        style: `font-size: ${zoom}%`,
-      },
-    },
+  useEffect(() => {
+    const text = content.replace(/<[^>]*>/g, "").trim();
+    setWordCount(text.split(/\s+/).filter(Boolean).length);
+    setCharacterCount(text.length);
+    setLastModified("Agora");
+  }, [content]);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   });
 
-  // Carregar conteúdo quando o nome do documento mudar
-  useEffect(() => {
-    if (documentName) {
-      const doc = loadDocument(documentName);
-      if (doc) editor?.commands.setContent(doc.content);
-    }
-  }, [documentName, loadDocument, editor]);
-
-  // Salvar automaticamente ao perder o foco no título ou periodicamente (opcional)
-  const handleSave = useCallback(() => {
-    if (editor) {
-      saveDocument(documentName, editor.getHTML());
-    }
-  }, [editor, documentName, saveDocument]);
-
-  // Atalho Ctrl+S
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [handleSave]);
-
-  // Exportações
+  /* ── Handlers ── */
+  const handleSave = () => {
+    const docs = JSON.parse(localStorage.getItem("documents") || "[]");
+    const idx  = docs.findIndex((d: any) => d.name === documentName);
+    const entry = { name: documentName, content, lastModified: new Date().toLocaleString("pt-PT") };
+    if (idx >= 0) docs[idx] = entry; else docs.push(entry);
+    localStorage.setItem("documents", JSON.stringify(docs));
+    toast.success("Documento guardado!");
+  };
   const handleExportPDF = async () => {
-    try {
-      toast.info("A gerar PDF...");
-      await exportToPDF(documentName);
-      toast.success("PDF exportado!");
-    } catch (e) {
-      console.error(e);
-      toast.error("Erro ao exportar PDF");
-    }
+    try { toast.info("A gerar PDF..."); await exportToPDF(documentName); toast.success("PDF exportado!"); }
+    catch (e) { console.error(e); toast.error("Erro ao exportar PDF"); }
   };
-
-  const handleExportDocx = () => {
-    if (editor) exportToDocx(documentName, editor.getHTML());
-    toast.success("Word exportado!");
+  const handleExportDocx  = () => { exportToDocx(documentName, content); toast.success("Word exportado!"); };
+  const handleExportTxt   = () => { exportToTxt(documentName, content);  toast.success("Texto exportado!"); };
+  const handleShare       = () => toast.info("Partilha em desenvolvimento");
+  const handleNewDocument = () => {
+    if (content && !confirm("Descartar documento atual?")) return;
+    setDocumentName("Documento sem título"); setContent("");
   };
-
-  const handleExportTxt = () => {
-    if (editor) exportToTxt(documentName, editor.getText());
-    toast.success("Texto exportado!");
-  };
-
-  const handleShare = () => toast.info("Partilha em desenvolvimento");
-
-  const handleNewDocument = useCallback(() => {
-    if (editor?.getText() && !confirm("Descartar documento atual?")) return;
-    setDocumentName("Documento sem título");
-    editor?.commands.clearContent();
-  }, [editor]);
-
-  const handleOpenDocument = useCallback(() => {
-    const names = getDocumentNames();
-    if (!names.length) {
-      toast.error("Nenhum documento guardado");
-      return;
-    }
-    const name = prompt("Documentos:\n" + names.join("\n") + "\n\nNome:");
+  const handleOpenDocument = () => {
+    const docs = JSON.parse(localStorage.getItem("documents") || "[]");
+    if (!docs.length) { toast.error("Nenhum documento guardado"); return; }
+    const name = prompt("Documentos:\n" + docs.map((d: any) => d.name).join("\n") + "\n\nNome:");
     if (!name) return;
-    const doc = loadDocument(name);
-    if (doc) {
-      setDocumentName(doc.name);
-      editor?.commands.setContent(doc.content);
-      toast.success("Documento aberto!");
-    } else {
-      toast.error("Não encontrado");
+    const doc = docs.find((d: any) => d.name === name);
+    if (doc) { setDocumentName(doc.name); setContent(doc.content); toast.success("Documento aberto!"); }
+    else toast.error("Não encontrado");
+  };
+  const handleLinkInsert  = (url: string, text: string) => {
+    const sel = window.getSelection();
+    if (sel?.toString()) exec("createLink", url);
+    else exec("insertHTML", `<a href="${url}" target="_blank">${text || url}</a>`);
+  };
+  const handleImageInsert = (url: string) => exec("insertImage", url);
+  const handleTableInsert = (rows: number, cols: number) => {
+    let html = `<table style="border-collapse:collapse;width:100%;margin:8px 0"><tbody>`;
+    for (let r = 0; r < rows; r++) {
+      html += "<tr>";
+      for (let c = 0; c < cols; c++)
+        html += r === 0
+          ? `<th style="border:1px solid #ddd;padding:9px 12px;background:#fafafa;font-weight:600;text-align:left;font-size:.88rem">Cabeçalho</th>`
+          : `<td style="border:1px solid #ddd;padding:9px 12px;font-size:.88rem">Célula</td>`;
+      html += "</tr>";
     }
-  }, [getDocumentNames, loadDocument, editor]);
+    exec("insertHTML", html + "</tbody></table><br>");
+  };
 
-  // Inserir link (usando TipTap)
-  const handleLinkInsert = useCallback((url: string, text?: string) => {
-    if (!editor) return;
-    if (editor.isActive("link")) {
-      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
-    } else {
-      editor.chain().focus().insertContent(`<a href="${url}" target="_blank">${text || url}</a>`).run();
-    }
-    setLinkDialogOpen(false);
-  }, [editor]);
-
-  const handleImageInsert = useCallback((url: string) => {
-    editor?.chain().focus().setImage({ src: url }).run();
-    setImageDialogOpen(false);
-  }, [editor]);
-
-  const handleTableInsert = useCallback((rows: number, cols: number) => {
-    editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
-    setTableDialogOpen(false);
-  }, [editor]);
-
-  // Cores e realce
-  const handleColorSelect = useCallback((color: string) => {
-    editor?.chain().focus().setColor(color).run();
-    setColorPickerOpen(false);
-  }, [editor]);
-
-  const handleHighlightSelect = useCallback((color: string) => {
-    editor?.chain().focus().toggleHighlight({ color }).run();
-    setHighlightPickerOpen(false);
-  }, [editor]);
-
-  // Palavras e caracteres
-  const stats = useMemo(() => {
-    const text = editor?.getText() || "";
-    const words = text.trim().split(/\s+/).filter(Boolean).length;
-    const chars = text.length;
-    return { words, chars };
-  }, [editor?.getText()]);
-
-  // Toolbar props mapeadas para comandos do TipTap
-  const tbProps = useMemo(() => ({
-    onBold: () => editor?.chain().focus().toggleBold().run(),
-    onItalic: () => editor?.chain().focus().toggleItalic().run(),
-    onUnderline: () => editor?.chain().focus().toggleUnderline().run(),
-    onStrikethrough: () => editor?.chain().focus().toggleStrike().run(),
-    onAlignLeft: () => editor?.chain().focus().setTextAlign("left").run(),
-    onAlignCenter: () => editor?.chain().focus().setTextAlign("center").run(),
-    onAlignRight: () => editor?.chain().focus().setTextAlign("right").run(),
-    onAlignJustify: () => editor?.chain().focus().setTextAlign("justify").run(),
-    onBulletList: () => editor?.chain().focus().toggleBulletList().run(),
-    onNumberedList: () => editor?.chain().focus().toggleOrderedList().run(),
-    onLink: () => setLinkDialogOpen(true),
-    onImage: () => setImageDialogOpen(true),
-    onTable: () => setTableDialogOpen(true),
-    onSave: handleSave,
-    onUndo: () => editor?.chain().focus().undo().run(),
-    onRedo: () => editor?.chain().focus().redo().run(),
-    onNewDocument: handleNewDocument,
-    onOpenDocument: handleOpenDocument,
-    onDownload: handleExportDocx,
-    onShare: handleShare,
-    onHeading1: () => editor?.chain().focus().toggleHeading({ level: 1 }).run(),
-    onHeading2: () => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
-    onHeading3: () => editor?.chain().focus().toggleHeading({ level: 3 }).run(),
-    onCode: () => editor?.chain().focus().toggleCodeBlock().run(),
-    onQuote: () => editor?.chain().focus().toggleBlockquote().run(),
-    onHighlight: () => setHighlightPickerOpen(true),
-    onSuperscript: () => editor?.chain().focus().toggleSuperscript().run(),
-    onSubscript: () => editor?.chain().focus().toggleSubscript().run(),
-    onClearFormatting: () => editor?.chain().focus().clearNodes().unsetAllMarks().run(),
-    onExportPDF: handleExportPDF,
+  /* toolbar props */
+  const tbProps = {
+    onBold:            () => exec("bold"),
+    onItalic:          () => exec("italic"),
+    onUnderline:       () => exec("underline"),
+    onStrikethrough:   () => exec("strikethrough"),
+    onAlignLeft:       () => exec("justifyLeft"),
+    onAlignCenter:     () => exec("justifyCenter"),
+    onAlignRight:      () => exec("justifyRight"),
+    onAlignJustify:    () => exec("justifyFull"),
+    onBulletList:      () => exec("insertUnorderedList"),
+    onNumberedList:    () => exec("insertOrderedList"),
+    onLink:            () => setLinkDialogOpen(true),
+    onImage:           () => setImageDialogOpen(true),
+    onTable:           () => setTableDialogOpen(true),
+    onSave:            handleSave,
+    onUndo:            () => exec("undo"),
+    onRedo:            () => exec("redo"),
+    onNewDocument:     handleNewDocument,
+    onOpenDocument:    handleOpenDocument,
+    onDownload:        handleExportDocx,
+    onShare:           handleShare,
+    onHeading1:        () => exec("formatBlock", "<h1>"),
+    onHeading2:        () => exec("formatBlock", "<h2>"),
+    onHeading3:        () => exec("formatBlock", "<h3>"),
+    onCode:            () => exec("formatBlock", "<pre>"),
+    onQuote:           () => exec("formatBlock", "<blockquote>"),
+    onHighlight:       () => setHighlightPickerOpen(true),
+    onSuperscript:     () => exec("superscript"),
+    onSubscript:       () => exec("subscript"),
+    onClearFormatting: () => exec("removeFormat"),
+    onExportPDF:       handleExportPDF,
     onAddNote: () => {
       const note = prompt("Texto da nota:");
-      if (note) editor?.chain().focus().insertContent(`<div class="bg-amber-50 border-l-4 border-amber-500 p-3 my-2 rounded-md"><strong>📝 Nota:</strong> ${note}</div>`).run();
+      if (note) exec("insertHTML", `<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;margin:8px 0;border-radius:8px"><strong>📝 Nota:</strong> ${note}</div>`);
     },
     onColorPicker: () => setColorPickerOpen(true),
-  }), [editor, handleSave, handleNewDocument, handleOpenDocument, handleExportDocx, handleShare, handleExportPDF]);
+  };
 
-  // Cores e estilos de fundo
-  const bgClass = isDark ? "bg-[#141414]" : "bg-gray-100";
-  const appbarBg = isDark ? "bg-[#1c1c1c]" : "bg-white";
-  const appbarBdr = isDark ? "border-[#2a2a2a]" : "border-[#e8e8e8]";
+  /* colour tokens — dark/white only, no orange */
+  const bg       = isDark ? "#141414" : "#ffffff";
+  const appbarBg = isDark ? "#1c1c1c" : "#ffffff";
+  const appbarBdr= isDark ? "#2a2a2a" : "#e8e8e8";
+  const titleClr = isDark ? "#f0f0f0" : "#1a1a1a";
+  const countClr = isDark ? "#555"    : "#aaa";
+  const btnClr   = isDark ? "#aaa"    : "#444";
+  const btnHover = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.05)";
 
   return (
-    <div className={`flex flex-col h-screen ${bgClass} overflow-hidden`}>
-      {/* App Bar */}
-      <div className={`h-13 flex items-center px-2 gap-1 border-b ${appbarBg} ${appbarBdr} flex-shrink-0 shadow-sm`}>
+    <div style={{
+      display: "flex", flexDirection: "column",
+      height: "100dvh",
+      background: bg,
+      overflow: "hidden",
+    }}>
+
+      {/* ── APP BAR ── */}
+      <div style={{
+        height: 52,
+        background: appbarBg,
+        borderBottom: `1px solid ${appbarBdr}`,
+        display: "flex", alignItems: "center",
+        padding: "0 8px", gap: 4,
+        flexShrink: 0, zIndex: 50,
+        boxShadow: isDark
+          ? "0 1px 0 rgba(255,255,255,.03)"
+          : "0 1px 4px rgba(0,0,0,.05)",
+      }}>
+        {/* ← back */}
         <button
           onClick={() => setLocation("/home")}
-          className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-          aria-label="Voltar"
+          style={{
+            width: 36, height: 36, borderRadius: 9, border: "none",
+            background: "transparent", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: btnClr, transition: "background 0.15s", flexShrink: 0,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = btnHover)}
+          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+          title="Voltar"
         >
           <ArrowBackIcon size={20} dark={isDark} />
         </button>
 
+        {/* App icon — adapts black/white */}
         <AppIcon size={28} dark={isDark} />
 
+        {/* Document title */}
         <input
           value={documentName}
           onChange={e => setDocumentName(e.target.value)}
           onBlur={handleSave}
-          className="flex-1 text-sm font-semibold bg-transparent border-none outline-none px-1.5 py-1 rounded-md transition-colors focus:bg-gray-100 dark:focus:bg-white/10"
-          aria-label="Nome do documento"
+          style={{
+            flex: 1, fontSize: 15, fontWeight: 600,
+            color: titleClr, border: "none", outline: "none",
+            background: "transparent", padding: "4px 6px",
+            borderRadius: 7, minWidth: 0, transition: "background 0.15s",
+          }}
+          onFocus={e => (e.target.style.background = isDark ? "rgba(255,255,255,.06)" : "#f5f5f5")}
+          onBlurCapture={e => (e.target.style.background = "transparent")}
+          title="Nome do documento"
         />
 
-        <span className={`text-xs font-mono tabular-nums ${isDark ? "text-gray-500" : "text-gray-400"} hidden sm:block`}>
-          {stats.words}p
+        {/* Word count */}
+        <span style={{
+          fontSize: 12, color: countClr, flexShrink: 0,
+          whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
+          display: window.innerWidth < 400 ? "none" : "block",
+        }}>
+          {wordCount}p
         </span>
 
+        {/* ⋮ menu */}
         <AppMenu
           onSave={handleSave}
           onExportPDF={handleExportPDF}
@@ -379,32 +375,38 @@ export default function EditorPage() {
         />
       </div>
 
-      {/* Dialogs */}
-      <LinkDialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen} onInsert={handleLinkInsert} />
-      <TableDialog open={tableDialogOpen} onOpenChange={setTableDialogOpen} onInsert={handleTableInsert} />
-      <ImageDialog open={imageDialogOpen} onOpenChange={setImageDialogOpen} onInsert={handleImageInsert} />
-      <ColorPickerModal open={colorPickerOpen} onOpenChange={setColorPickerOpen} onSelect={handleColorSelect} title="Cor do texto" />
-      <ColorPickerModal open={highlightPickerOpen} onOpenChange={setHighlightPickerOpen} onSelect={handleHighlightSelect} title="Cor de realce" />
+      {/* ── Dialogs ── */}
+      <LinkDialog   open={linkDialogOpen}       onOpenChange={setLinkDialogOpen}       onInsert={handleLinkInsert} />
+      <TableDialog  open={tableDialogOpen}      onOpenChange={setTableDialogOpen}      onInsert={handleTableInsert} />
+      <ImageDialog  open={imageDialogOpen}      onOpenChange={setImageDialogOpen}      onInsert={handleImageInsert} />
+      <ColorPickerModal open={colorPickerOpen}     onOpenChange={setColorPickerOpen}     onSelect={c => exec("foreColor", c)}   title="Cor do texto" />
+      <ColorPickerModal open={highlightPickerOpen} onOpenChange={setHighlightPickerOpen} onSelect={c => exec("hiliteColor", c)} title="Cor de realce" />
 
-      {/* Toolbar desktop */}
+      {/* ── Toolbar desktop ── */}
       {!isMobile && <EditorToolbar isMobile={false} {...tbProps} />}
 
-      {/* Área principal */}
-      <div className={`flex-1 overflow-hidden ${isMobile ? "pb-20" : ""}`}>
-        <div className="h-full overflow-auto p-4">
-          <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left" }} className="w-full">
-            <EditorContent editor={editor} className="max-w-4xl mx-auto" />
-          </div>
-        </div>
+      {/* ── Main area ── */}
+      <div style={{
+        flex: 1, display: "flex", overflow: "hidden",
+        paddingBottom: isMobile ? 88 : 0,
+      }}>
+        <DocumentEditor
+          content={content}
+          onChange={setContent}
+          placeholder=""
+          zoom={zoom}
+          onZoomChange={setZoom}
+          isMobile={isMobile}
+        />
 
-        {/* Side panel (desktop) */}
+        {/* Side panel — desktop wide only */}
         {!isMobile && (
           <div className="hidden lg:block">
             <SidePanel
               documentName={documentName}
-              lastModified="Agora"
-              wordCount={stats.words}
-              characterCount={stats.chars}
+              lastModified={lastModified}
+              wordCount={wordCount}
+              characterCount={characterCount}
               onDocumentNameChange={setDocumentName}
               onShare={handleShare}
             />
@@ -412,20 +414,9 @@ export default function EditorPage() {
         )}
       </div>
 
-      {/* Toolbar mobile */}
+      {/* ── Bottom bar mobile ── */}
       {isMobile && <EditorToolbar isMobile={true} {...tbProps} />}
+
     </div>
   );
-}
-
-// Hook auxiliar
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
-    mql.addEventListener("change", handler);
-    return () => mql.removeEventListener("change", handler);
-  }, [query]);
-  return matches;
 }

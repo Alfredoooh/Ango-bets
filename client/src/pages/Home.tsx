@@ -5,249 +5,192 @@ import SidePanel from "@/components/SidePanel";
 import LinkDialog from "@/components/LinkDialog";
 import TableDialog from "@/components/TableDialog";
 import ImageDialog from "@/components/ImageDialog";
+import ColorPickerModal from "@/components/ColorPickerModal";
 import { toast } from "sonner";
+import { exportToPDF, exportToDocx, exportToTxt } from "@/lib/pdfExport";
+import { useTheme } from "@/contexts/ThemeContext";
+
+function useIsMobile() {
+  const [mob, setMob] = useState(() => window.innerWidth <= 767);
+  useEffect(() => {
+    const fn = () => setMob(window.innerWidth <= 767);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return mob;
+}
 
 export default function Home() {
-  const [documentName, setDocumentName] = useState("Documento sem título");
-  const [content, setContent] = useState("");
-  const [wordCount, setWordCount] = useState(0);
-  const [characterCount, setCharacterCount] = useState(0);
-  const [lastModified, setLastModified] = useState("Agora");
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [tableDialogOpen, setTableDialogOpen] = useState(false);
-  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
 
-  // Calculate word and character count
+  const [documentName, setDocumentName]         = useState("Documento sem título");
+  const [content, setContent]                   = useState("");
+  const [wordCount, setWordCount]               = useState(0);
+  const [characterCount, setCharacterCount]     = useState(0);
+  const [lastModified, setLastModified]         = useState("Agora");
+  const [zoom, setZoom]                         = useState(100);
+  const [linkDialogOpen,      setLinkDialogOpen]      = useState(false);
+  const [tableDialogOpen,     setTableDialogOpen]     = useState(false);
+  const [imageDialogOpen,     setImageDialogOpen]     = useState(false);
+  const [colorPickerOpen,     setColorPickerOpen]     = useState(false);
+  const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
+
+  const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
+
   useEffect(() => {
     const text = content.replace(/<[^>]*>/g, "").trim();
-    const words = text
-      .split(/\s+/)
-      .filter((word) => word.length > 0).length;
-    const chars = text.length;
-
-    setWordCount(words);
-    setCharacterCount(chars);
+    setWordCount(text.split(/\s+/).filter(Boolean).length);
+    setCharacterCount(text.length);
     setLastModified("Agora");
   }, [content]);
 
-  // Handle toolbar actions
-  const handleBold = () => {
-    document.execCommand("bold");
-  };
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  });
 
-  const handleItalic = () => {
-    document.execCommand("italic");
-  };
-
-  const handleUnderline = () => {
-    document.execCommand("underline");
-  };
-
-  const handleAlignLeft = () => {
-    document.execCommand("justifyLeft");
-  };
-
-  const handleAlignCenter = () => {
-    document.execCommand("justifyCenter");
-  };
-
-  const handleAlignRight = () => {
-    document.execCommand("justifyRight");
-  };
-
-  const handleBulletList = () => {
-    document.execCommand("insertUnorderedList");
-  };
-
-  const handleNumberedList = () => {
-    document.execCommand("insertOrderedList");
-  };
-
-  const handleLink = () => {
-    setLinkDialogOpen(true);
-  };
-
-  const handleLinkInsert = (url: string, text: string) => {
-    const selection = window.getSelection();
-    if (selection && selection.toString()) {
-      document.execCommand("createLink", false, url);
-    } else {
-      document.execCommand("insertHTML", false, `<a href="${url}">${text}</a>`);
-    }
-  };
-
-  const handleImage = () => {
-    setImageDialogOpen(true);
-  };
-
-  const handleImageInsert = (url: string) => {
-    document.execCommand("insertImage", false, url);
-  };
-
-  const handleTable = () => {
-    setTableDialogOpen(true);
-  };
-
-  const handleTableInsert = (rows: number, cols: number) => {
-    let table = "<table style='border-collapse: collapse; width: 100%;'><tbody>";
-    for (let i = 0; i < rows; i++) {
-      table += "<tr>";
-      for (let j = 0; j < cols; j++) {
-        table += "<td style='border: 1px solid #ddd; padding: 8px;'>Célula</td>";
-      }
-      table += "</tr>";
-    }
-    table += "</tbody></table>";
-    document.execCommand("insertHTML", false, table);
-  };
-
+  /* ── Handlers ── */
   const handleSave = () => {
-    // Save to localStorage
-    const documents = JSON.parse(
-      localStorage.getItem("documents") || "[]"
-    );
-    const existingIndex = documents.findIndex(
-      (doc: any) => doc.name === documentName
-    );
-
-    if (existingIndex >= 0) {
-      documents[existingIndex] = {
-        name: documentName,
-        content: content,
-        lastModified: new Date().toLocaleString("pt-PT"),
-      };
-    } else {
-      documents.push({
-        name: documentName,
-        content: content,
-        lastModified: new Date().toLocaleString("pt-PT"),
-      });
-    }
-
-    localStorage.setItem("documents", JSON.stringify(documents));
-    toast.success("Documento guardado com sucesso!");
+    const docs = JSON.parse(localStorage.getItem("documents") || "[]");
+    const idx  = docs.findIndex((d: any) => d.name === documentName);
+    const entry = { name: documentName, content, lastModified: new Date().toLocaleString("pt-PT") };
+    if (idx >= 0) docs[idx] = entry; else docs.push(entry);
+    localStorage.setItem("documents", JSON.stringify(docs));
+    toast.success("Documento guardado!");
   };
 
-  const handleUndo = () => {
-    document.execCommand("undo");
+  const handleExportPDF = async () => {
+    try { toast.info("A gerar PDF..."); await exportToPDF(documentName); toast.success("PDF exportado!"); }
+    catch (e) { console.error(e); toast.error("Erro ao exportar PDF"); }
   };
 
-  const handleRedo = () => {
-    document.execCommand("redo");
-  };
+  const handleExportDocx  = () => { exportToDocx(documentName, content); toast.success("Word exportado!"); };
+  const handleExportTxt   = () => { exportToTxt(documentName, content);  toast.success("Texto exportado!"); };
+  const handleShare       = () => toast.info("Partilha em desenvolvimento");
 
   const handleNewDocument = () => {
-    if (content && !confirm("Descartar documento atual?")) {
-      return;
-    }
-    setDocumentName("Documento sem título");
-    setContent("");
+    if (content && !confirm("Descartar documento atual?")) return;
+    setDocumentName("Documento sem título"); setContent("");
   };
 
   const handleOpenDocument = () => {
-    const documents = JSON.parse(
-      localStorage.getItem("documents") || "[]"
-    );
-    if (documents.length === 0) {
-      toast.error("Nenhum documento guardado");
-      return;
+    const docs = JSON.parse(localStorage.getItem("documents") || "[]");
+    if (!docs.length) { toast.error("Nenhum documento guardado"); return; }
+    const name = prompt("Documentos:\n" + docs.map((d: any) => d.name).join("\n") + "\n\nNome:");
+    if (!name) return;
+    const doc = docs.find((d: any) => d.name === name);
+    if (doc) { setDocumentName(doc.name); setContent(doc.content); toast.success("Documento aberto!"); }
+    else toast.error("Não encontrado");
+  };
+
+  const handleLinkInsert = (url: string, text: string) => {
+    const sel = window.getSelection();
+    if (sel?.toString()) exec("createLink", url);
+    else exec("insertHTML", `<a href="${url}" target="_blank">${text || url}</a>`);
+  };
+
+  const handleImageInsert = (url: string) => exec("insertImage", url);
+
+  const handleTableInsert = (rows: number, cols: number) => {
+    let html = `<table style="border-collapse:collapse;width:100%;margin:8px 0"><tbody>`;
+    for (let r = 0; r < rows; r++) {
+      html += "<tr>";
+      for (let c = 0; c < cols; c++)
+        html += r === 0
+          ? `<th style="border:1px solid #ddd;padding:9px 12px;background:#fafafa;font-weight:600;text-align:left;font-size:.88rem">Cabeçalho</th>`
+          : `<td style="border:1px solid #ddd;padding:9px 12px;font-size:.88rem">Célula</td>`;
+      html += "</tr>";
     }
-
-    const docName = prompt(
-      "Documentos guardados:\n" +
-        documents.map((d: any) => d.name).join("\n") +
-        "\n\nIntroduza o nome do documento:"
-    );
-
-    if (docName) {
-      const doc = documents.find((d: any) => d.name === docName);
-      if (doc) {
-        setDocumentName(doc.name);
-        setContent(doc.content);
-        toast.success("Documento aberto!");
-      } else {
-        toast.error("Documento não encontrado");
-      }
-    }
+    exec("insertHTML", html + "</tbody></table><br>");
   };
 
-  const handleDownload = () => {
-    const element = document.createElement("a");
-    const file = new Blob([content.replace(/<[^>]*>/g, "")], {
-      type: "text/plain",
-    });
-    element.href = URL.createObjectURL(file);
-    element.download = `${documentName}.txt`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-    toast.success("Documento transferido!");
+  /* toolbar props — iguais ao EditorPage */
+  const tbProps = {
+    onBold:            () => exec("bold"),
+    onItalic:          () => exec("italic"),
+    onUnderline:       () => exec("underline"),
+    onStrikethrough:   () => exec("strikethrough"),
+    onAlignLeft:       () => exec("justifyLeft"),
+    onAlignCenter:     () => exec("justifyCenter"),
+    onAlignRight:      () => exec("justifyRight"),
+    onAlignJustify:    () => exec("justifyFull"),
+    onBulletList:      () => exec("insertUnorderedList"),
+    onNumberedList:    () => exec("insertOrderedList"),
+    onLink:            () => setLinkDialogOpen(true),
+    onImage:           () => setImageDialogOpen(true),
+    onTable:           () => setTableDialogOpen(true),
+    onSave:            handleSave,
+    onUndo:            () => exec("undo"),
+    onRedo:            () => exec("redo"),
+    onNewDocument:     handleNewDocument,
+    onOpenDocument:    handleOpenDocument,
+    onDownload:        handleExportDocx,
+    onShare:           handleShare,
+    onHeading1:        () => exec("formatBlock", "<h1>"),
+    onHeading2:        () => exec("formatBlock", "<h2>"),
+    onHeading3:        () => exec("formatBlock", "<h3>"),
+    onCode:            () => exec("formatBlock", "<pre>"),
+    onQuote:           () => exec("formatBlock", "<blockquote>"),
+    onHighlight:       () => setHighlightPickerOpen(true),
+    onSuperscript:     () => exec("superscript"),
+    onSubscript:       () => exec("subscript"),
+    onClearFormatting: () => exec("removeFormat"),
+    onExportPDF:       handleExportPDF,
+    onAddNote: () => {
+      const note = prompt("Texto da nota:");
+      if (note) exec("insertHTML", `<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;margin:8px 0;border-radius:8px"><strong>📝 Nota:</strong> ${note}</div>`);
+    },
+    onColorPicker: () => setColorPickerOpen(true),
   };
 
-  const handleShare = () => {
-    toast.info("Funcionalidade de partilha em desenvolvimento");
-  };
+  const bg = isDark ? "#141414" : "#ffffff";
 
   return (
-    <div className="flex flex-col h-screen bg-background">
-      {/* Dialogs */}
-      <LinkDialog
-        open={linkDialogOpen}
-        onOpenChange={setLinkDialogOpen}
-        onInsert={handleLinkInsert}
-      />
-      <TableDialog
-        open={tableDialogOpen}
-        onOpenChange={setTableDialogOpen}
-        onInsert={handleTableInsert}
-      />
-      <ImageDialog
-        open={imageDialogOpen}
-        onOpenChange={setImageDialogOpen}
-        onInsert={handleImageInsert}
-      />
+    <div style={{ display: "flex", flexDirection: "column", height: "100dvh", background: bg, overflow: "hidden" }}>
 
-      {/* Toolbar */}
-      <EditorToolbar
-        onBold={handleBold}
-        onItalic={handleItalic}
-        onUnderline={handleUnderline}
-        onAlignLeft={handleAlignLeft}
-        onAlignCenter={handleAlignCenter}
-        onAlignRight={handleAlignRight}
-        onBulletList={handleBulletList}
-        onNumberedList={handleNumberedList}
-        onLink={handleLink}
-        onImage={handleImage}
-        onTable={handleTable}
-        onSave={handleSave}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        onNewDocument={handleNewDocument}
-        onOpenDocument={handleOpenDocument}
-        onDownload={handleDownload}
-        onShare={handleShare}
-      />
+      {/* ── Dialogs ── */}
+      <LinkDialog   open={linkDialogOpen}       onOpenChange={setLinkDialogOpen}       onInsert={handleLinkInsert} />
+      <TableDialog  open={tableDialogOpen}      onOpenChange={setTableDialogOpen}      onInsert={handleTableInsert} />
+      <ImageDialog  open={imageDialogOpen}      onOpenChange={setImageDialogOpen}      onInsert={handleImageInsert} />
+      <ColorPickerModal open={colorPickerOpen}     onOpenChange={setColorPickerOpen}     onSelect={c => exec("foreColor", c)}   title="Cor do texto" />
+      <ColorPickerModal open={highlightPickerOpen} onOpenChange={setHighlightPickerOpen} onSelect={c => exec("hiliteColor", c)} title="Cor de realce" />
 
-      {/* Main Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Editor */}
+      {/* ── Toolbar desktop ── */}
+      {!isMobile && <EditorToolbar isMobile={false} {...tbProps} />}
+
+      {/* ── Main area ── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", paddingBottom: isMobile ? 88 : 0 }}>
         <DocumentEditor
           content={content}
           onChange={setContent}
           placeholder="Comece a escrever o seu documento..."
+          zoom={zoom}
+          onZoomChange={setZoom}
+          isMobile={isMobile}
         />
 
-        {/* Side Panel */}
-        <SidePanel
-          documentName={documentName}
-          lastModified={lastModified}
-          wordCount={wordCount}
-          characterCount={characterCount}
-          onDocumentNameChange={setDocumentName}
-          onShare={handleShare}
-        />
+        {!isMobile && (
+          <div className="hidden lg:block">
+            <SidePanel
+              documentName={documentName}
+              lastModified={lastModified}
+              wordCount={wordCount}
+              characterCount={characterCount}
+              onDocumentNameChange={setDocumentName}
+              onShare={handleShare}
+            />
+          </div>
+        )}
       </div>
+
+      {/* ── Bottom bar mobile ── */}
+      {isMobile && <EditorToolbar isMobile={true} {...tbProps} />}
+
     </div>
   );
 }

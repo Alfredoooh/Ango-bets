@@ -7,66 +7,109 @@ const A4_H = 297;
 const MARGIN = 20; // mm
 
 /**
- * Export the document to PDF.
- * Renders each .doc-page element separately to avoid scale/transform issues.
+ * Captura um elemento HTML e adiciona ao PDF, fatiando em páginas A4 se necessário.
+ */
+async function captureElementToPDF(
+  pdf: jsPDF,
+  el: HTMLElement,
+  isFirstPage: boolean
+): Promise<void> {
+  const printW = A4_W - MARGIN * 2;
+  const maxH   = A4_H - MARGIN * 2;
+
+  const canvas = await html2canvas(el, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: "#ffffff",
+    logging: false,
+    ignoreElements: (e) => e.classList.contains("zoom-wrapper"),
+  });
+
+  const imgData = canvas.toDataURL("image/jpeg", 0.92);
+  const ratio   = canvas.height / canvas.width;
+  const imgH    = printW * ratio;
+
+  if (!isFirstPage) pdf.addPage();
+
+  if (imgH <= maxH) {
+    pdf.addImage(imgData, "JPEG", MARGIN, MARGIN, printW, imgH);
+  } else {
+    // Fatia em múltiplas páginas A4
+    const sliceRatio = maxH / imgH;
+    let srcY    = 0;
+    let isFirst = true;
+    while (srcY < canvas.height) {
+      const sliceH      = Math.min(canvas.height * sliceRatio, canvas.height - srcY);
+      const sliceCanvas = document.createElement("canvas");
+      sliceCanvas.width  = canvas.width;
+      sliceCanvas.height = Math.ceil(sliceH);
+      const ctx = sliceCanvas.getContext("2d")!;
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+      ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+      const sliceData  = sliceCanvas.toDataURL("image/jpeg", 0.92);
+      const sliceImgH  = (sliceH / canvas.height) * imgH;
+      if (!isFirst) pdf.addPage();
+      pdf.addImage(sliceData, "JPEG", MARGIN, MARGIN, printW, sliceImgH);
+      srcY   += sliceH;
+      isFirst = false;
+    }
+  }
+}
+
+/**
+ * Exporta o documento para PDF.
+ * Tenta capturar elementos .doc-page; se não existirem, captura o editor contenteditable.
  */
 export async function exportToPDF(
   documentName: string,
   _ignored?: HTMLElement
 ): Promise<void> {
-  const pages = Array.from(document.querySelectorAll(".doc-page")) as HTMLElement[];
-  if (!pages.length) throw new Error("Nenhuma página encontrada");
-
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const printW = A4_W - MARGIN * 2;
 
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i];
-    // Snapshot at native size (no transform)
-    const canvas = await html2canvas(page, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      // Ignore any CSS transform on parent
-      ignoreElements: (el) => el.classList.contains("zoom-wrapper"),
-    });
+  // Tentativa 1 — elementos .doc-page
+  const pages = Array.from(
+    document.querySelectorAll(".doc-page")
+  ) as HTMLElement[];
 
-    const imgData = canvas.toDataURL("image/jpeg", 0.92);
-    const ratio = canvas.height / canvas.width;
-    const imgH = printW * ratio;
-
-    if (i > 0) pdf.addPage();
-
-    // If content fits in one A4 page height
-    const maxH = A4_H - MARGIN * 2;
-    if (imgH <= maxH) {
-      pdf.addImage(imgData, "JPEG", MARGIN, MARGIN, printW, imgH);
-    } else {
-      // Slice into A4 pages
-      const sliceRatio = maxH / imgH;
-      let srcY = 0;
-      let isFirst = true;
-      while (srcY < canvas.height) {
-        const sliceH = Math.min(canvas.height * sliceRatio, canvas.height - srcY);
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = Math.ceil(sliceH);
-        const ctx = sliceCanvas.getContext("2d")!;
-        ctx.fillStyle = "#fff";
-        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-        const sliceData = sliceCanvas.toDataURL("image/jpeg", 0.92);
-        const sliceImgH = (sliceH / canvas.height) * imgH;
-        if (!isFirst) pdf.addPage();
-        pdf.addImage(sliceData, "JPEG", MARGIN, MARGIN, printW, sliceImgH);
-        srcY += sliceH;
-        isFirst = false;
-      }
+  if (pages.length > 0) {
+    for (let i = 0; i < pages.length; i++) {
+      await captureElementToPDF(pdf, pages[i], i === 0);
     }
+    pdf.save(`${documentName}.pdf`);
+    return;
   }
 
+  // Tentativa 2 — editor contenteditable (sempre presente)
+  const editor =
+    (document.querySelector("[contenteditable='true']") as HTMLElement | null) ??
+    (document.querySelector("[contenteditable]")        as HTMLElement | null);
+
+  if (editor) {
+    // Guarda estilos originais e expande para captura completa sem scroll
+    const prev = {
+      overflow:  editor.style.overflow,
+      maxHeight: editor.style.maxHeight,
+      height:    editor.style.height,
+    };
+    editor.style.overflow  = "visible";
+    editor.style.maxHeight = "none";
+    editor.style.height    = "auto";
+
+    await captureElementToPDF(pdf, editor, true);
+
+    // Restaura estilos
+    editor.style.overflow  = prev.overflow;
+    editor.style.maxHeight = prev.maxHeight;
+    editor.style.height    = prev.height;
+
+    pdf.save(`${documentName}.pdf`);
+    return;
+  }
+
+  // Tentativa 3 — corpo inteiro
+  await captureElementToPDF(pdf, document.body, true);
   pdf.save(`${documentName}.pdf`);
 }
 
