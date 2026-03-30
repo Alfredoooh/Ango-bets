@@ -10,6 +10,7 @@ interface DocumentEditorProps {
   isMobile?: boolean;
   documentTitle?: string;
   onTitleChange?: (title: string) => void;
+  hideAppBar?: boolean;
 }
 
 const PAGE_W = 794;
@@ -631,6 +632,7 @@ export default function DocumentEditor({
   isMobile = false,
   documentTitle = "Documento sem título",
   onTitleChange,
+  hideAppBar = false,
 }: DocumentEditorProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -820,8 +822,8 @@ export default function DocumentEditor({
         overflow: "hidden",
       }}
     >
-      {/* Sidebar — desktop only, always visible */}
-      {!isMobile && (
+      {/* Sidebar — desktop only, hidden when EditorPage has its own AppBar */}
+      {!isMobile && !hideAppBar && (
         <Sidebar isDark={isDark} documentTitle={documentTitle} />
       )}
 
@@ -835,8 +837,8 @@ export default function DocumentEditor({
           minWidth: 0,
         }}
       >
-        {/* AppBar */}
-        <AppBar
+        {/* AppBar — hidden when EditorPage has its own */}
+        {!hideAppBar && <AppBar
           isDark={isDark}
           isMobile={isMobile}
           documentTitle={documentTitle}
@@ -846,7 +848,7 @@ export default function DocumentEditor({
           popupAnchorRef={popupAnchorRef}
           popupItems={popupItems}
           onPopupClose={() => setPopupOpen(false)}
-        />
+        />}
 
         {/* Editor canvas */}
         <div
