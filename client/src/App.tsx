@@ -22,7 +22,7 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="light" switchable={true}>
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
           <Router />
