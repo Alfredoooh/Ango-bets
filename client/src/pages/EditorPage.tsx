@@ -1,422 +1,494 @@
-import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
-import EditorToolbar from "@/components/EditorToolbar";
-import DocumentEditor from "@/components/DocumentEditor";
-import SidePanel from "@/components/SidePanel";
-import LinkDialog from "@/components/LinkDialog";
-import TableDialog from "@/components/TableDialog";
-import ImageDialog from "@/components/ImageDialog";
-import ColorPickerModal from "@/components/ColorPickerModal";
-import { toast } from "sonner";
-import { exportToPDF, exportToDocx, exportToTxt } from "@/lib/pdfExport";
-import {
-  MoreVertical, Save, Download, Share2,
-  FilePlus, FolderOpen, FileText, Moon, Sun,
-} from "lucide-react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 
-/* ── App Icon — imported from assets/icons/app-icon.svg ────────────── */
-const AppIcon = ({ size = 32, dark = false }: { size?: number; dark?: boolean }) => (
-  <img
-    src="/assets/icons/app_icon.svg"
-    alt="Doction"
-    width={size}
-    height={size}
-    style={{
-      display: "block",
-      flexShrink: 0,
-      /* Adapts to dark/light — force black or white rendering */
-      filter: dark ? "invert(0)" : "invert(1)",
-    }}
-  />
-);
-
-/* ── Arrow icon — from assets ────────────────────────────────────── */
-const ArrowBackIcon = ({ size = 20, dark = false }: { size?: number; dark?: boolean }) => (
-  <img
-    src="/assets/icons/svg/arrow-back.svg"
-    alt="Voltar"
-    width={size}
-    height={size}
-    style={{
-      display: "block",
-      filter: dark ? "invert(0)" : "invert(1)",
-    }}
-  />
-);
-
-/* ── useIsMobile ─────────────────────────────────────────────────── */
-function useIsMobile() {
-  const [mob, setMob] = useState(() => window.innerWidth <= 767);
-  useEffect(() => {
-    const fn = () => setMob(window.innerWidth <= 767);
-    window.addEventListener("resize", fn);
-    return () => window.removeEventListener("resize", fn);
-  }, []);
-  return mob;
+interface DocumentEditorProps {
+  content: string;
+  onChange: (content: string) => void;
+  placeholder?: string;
+  zoom: number;
+  onZoomChange: (z: number) => void;
+  isMobile?: boolean;
+  documentTitle?: string;
+  onTitleChange?: (title: string) => void;
 }
 
-/* ── App Menu ⋮ ──────────────────────────────────────────────────── */
-function AppMenu({
-  onSave, onExportPDF, onExportDocx, onExportTxt, onShare, onNewDocument, onOpenDocument,
-  isDark,
+const PAGE_W = 794;
+const PAGE_H = 1123;
+const PAGE_MARGIN_PX = 96;
+const CONTENT_W = PAGE_W - PAGE_MARGIN_PX * 2;
+const CONTENT_H = PAGE_H - PAGE_MARGIN_PX * 2;
+
+function computeAdaptiveZoom(containerW: number): number {
+  const available = containerW - 32;
+  const raw = (available / PAGE_W) * 100;
+  return Math.max(25, Math.min(150, Math.round(raw)));
+}
+
+/* ── Zoom Modal — mobile only ────────────────────────────────────── */
+function ZoomModal({
+  zoom,
+  onZoomChange,
+  onClose,
 }: {
-  onSave: () => void; onExportPDF: () => void; onExportDocx: () => void;
-  onExportTxt: () => void; onShare: () => void; onNewDocument: () => void;
-  onOpenDocument: () => void; isDark: boolean;
+  zoom: number;
+  onZoomChange: (z: number) => void;
+  onClose: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const { theme, toggleTheme, switchable } = useTheme();
+  const startY = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = () => setOpen(false);
-    document.addEventListener("click", close, true);
-    return () => document.removeEventListener("click", close, true);
-  }, [open]);
+  const onTouchStart = (e: React.TouchEvent) => {
+    startY.current = e.touches[0].clientY;
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (startY.current === null) return;
+    const dy = e.touches[0].clientY - startY.current;
+    if (dy > 60) onClose();
+  };
+  const onTouchEnd = () => { startY.current = null; };
 
-  const menuBg  = isDark ? "#1e1e1e" : "#ffffff";
-  const menuBdr = isDark ? "#2c2c2c" : "#ebebeb";
-  const itemClr = isDark ? "#e0e0e0" : "#1a1a1a";
-  const iconClr = isDark ? "#e0e0e0" : "#333";
-  const hoverBg = isDark ? "rgba(255,255,255,.06)" : "#f5f5f5";
-
-  const items: ({ icon: React.ReactNode; label: string; kbd?: string; action: () => void } | null)[] = [
-    { icon: <FilePlus size={15} />,   label: "Novo documento",        action: onNewDocument },
-    { icon: <FolderOpen size={15} />, label: "Abrir documento",       action: onOpenDocument },
-    null,
-    { icon: <Save size={15} />,       label: "Guardar",  kbd: "Ctrl+S", action: onSave },
-    null,
-    { icon: <Download size={15} />,   label: "Exportar PDF",          action: onExportPDF },
-    { icon: <FileText size={15} />,   label: "Exportar Word (.doc)",  action: onExportDocx },
-    { icon: <FileText size={15} />,   label: "Exportar Texto (.txt)", action: onExportTxt },
-    null,
-    { icon: <Share2 size={15} />,     label: "Partilhar",             action: onShare },
-    ...(switchable
-      ? [null, {
-          icon: theme === "dark" ? <Sun size={15} /> : <Moon size={15} />,
-          label: theme === "dark" ? "Modo claro" : "Modo escuro",
-          action: toggleTheme ?? (() => {}),
-        }]
-      : []),
-  ];
+  const PRESETS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
 
   return (
-    <div style={{ position: "relative" }}>
-      <button
-        onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
+    <>
+      <div
+        onClick={onClose}
         style={{
-          width: 36, height: 36, borderRadius: 9, border: "none",
-          background: open
-            ? (isDark ? "rgba(255,255,255,.1)" : "rgba(0,0,0,.07)")
-            : "transparent",
-          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-          color: isDark ? "#ccc" : "#555",
-          transition: "background 0.15s",
+          position: "fixed", inset: 0, zIndex: 9998,
+          background: "rgba(0,0,0,.5)",
+          animation: "zmFadeIn .16s ease both",
         }}
-        title="Menu"
+      />
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999,
+          background: "#191919",
+          borderRadius: "20px 20px 0 0",
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)",
+          animation: "zmSlideUp .22s cubic-bezier(.25,.46,.45,.94) both",
+          boxShadow: "0 -4px 48px rgba(0,0,0,.5)",
+        }}
       >
-        <MoreVertical size={18} />
-      </button>
+        <style>{`
+          @keyframes zmFadeIn{from{opacity:0}to{opacity:1}}
+          @keyframes zmSlideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        `}</style>
 
-      {open && (
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            position: "fixed", top: 52, right: 8, zIndex: 99999,
-            background: menuBg,
-            border: `1px solid ${menuBdr}`,
-            borderRadius: 16,
-            boxShadow: isDark
-              ? "0 4px 6px rgba(0,0,0,.2),0 20px 60px rgba(0,0,0,.5)"
-              : "0 4px 6px rgba(0,0,0,.04),0 16px 48px rgba(0,0,0,.14)",
-            minWidth: 238, padding: "6px 0",
-            animation: "menuIn 0.18s cubic-bezier(.34,1.56,.64,1)",
-          }}
-        >
-          <style>{`@keyframes menuIn{from{opacity:0;transform:scale(.92) translateY(-8px)}to{opacity:1;transform:none}}`}</style>
-          {items.map((item, i) =>
-            item === null
-              ? <div key={i} style={{ height: 1, background: menuBdr, margin: "4px 6px" }} />
-              : (
-                <button
-                  key={i}
-                  onClick={() => { item.action(); setOpen(false); }}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 11,
-                    width: "100%", padding: "10px 16px",
-                    background: "none", border: "none", cursor: "pointer",
-                    fontSize: 14, color: itemClr, textAlign: "left",
-                    transition: "background 0.1s",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = hoverBg)}
-                  onMouseLeave={e => (e.currentTarget.style.background = "none")}
-                >
-                  <span style={{ color: iconClr, flexShrink: 0 }}>{item.icon}</span>
-                  <span style={{ flex: 1 }}>{item.label}</span>
-                  {item.kbd && <span style={{ fontSize: 11, color: isDark ? "#555" : "#c0c0c0", fontFamily: "monospace" }}>{item.kbd}</span>}
-                </button>
-              )
-          )}
+        {/* Handlebar */}
+        <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
+          <div style={{
+            width: 38, height: 4, borderRadius: 99,
+            background: "rgba(255,255,255,.15)",
+          }} />
         </div>
-      )}
-    </div>
+
+        {/* Title */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          gap: 9, padding: "6px 24px 18px",
+        }}>
+          <img
+            src="/assets/icons/svg/zoom-in.svg"
+            alt="" width={17} height={17}
+            style={{ filter: "invert(1)", opacity: .7 }}
+          />
+          <span style={{
+            fontSize: ".87rem", fontWeight: 700,
+            color: "#e8e8e8", letterSpacing: ".01em",
+          }}>
+            Zoom · {Math.round(zoom)}%
+          </span>
+        </div>
+
+        {/* Controls */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 20px 4px" }}>
+          <button
+            onClick={() => onZoomChange(Math.max(25, zoom - 10))}
+            style={{
+              width: 46, height: 46, borderRadius: 13,
+              border: "1.5px solid rgba(255,255,255,.1)",
+              background: "rgba(255,255,255,.06)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <img src="/assets/icons/svg/zoom-out.svg" alt="–" width={20} height={20}
+              style={{ filter: "invert(1)", opacity: .8 }} />
+          </button>
+
+          <div style={{
+            flex: 1, display: "flex", gap: 6, overflowX: "auto",
+            scrollbarWidth: "none", padding: "2px 0",
+          }}>
+            {PRESETS.map(p => (
+              <button
+                key={p}
+                onClick={() => onZoomChange(p)}
+                style={{
+                  flexShrink: 0,
+                  height: 46, padding: "0 14px",
+                  borderRadius: 12,
+                  border: zoom === p
+                    ? "1.5px solid rgba(255,255,255,.75)"
+                    : "1.5px solid rgba(255,255,255,.09)",
+                  background: zoom === p ? "rgba(255,255,255,.15)" : "rgba(255,255,255,.04)",
+                  color: zoom === p ? "#fff" : "rgba(255,255,255,.4)",
+                  fontSize: ".8rem", fontWeight: zoom === p ? 700 : 500,
+                  cursor: "pointer",
+                  transition: "all .12s",
+                }}
+              >
+                {p}%
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={() => onZoomChange(Math.min(200, zoom + 10))}
+            style={{
+              width: 46, height: 46, borderRadius: 13,
+              border: "1.5px solid rgba(255,255,255,.1)",
+              background: "rgba(255,255,255,.06)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <img src="/assets/icons/svg/zoom-in.svg" alt="+" width={20} height={20}
+              style={{ filter: "invert(1)", opacity: .8 }} />
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   EDITOR PAGE
-══════════════════════════════════════════════════════════════════ */
-export default function EditorPage() {
-  const [, setLocation]  = useLocation();
-  const isMobile         = useIsMobile();
-  const { theme }        = useTheme();
-  const isDark           = theme === "dark";
+/* ── Main ─────────────────────────────────────────────────────────── */
+export default function DocumentEditor({
+  content,
+  onChange,
+  placeholder = "Comece a escrever...",
+  zoom,
+  onZoomChange,
+  isMobile = false,
+}: DocumentEditorProps) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
 
-  const [documentName, setDocumentName]         = useState("Documento sem título");
-  const [content, setContent]                   = useState("");
-  const [wordCount, setWordCount]               = useState(0);
-  const [characterCount, setCharacterCount]     = useState(0);
-  const [lastModified, setLastModified]         = useState("Agora");
-  const [zoom, setZoom]                         = useState(100);
-  const [linkDialogOpen,      setLinkDialogOpen]      = useState(false);
-  const [tableDialogOpen,     setTableDialogOpen]     = useState(false);
-  const [imageDialogOpen,     setImageDialogOpen]     = useState(false);
-  const [colorPickerOpen,     setColorPickerOpen]     = useState(false);
-  const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [pageCount, setPageCount] = useState(1);
+  const [activePageIdx, setActivePageIdx] = useState(0);
+  const pagesContent = useRef<string[]>([""]);
+  const pinchRef = useRef<{ dist: number; startZoom: number } | null>(null);
+  const isInternalChange = useRef(false);
+  const [showZoomModal, setShowZoomModal] = useState(false);
 
-  const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
+  /* ── colour tokens ── */
+  const canvasBg  = isDark ? "#1c1c1c" : "#e8e8e8";
+  const statusBg  = isDark ? "rgba(14,14,14,0.97)"    : "rgba(245,245,245,0.97)";
+  const statusBdr = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.09)";
+  const statusClr = isDark ? "rgba(255,255,255,.45)"  : "rgba(0,0,0,.45)";
+  const statusSep = isDark ? "rgba(255,255,255,.15)" : "rgba(0,0,0,.15)";
+  const pageShadow = isDark
+    ? "0 2px 12px rgba(0,0,0,.5), 0 8px 40px rgba(0,0,0,.3)"
+    : "0 2px 8px rgba(0,0,0,.12), 0 8px 32px rgba(0,0,0,.08)";
+  const pageNumClr = isDark ? "#666" : "#aaa";
 
   useEffect(() => {
-    const text = content.replace(/<[^>]*>/g, "").trim();
-    setWordCount(text.split(/\s+/).filter(Boolean).length);
-    setCharacterCount(text.length);
-    setLastModified("Agora");
+    const calc = () => {
+      if (!containerRef.current) return;
+      const adapted = isMobile
+        ? computeAdaptiveZoom(containerRef.current.clientWidth)
+        : 100;
+      onZoomChange(adapted);
+    };
+    calc();
+    const ro = new ResizeObserver(calc);
+    if (containerRef.current) ro.observe(containerRef.current);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (isInternalChange.current) { isInternalChange.current = false; return; }
+    const el = pageRefs.current[0];
+    if (el && el.innerHTML !== content) {
+      el.innerHTML = content;
+      pagesContent.current[0] = content;
+    }
   }, [content]);
 
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
-    };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  });
-
-  /* ── Handlers ── */
-  const handleSave = () => {
-    const docs = JSON.parse(localStorage.getItem("documents") || "[]");
-    const idx  = docs.findIndex((d: any) => d.name === documentName);
-    const entry = { name: documentName, content, lastModified: new Date().toLocaleString("pt-PT") };
-    if (idx >= 0) docs[idx] = entry; else docs.push(entry);
-    localStorage.setItem("documents", JSON.stringify(docs));
-    toast.success("Documento guardado!");
-  };
-  const handleExportPDF = async () => {
-    try { toast.info("A gerar PDF..."); await exportToPDF(documentName); toast.success("PDF exportado!"); }
-    catch (e) { console.error(e); toast.error("Erro ao exportar PDF"); }
-  };
-  const handleExportDocx  = () => { exportToDocx(documentName, content); toast.success("Word exportado!"); };
-  const handleExportTxt   = () => { exportToTxt(documentName, content);  toast.success("Texto exportado!"); };
-  const handleShare       = () => toast.info("Partilha em desenvolvimento");
-  const handleNewDocument = () => {
-    if (content && !confirm("Descartar documento atual?")) return;
-    setDocumentName("Documento sem título"); setContent("");
-  };
-  const handleOpenDocument = () => {
-    const docs = JSON.parse(localStorage.getItem("documents") || "[]");
-    if (!docs.length) { toast.error("Nenhum documento guardado"); return; }
-    const name = prompt("Documentos:\n" + docs.map((d: any) => d.name).join("\n") + "\n\nNome:");
-    if (!name) return;
-    const doc = docs.find((d: any) => d.name === name);
-    if (doc) { setDocumentName(doc.name); setContent(doc.content); toast.success("Documento aberto!"); }
-    else toast.error("Não encontrado");
-  };
-  const handleLinkInsert  = (url: string, text: string) => {
-    const sel = window.getSelection();
-    if (sel?.toString()) exec("createLink", url);
-    else exec("insertHTML", `<a href="${url}" target="_blank">${text || url}</a>`);
-  };
-  const handleImageInsert = (url: string) => exec("insertImage", url);
-  const handleTableInsert = (rows: number, cols: number) => {
-    let html = `<table style="border-collapse:collapse;width:100%;margin:8px 0"><tbody>`;
-    for (let r = 0; r < rows; r++) {
-      html += "<tr>";
-      for (let c = 0; c < cols; c++)
-        html += r === 0
-          ? `<th style="border:1px solid #ddd;padding:9px 12px;background:#fafafa;font-weight:600;text-align:left;font-size:.88rem">Cabeçalho</th>`
-          : `<td style="border:1px solid #ddd;padding:9px 12px;font-size:.88rem">Célula</td>`;
-      html += "</tr>";
+  const handlePageInput = useCallback((pageIdx: number) => {
+    const el = pageRefs.current[pageIdx];
+    if (!el) return;
+    pagesContent.current[pageIdx] = el.innerHTML;
+    if (el.scrollHeight > CONTENT_H + 20) {
+      const overflow = detectOverflowedNodes(el, CONTENT_H);
+      if (overflow.length > 0) {
+        const nextIdx = pageIdx + 1;
+        if (nextIdx >= pageCount) {
+          setPageCount((c) => c + 1);
+          pagesContent.current[nextIdx] = "";
+        }
+        const overflowHTML = overflow.map((n) => {
+          const tmp = document.createElement("div");
+          tmp.appendChild(n.cloneNode(true));
+          n.parentNode?.removeChild(n);
+          return tmp.innerHTML;
+        }).join("");
+        pagesContent.current[pageIdx] = el.innerHTML;
+        const nextEl = pageRefs.current[nextIdx];
+        if (nextEl) {
+          nextEl.innerHTML = overflowHTML + (pagesContent.current[nextIdx] || "");
+          pagesContent.current[nextIdx] = nextEl.innerHTML;
+        } else {
+          pagesContent.current[nextIdx] = overflowHTML + (pagesContent.current[nextIdx] || "");
+        }
+      }
     }
-    exec("insertHTML", html + "</tbody></table><br>");
+    isInternalChange.current = true;
+    onChange(pagesContent.current[0] || "");
+  }, [pageCount, onChange]);
+
+  function detectOverflowedNodes(el: HTMLDivElement, maxH: number): Node[] {
+    const overflowed: Node[] = [];
+    const children = Array.from(el.childNodes);
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (el.scrollHeight <= maxH + 10) break;
+      const child = children[i];
+      overflowed.unshift(child);
+      el.removeChild(child);
+    }
+    return overflowed;
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, pageIdx: number) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      document.execCommand("insertHTML", false, "&nbsp;&nbsp;&nbsp;&nbsp;");
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      switch (e.key) {
+        case "b": e.preventDefault(); document.execCommand("bold"); break;
+        case "i": e.preventDefault(); document.execCommand("italic"); break;
+        case "u": e.preventDefault(); document.execCommand("underline"); break;
+        case "=": e.preventDefault(); onZoomChange(Math.min(200, zoom + 10)); break;
+        case "-": e.preventDefault(); onZoomChange(Math.max(25, zoom - 10)); break;
+        case "0": e.preventDefault(); onZoomChange(100); break;
+      }
+    }
+    if (e.key === "Enter") {
+      const el = pageRefs.current[pageIdx];
+      if (el && el.scrollHeight >= CONTENT_H - 20) {
+        e.preventDefault();
+        const nextIdx = pageIdx + 1;
+        if (nextIdx >= pageCount) setPageCount((c) => c + 1);
+        setTimeout(() => {
+          const nextEl = pageRefs.current[nextIdx];
+          if (nextEl) { nextEl.focus(); placeCursorAtStart(nextEl); }
+        }, 50);
+      }
+    }
   };
 
-  /* toolbar props */
-  const tbProps = {
-    onBold:            () => exec("bold"),
-    onItalic:          () => exec("italic"),
-    onUnderline:       () => exec("underline"),
-    onStrikethrough:   () => exec("strikethrough"),
-    onAlignLeft:       () => exec("justifyLeft"),
-    onAlignCenter:     () => exec("justifyCenter"),
-    onAlignRight:      () => exec("justifyRight"),
-    onAlignJustify:    () => exec("justifyFull"),
-    onBulletList:      () => exec("insertUnorderedList"),
-    onNumberedList:    () => exec("insertOrderedList"),
-    onLink:            () => setLinkDialogOpen(true),
-    onImage:           () => setImageDialogOpen(true),
-    onTable:           () => setTableDialogOpen(true),
-    onSave:            handleSave,
-    onUndo:            () => exec("undo"),
-    onRedo:            () => exec("redo"),
-    onNewDocument:     handleNewDocument,
-    onOpenDocument:    handleOpenDocument,
-    onDownload:        handleExportDocx,
-    onShare:           handleShare,
-    onHeading1:        () => exec("formatBlock", "<h1>"),
-    onHeading2:        () => exec("formatBlock", "<h2>"),
-    onHeading3:        () => exec("formatBlock", "<h3>"),
-    onCode:            () => exec("formatBlock", "<pre>"),
-    onQuote:           () => exec("formatBlock", "<blockquote>"),
-    onHighlight:       () => setHighlightPickerOpen(true),
-    onSuperscript:     () => exec("superscript"),
-    onSubscript:       () => exec("subscript"),
-    onClearFormatting: () => exec("removeFormat"),
-    onExportPDF:       handleExportPDF,
-    onAddNote: () => {
-      const note = prompt("Texto da nota:");
-      if (note) exec("insertHTML", `<div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:12px 16px;margin:8px 0;border-radius:8px"><strong>📝 Nota:</strong> ${note}</div>`);
-    },
-    onColorPicker: () => setColorPickerOpen(true),
-  };
+  function placeCursorAtStart(el: HTMLElement) {
+    const range = document.createRange();
+    const sel = window.getSelection();
+    range.setStart(el, 0);
+    range.collapse(true);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
 
-  /* colour tokens — dark/white only, no orange */
-  const bg       = isDark ? "#141414" : "#ffffff";
-  const appbarBg = isDark ? "#1c1c1c" : "#ffffff";
-  const appbarBdr= isDark ? "#2a2a2a" : "#e8e8e8";
-  const titleClr = isDark ? "#f0f0f0" : "#1a1a1a";
-  const countClr = isDark ? "#555"    : "#aaa";
-  const btnClr   = isDark ? "#aaa"    : "#444";
-  const btnHover = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.05)";
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchRef.current = { dist: Math.hypot(dx, dy), startZoom: zoom };
+    }
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && pinchRef.current) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const newZoom = Math.max(25, Math.min(200, Math.round(pinchRef.current.startZoom * (dist / pinchRef.current.dist))));
+      onZoomChange(newZoom);
+    }
+  };
+  const onTouchEnd = () => { pinchRef.current = null; };
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        onZoomChange(Math.max(25, Math.min(200, zoom + (e.deltaY < 0 ? 10 : -10))));
+      }
+    };
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [zoom, onZoomChange]);
+
+  const initPage = useCallback((el: HTMLDivElement | null, idx: number) => {
+    if (!el) return;
+    pageRefs.current[idx] = el;
+    if (el.innerHTML !== (pagesContent.current[idx] || "")) {
+      el.innerHTML = pagesContent.current[idx] || "";
+    }
+  }, []);
 
   return (
-    <div style={{
-      display: "flex", flexDirection: "column",
-      height: "100dvh",
-      background: bg,
-      overflow: "hidden",
-    }}>
+    <div
+      ref={containerRef}
+      className="flex-1 flex flex-col overflow-hidden"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      style={{ background: canvasBg, touchAction: "pan-y pinch-zoom", height: "100%" }}
+    >
+      {/* Zoom modal — mobile only */}
+      {showZoomModal && isMobile && (
+        <ZoomModal zoom={zoom} onZoomChange={onZoomChange} onClose={() => setShowZoomModal(false)} />
+      )}
 
-      {/* ── APP BAR ── */}
-      <div style={{
-        height: 52,
-        background: appbarBg,
-        borderBottom: `1px solid ${appbarBdr}`,
-        display: "flex", alignItems: "center",
-        padding: "0 8px", gap: 4,
-        flexShrink: 0, zIndex: 50,
-        boxShadow: isDark
-          ? "0 1px 0 rgba(255,255,255,.03)"
-          : "0 1px 4px rgba(0,0,0,.05)",
-      }}>
-        {/* ← back */}
-        <button
-          onClick={() => setLocation("/home")}
+      {/* Scrollable page area */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          overflowX: "auto",
+          padding: "24px 16px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 24,
+        }}
+      >
+        <div
           style={{
-            width: 36, height: 36, borderRadius: 9, border: "none",
-            background: "transparent", cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: btnClr, transition: "background 0.15s", flexShrink: 0,
+            transform: `scale(${zoom / 100})`,
+            transformOrigin: "top center",
+            transition: "transform 0.15s ease",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 24,
+            marginBottom: `${(zoom / 100 - 1) * pageCount * (PAGE_H + 24) * 0.5}px`,
           }}
-          onMouseEnter={e => (e.currentTarget.style.background = btnHover)}
-          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
-          title="Voltar"
         >
-          <ArrowBackIcon size={20} dark={isDark} />
-        </button>
+          {Array.from({ length: pageCount }).map((_, idx) => (
+            <div key={idx} style={{ position: "relative" }}>
+              {pageCount > 1 && (
+                <div style={{
+                  position: "absolute", top: -20, left: 0, right: 0,
+                  textAlign: "center", fontSize: 11, color: pageNumClr, userSelect: "none",
+                }}>
+                  Página {idx + 1}
+                </div>
+              )}
 
-        {/* App icon — adapts black/white */}
-        <AppIcon size={28} dark={isDark} />
-
-        {/* Document title */}
-        <input
-          value={documentName}
-          onChange={e => setDocumentName(e.target.value)}
-          onBlur={handleSave}
-          style={{
-            flex: 1, fontSize: 15, fontWeight: 600,
-            color: titleClr, border: "none", outline: "none",
-            background: "transparent", padding: "4px 6px",
-            borderRadius: 7, minWidth: 0, transition: "background 0.15s",
-          }}
-          onFocus={e => (e.target.style.background = isDark ? "rgba(255,255,255,.06)" : "#f5f5f5")}
-          onBlurCapture={e => (e.target.style.background = "transparent")}
-          title="Nome do documento"
-        />
-
-        {/* Word count */}
-        <span style={{
-          fontSize: 12, color: countClr, flexShrink: 0,
-          whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums",
-          display: window.innerWidth < 400 ? "none" : "block",
-        }}>
-          {wordCount}p
-        </span>
-
-        {/* ⋮ menu */}
-        <AppMenu
-          onSave={handleSave}
-          onExportPDF={handleExportPDF}
-          onExportDocx={handleExportDocx}
-          onExportTxt={handleExportTxt}
-          onShare={handleShare}
-          onNewDocument={handleNewDocument}
-          onOpenDocument={handleOpenDocument}
-          isDark={isDark}
-        />
+              {/* A4 Page */}
+              <div
+                style={{
+                  width: PAGE_W,
+                  height: PAGE_H,
+                  background: "#ffffff",
+                  boxShadow: pageShadow,
+                  position: "relative",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  ref={(el) => initPage(el, idx)}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onFocus={() => setActivePageIdx(idx)}
+                  onInput={() => handlePageInput(idx)}
+                  onKeyDown={(e) => handleKeyDown(e, idx)}
+                  style={{
+                    position: "absolute",
+                    top: PAGE_MARGIN_PX,
+                    left: PAGE_MARGIN_PX,
+                    width: CONTENT_W,
+                    height: CONTENT_H,
+                    outline: "none",
+                    overflow: "hidden",
+                    fontFamily: "Georgia, 'Times New Roman', serif",
+                    fontSize: 14,
+                    lineHeight: "1.6",
+                    color: "#1a1a1a",
+                    wordBreak: "break-word",
+                    whiteSpace: "pre-wrap",
+                  }}
+                  className="
+                    [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-3 [&_h1]:mt-2 [&_h1]:font-sans [&_h1]:leading-tight
+                    [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-2 [&_h2]:font-sans
+                    [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:font-sans
+                    [&_h4]:text-base [&_h4]:font-semibold [&_h4]:mb-1 [&_h4]:font-sans
+                    [&_p]:mb-3
+                    [&_ul]:list-disc [&_ul]:ml-5 [&_ul]:mb-3
+                    [&_ol]:list-decimal [&_ol]:ml-5 [&_ol]:mb-3
+                    [&_li]:mb-1
+                    [&_a]:text-blue-600 [&_a]:underline
+                    [&_blockquote]:border-l-4 [&_blockquote]:border-gray-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-3
+                    [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-sm
+                    [&_pre]:bg-gray-100 [&_pre]:p-3 [&_pre]:rounded [&_pre]:font-mono [&_pre]:text-sm [&_pre]:my-3 [&_pre]:overflow-x-auto
+                    [&_table]:border-collapse [&_table]:w-full [&_table]:my-3
+                    [&_th]:border [&_th]:border-gray-300 [&_th]:p-2 [&_th]:bg-gray-50 [&_th]:font-semibold [&_th]:text-left
+                    [&_td]:border [&_td]:border-gray-300 [&_td]:p-2
+                    [&_img]:max-w-full [&_img]:h-auto [&_img]:my-2
+                    [&_hr]:border-gray-200 [&_hr]:my-4
+                  "
+                />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* ── Dialogs ── */}
-      <LinkDialog   open={linkDialogOpen}       onOpenChange={setLinkDialogOpen}       onInsert={handleLinkInsert} />
-      <TableDialog  open={tableDialogOpen}      onOpenChange={setTableDialogOpen}      onInsert={handleTableInsert} />
-      <ImageDialog  open={imageDialogOpen}      onOpenChange={setImageDialogOpen}      onInsert={handleImageInsert} />
-      <ColorPickerModal open={colorPickerOpen}     onOpenChange={setColorPickerOpen}     onSelect={c => exec("foreColor", c)}   title="Cor do texto" />
-      <ColorPickerModal open={highlightPickerOpen} onOpenChange={setHighlightPickerOpen} onSelect={c => exec("hiliteColor", c)} title="Cor de realce" />
-
-      {/* ── Toolbar desktop ── */}
-      {!isMobile && <EditorToolbar isMobile={false} {...tbProps} />}
-
-      {/* ── Main area ── */}
+      {/* Status bar */}
       <div style={{
-        flex: 1, display: "flex", overflow: "hidden",
-        paddingBottom: isMobile ? 88 : 0,
+        height: 28,
+        background: statusBg,
+        borderTop: `1.5px solid ${statusBdr}`,
+        display: "flex",
+        alignItems: "center",
+        padding: "0 14px",
+        gap: 10,
+        flexShrink: 0,
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
       }}>
-        <DocumentEditor
-          content={content}
-          onChange={setContent}
-          placeholder=""
-          zoom={zoom}
-          onZoomChange={setZoom}
-          isMobile={isMobile}
-        />
-
-        {/* Side panel — desktop wide only */}
-        {!isMobile && (
-          <div className="hidden lg:block">
-            <SidePanel
-              documentName={documentName}
-              lastModified={lastModified}
-              wordCount={wordCount}
-              characterCount={characterCount}
-              onDocumentNameChange={setDocumentName}
-              onShare={handleShare}
-            />
-          </div>
-        )}
+        <span style={{ fontSize: 11, color: statusClr, fontWeight: 500 }}>Pronto</span>
+        <span style={{ fontSize: 11, color: statusSep }}>·</span>
+        <span style={{ fontSize: 11, color: statusClr }}>
+          Pág. {activePageIdx + 1} / {pageCount}
+        </span>
+        <span style={{ fontSize: 11, color: statusSep }}>·</span>
+        <button
+          onClick={() => isMobile && setShowZoomModal(true)}
+          style={{
+            fontSize: 11, color: statusClr,
+            background: "none", border: "none",
+            cursor: isMobile ? "pointer" : "default",
+            padding: 0,
+            display: "flex", alignItems: "center", gap: 4,
+            fontWeight: 500,
+          }}
+        >
+          {isMobile && (
+            <img src="/assets/icons/svg/zoom-in.svg" alt="" width={10} height={10}
+              style={{ filter: isDark ? "invert(1)" : "invert(0)", opacity: .35 }} />
+          )}
+          {Math.round(zoom)}%
+        </button>
       </div>
-
-      {/* ── Bottom bar mobile ── */}
-      {isMobile && <EditorToolbar isMobile={true} {...tbProps} />}
-
     </div>
   );
 }
