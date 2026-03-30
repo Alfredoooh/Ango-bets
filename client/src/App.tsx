@@ -6,9 +6,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import DoctionLanding from "./pages/DoctionLanding";
 import EditorPage from "./pages/EditorPage";
-import DocumentGallery from "./pages/DocumentGallery";
-import DesignStudio from "./pages/DesignStudio";
-import AIAssistant from "./pages/AIAssistant";
 
 function Router() {
   return (
@@ -16,9 +13,6 @@ function Router() {
       <Route path="/" component={DoctionLanding} />
       <Route path="/home" component={EditorPage} />
       <Route path="/editor" component={EditorPage} />
-      <Route path="/gallery" component={DocumentGallery} />
-      <Route path="/design" component={DesignStudio} />
-      <Route path="/ai" component={AIAssistant} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
@@ -28,7 +22,7 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="light">
+      <ThemeProvider defaultTheme="light" switchable={true}>
         <TooltipProvider>
           <Toaster />
           <Router />
