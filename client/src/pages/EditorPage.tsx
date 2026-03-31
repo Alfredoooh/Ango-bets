@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import EditorToolbar from "@/components/EditorToolbar";
-import Settings from "@/components/Settings";
+import DocumentEditor from "@/components/DocumentEditor";
+import SidePanel from "@/components/SidePanel";
+import LinkDialog from "@/components/LinkDialog";
+import TableDialog from "@/components/TableDialog";
+import ImageDialog from "@/components/ImageDialog";
+import ColorPickerModal from "@/components/ColorPickerModal";
+import { toast } from "sonner";
+import { exportToPDF, exportToDocx, exportToTxt } from "@/lib/pdfExport";
+import { useTheme } from "@/contexts/ThemeContext";
 
 function useIsMobile() {
   const [mob, setMob] = useState(() => window.innerWidth <= 767);
@@ -11,15 +19,6 @@ function useIsMobile() {
   }, []);
   return mob;
 }
-import DocumentEditor from "@/components/DocumentEditor";
-import SidePanel from "@/components/SidePanel";
-import LinkDialog from "@/components/LinkDialog";
-import TableDialog from "@/components/TableDialog";
-import ImageDialog from "@/components/ImageDialog";
-import ColorPickerModal from "@/components/ColorPickerModal";
-import { toast } from "sonner";
-import { exportToPDF, exportToDocx, exportToTxt } from "@/lib/pdfExport";
-import { useTheme } from "@/contexts/ThemeContext";
 
 /* ══════════════════════════════════════════════════════════════════
    EDITOR PAGE
@@ -40,7 +39,6 @@ export default function EditorPage() {
   const [imageDialogOpen,     setImageDialogOpen]     = useState(false);
   const [colorPickerOpen,     setColorPickerOpen]     = useState(false);
   const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
 
   const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
 
@@ -147,16 +145,6 @@ export default function EditorPage() {
   };
 
   const bg = isDark ? "#141414" : "#ffffff";
-
-  // Se estiver na tela de settings, mostrar apenas ela
-  if (showSettings) {
-    return (
-      <Settings
-        onBack={() => setShowSettings(false)}
-        isMobile={isMobile}
-      />
-    );
-  }
 
   return (
     <div style={{
