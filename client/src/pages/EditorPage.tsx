@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import EditorToolbar from "@/components/EditorToolbar";
+import Settings from "@/components/Settings";
 
 function useIsMobile() {
   const [mob, setMob] = useState(() => window.innerWidth <= 767);
@@ -39,6 +40,7 @@ export default function EditorPage() {
   const [imageDialogOpen,     setImageDialogOpen]     = useState(false);
   const [colorPickerOpen,     setColorPickerOpen]     = useState(false);
   const [highlightPickerOpen, setHighlightPickerOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const exec = (cmd: string, val?: string) => document.execCommand(cmd, false, val);
 
@@ -145,6 +147,16 @@ export default function EditorPage() {
   };
 
   const bg = isDark ? "#141414" : "#ffffff";
+
+  // Se estiver na tela de settings, mostrar apenas ela
+  if (showSettings) {
+    return (
+      <Settings
+        onBack={() => setShowSettings(false)}
+        isMobile={isMobile}
+      />
+    );
+  }
 
   return (
     <div style={{

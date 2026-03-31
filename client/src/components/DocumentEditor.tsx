@@ -10,6 +10,7 @@ interface DocumentEditorProps {
   isMobile?: boolean;
   documentTitle?: string;
   onTitleChange?: (title: string) => void;
+  onNavigateToSettings?: () => void;
 }
 
 const PAGE_W = 794;
@@ -128,6 +129,19 @@ const LUCIDE: Record<string, (sz: number) => JSX.Element> = {
       <line x1="8" y1="11" x2="14" y2="11"/>
     </svg>
   ),
+  "arrow-left": (sz) => (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="19" y1="12" x2="5" y2="12"/>
+      <polyline points="12 19 5 12 12 5"/>
+    </svg>
+  ),
+  "download": (sz) => (
+    <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  ),
 };
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -192,502 +206,432 @@ function ZoomModal({
   onZoomChange: (z: number) => void;
   onClose: () => void;
 }) {
-  const startY = useRef<number | null>(null);
-  const onTouchStart = (e: React.TouchEvent) => { startY.current = e.touches[0].clientY; };
-  const onTouchMove  = (e: React.TouchEvent) => {
-    if (startY.current !== null && e.touches[0].clientY - startY.current > 60) onClose();
-  };
-  const onTouchEnd = () => { startY.current = null; };
-  const PRESETS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
+  const [localZoom, setLocalZoom] = useState(zoom);
 
   return (
-    <>
-      <div onClick={onClose} style={{
-        position: "fixed", inset: 0, zIndex: 9998,
-        background: "rgba(0,0,0,.5)",
-        animation: "zmFadeIn .16s ease both",
-      }} />
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 99998,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex", alignItems: "flex-end",
+        animation: "fadeIn 0.15s ease both",
+      }}
+    >
       <div
-        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        onClick={(e) => e.stopPropagation()}
         style={{
-          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999,
-          background: "#191919",
+          width: "100%", background: "#fff",
           borderRadius: "20px 20px 0 0",
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 28px)",
-          animation: "zmSlideUp .22s cubic-bezier(.25,.46,.45,.94) both",
-          boxShadow: "0 -4px 48px rgba(0,0,0,.5)",
+          boxShadow: "0 -4px 40px rgba(0,0,0,0.14)",
+          animation: "slideUp 0.24s cubic-bezier(0.25,0.46,0.45,0.94) both",
+          padding: "0 0 env(safe-area-inset-bottom)",
         }}
       >
-        <style>{`
-          @keyframes zmFadeIn  { from{opacity:0} to{opacity:1} }
-          @keyframes zmSlideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
-        `}</style>
-        <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
-          <div style={{ width: 38, height: 4, borderRadius: 99, background: "rgba(255,255,255,.15)" }} />
+        <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 8px" }}>
+          <div style={{ width: 40, height: 4, borderRadius: 99, background: "#e0e0e0" }} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "6px 24px 18px" }}>
-          <Icon src="/assets/icons/svg/zoom-in.svg" fallback="zoom-in" size={17} color="rgba(255,255,255,.7)" />
-          <span style={{ fontSize: ".87rem", fontWeight: 700, color: "#e8e8e8", letterSpacing: ".01em" }}>
-            Zoom · {Math.round(zoom)}%
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 20px 4px" }}>
-          <button onClick={() => onZoomChange(Math.max(25, zoom - 10))} style={{
-            width: 46, height: 46, borderRadius: 13,
-            border: "1.5px solid rgba(255,255,255,.1)",
-            background: "rgba(255,255,255,.06)", cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          }}>
-            <Icon src="/assets/icons/svg/zoom-out.svg" fallback="zoom-out" size={20} color="rgba(255,255,255,.8)" />
-          </button>
-          <div style={{ flex: 1, display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", padding: "2px 0" }}>
-            {PRESETS.map(p => (
-              <button key={p} onClick={() => onZoomChange(p)} style={{
-                flexShrink: 0, height: 46, padding: "0 14px", borderRadius: 12,
-                border: zoom === p ? "1.5px solid rgba(255,255,255,.75)" : "1.5px solid rgba(255,255,255,.09)",
-                background: zoom === p ? "rgba(255,255,255,.15)" : "rgba(255,255,255,.04)",
-                color: zoom === p ? "#fff" : "rgba(255,255,255,.4)",
-                fontSize: ".8rem", fontWeight: zoom === p ? 700 : 500,
-                cursor: "pointer", transition: "all .12s",
-              }}>{p}%</button>
-            ))}
+
+        <div style={{ padding: "8px 20px 24px" }}>
+          <h3 style={{ fontSize: 17, fontWeight: 600, color: "#1a1a1a", marginBottom: 20 }}>
+            Ajustar Zoom
+          </h3>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <button
+              onClick={() => {
+                const newZoom = Math.max(25, localZoom - 10);
+                setLocalZoom(newZoom);
+                onZoomChange(newZoom);
+              }}
+              style={{
+                width: 44, height: 44, borderRadius: 12,
+                border: "1.5px solid #e0e0e0", background: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "#1a1a1a",
+              }}
+            >
+              <Icon src="/assets/icons/svg/zoom-out.svg" fallback="zoom-out" size={20} />
+            </button>
+
+            <input
+              type="range"
+              min="25"
+              max="200"
+              step="5"
+              value={localZoom}
+              onChange={(e) => {
+                const newZoom = Number(e.target.value);
+                setLocalZoom(newZoom);
+                onZoomChange(newZoom);
+              }}
+              style={{
+                flex: 1, height: 6, borderRadius: 99,
+                appearance: "none", background: "#e0e0e0",
+                outline: "none",
+              }}
+            />
+
+            <button
+              onClick={() => {
+                const newZoom = Math.min(200, localZoom + 10);
+                setLocalZoom(newZoom);
+                onZoomChange(newZoom);
+              }}
+              style={{
+                width: 44, height: 44, borderRadius: 12,
+                border: "1.5px solid #e0e0e0", background: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", color: "#1a1a1a",
+              }}
+            >
+              <Icon src="/assets/icons/svg/zoom-in.svg" fallback="zoom-in" size={20} />
+            </button>
           </div>
-          <button onClick={() => onZoomChange(Math.min(200, zoom + 10))} style={{
-            width: 46, height: 46, borderRadius: 13,
-            border: "1.5px solid rgba(255,255,255,.1)",
-            background: "rgba(255,255,255,.06)", cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          }}>
-            <Icon src="/assets/icons/svg/zoom-in.svg" fallback="zoom-in" size={20} color="rgba(255,255,255,.8)" />
-          </button>
+
+          <div style={{ textAlign: "center", fontSize: 24, fontWeight: 600, color: "#1a1a1a" }}>
+            {Math.round(localZoom)}%
+          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   PopupMenu — blur + animação spring + saída animada
-   ───────────────────────────────────────────────────────────────── */
-function PopupMenu({
-  items,
-  onClose,
-  anchorRef,
-  isDark,
-}: {
-  items: {
-    label: string;
-    src?: string;
-    fallback?: string;
-    onClick: () => void;
-    danger?: boolean;
-  }[];
-  onClose: () => void;
-  anchorRef: React.RefObject<HTMLElement | null>;
-  isDark: boolean;
-}) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [closing, setClosing] = useState(false);
-
-  const dismiss = useCallback(() => {
-    setClosing(true);
-    setTimeout(onClose, 150);
-  }, [onClose]);
-
-  useEffect(() => {
-    const handler = (e: PointerEvent) => {
-      if (
-        menuRef.current && !menuRef.current.contains(e.target as Node) &&
-        anchorRef.current && !anchorRef.current.contains(e.target as Node)
-      ) dismiss();
-    };
-    document.addEventListener("pointerdown", handler, true);
-    return () => document.removeEventListener("pointerdown", handler, true);
-  }, [dismiss, anchorRef]);
-
-  const bg      = isDark ? "rgba(26,26,26,0.88)" : "rgba(255,255,255,0.82)";
-  const border  = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
-  const textClr = isDark ? "#e8e8e8" : "#1a1a1a";
-  const dangerClr = "#e05555";
-  const hoverBg = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.05)";
-
-  return (
-    <>
-      <style>{`
-        @keyframes popIn {
-          from { opacity:0; transform:scale(.88) translateY(-10px); filter:blur(6px); }
-          to   { opacity:1; transform:scale(1)   translateY(0);     filter:blur(0);   }
-        }
-        @keyframes popOut {
-          from { opacity:1; transform:scale(1)   translateY(0);     filter:blur(0);   }
-          to   { opacity:0; transform:scale(.90) translateY(-8px);  filter:blur(4px); }
-        }
-        .pm-item { transition: background .1s; }
-        .pm-item:hover  { background: var(--pm-hover) !important; }
-        .pm-item:active { transform: scale(.98); }
-      `}</style>
-
-      <div onPointerDown={dismiss} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
-
-      <div
-        ref={menuRef}
-        style={{
-          position: "absolute",
-          top: "calc(100% + 8px)",
-          right: 0,
-          zIndex: 1000,
-          background: bg,
-          backdropFilter: "blur(24px) saturate(1.8)",
-          WebkitBackdropFilter: "blur(24px) saturate(1.8)",
-          border: `1px solid ${border}`,
-          borderRadius: 14,
-          boxShadow: isDark
-            ? "0 16px 56px rgba(0,0,0,.65), 0 2px 14px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.07)"
-            : "0 16px 56px rgba(0,0,0,.13), 0 2px 14px rgba(0,0,0,.06), inset 0 1px 0 rgba(255,255,255,.95)",
-          minWidth: 195,
-          overflow: "hidden",
-          transformOrigin: "top right",
-          animation: closing
-            ? "popOut .15s cubic-bezier(.4,0,.6,1) both"
-            : "popIn .2s cubic-bezier(.34,1.56,.64,1) both",
-        }}
-      >
-        {items.map((item, i) => (
-          <button
-            key={i}
-            className="pm-item"
-            onClick={() => { item.onClick(); dismiss(); }}
-            style={{
-              display: "flex", alignItems: "center", gap: 10,
-              width: "100%", padding: "11px 15px",
-              background: "none", border: "none",
-              borderTop: i > 0 ? `1px solid ${border}` : "none",
-              cursor: "pointer", textAlign: "left",
-              color: item.danger ? dangerClr : textClr,
-              fontSize: ".875rem", fontWeight: 500,
-              "--pm-hover": hoverBg,
-            } as React.CSSProperties}
-          >
-            {(item.src !== undefined || item.fallback) && (
-              <Icon
-                src={item.src}
-                fallback={item.fallback || "file-text"}
-                size={15}
-                color={item.danger ? dangerClr : textClr}
-                opacity={item.danger ? 0.9 : 0.65}
-              />
-            )}
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────
-   DrawerMenu (mobile) — estilo Manus
+   DrawerMenu — mobile only
    ───────────────────────────────────────────────────────────────── */
 function DrawerMenu({
   onClose,
   isDark,
   documentTitle,
+  onNavigateToSettings,
 }: {
   onClose: () => void;
   isDark: boolean;
-  documentTitle: string;
+  documentTitle?: string;
+  onNavigateToSettings?: () => void;
 }) {
-  const [closing, setClosing] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(2); // "Documentos" por defeito
-  const panelRef = useRef<HTMLDivElement>(null);
-  const startX   = useRef<number | null>(null);
+  const menuBg = isDark ? "#111" : "#fff";
+  const menuClr = isDark ? "#e0e0e0" : "#1a1a1a";
+  const menuItemHover = isDark ? "#222" : "#f4f4f4";
+  const menuBdr = isDark ? "#222" : "#f0f0f0";
 
-  const bg      = isDark ? "rgba(16,16,16,0.97)" : "rgba(252,252,252,0.97)";
-  const textClr = isDark ? "#e8e8e8" : "#111111";
-  const subClr  = isDark ? "rgba(255,255,255,.38)" : "rgba(0,0,0,.38)";
-  const activeItemBg = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.065)";
-  const hoverBg = isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.033)";
-  const divider = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.07)";
+  interface MenuItem {
+    icon: string;
+    lucideIcon: string;
+    label: string;
+    onClick: () => void;
+    isDanger?: boolean;
+  }
 
-  const dismiss = useCallback(() => {
-    setClosing(true);
-    setTimeout(onClose, 260);
-  }, [onClose]);
-
-  const onTouchStart = (e: React.TouchEvent) => { startX.current = e.touches[0].clientX; };
-  const onTouchMove  = (e: React.TouchEvent) => {
-    if (startX.current === null || !panelRef.current) return;
-    const dx = e.touches[0].clientX - startX.current;
-    if (dx < -10) panelRef.current.style.transform = `translateX(${Math.min(0, dx)}px)`;
-  };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (startX.current === null) return;
-    const dx = e.changedTouches[0].clientX - startX.current;
-    startX.current = null;
-    if (dx < -70) {
-      dismiss();
-    } else if (panelRef.current) {
-      panelRef.current.style.transition = "transform .22s cubic-bezier(.25,.46,.45,.94)";
-      panelRef.current.style.transform  = "translateX(0)";
-      setTimeout(() => { if (panelRef.current) panelRef.current.style.transition = ""; }, 250);
-    }
-  };
-
-  /* Nav com ícones reais da pasta onde existem */
-  const sections: {
-    title: string | null;
-    items: { label: string; src: string; fallback: string; badge?: string }[];
-  }[] = [
+  const menuItems: MenuItem[] = [
     {
-      title: null,
-      items: [
-        { label: "Novo documento", src: "/assets/icons/svg/document-add.svg", fallback: "file-plus" },
-        { label: "Procurar",       src: "",                                   fallback: "search"    },
-      ],
+      icon: "/assets/icons/svg/file-text.svg",
+      lucideIcon: "file-text",
+      label: "Novo documento",
+      onClick: () => { onClose(); },
     },
     {
-      title: "Biblioteca",
-      items: [
-        { label: "Documentos",  src: "/assets/icons/svg/document-text.svg", fallback: "file-text"             },
-        { label: "Recentes",    src: "",                                     fallback: "clock"                 },
-        { label: "Favoritos",   src: "/assets/icons/svg/star.svg",           fallback: "search"                },
-        { label: "Partilhados", src: "/assets/icons/svg/people.svg",         fallback: "users",  badge: "Novo" },
-        { label: "Arquivo",     src: "",                                     fallback: "archive"               },
-      ],
+      icon: "/assets/icons/svg/file-plus.svg",
+      lucideIcon: "file-plus",
+      label: "Abrir documento",
+      onClick: () => { onClose(); },
     },
     {
-      title: null,
-      items: [
-        { label: "Definições", src: "", fallback: "settings" },
-      ],
+      icon: "/assets/icons/svg/clock.svg",
+      lucideIcon: "clock",
+      label: "Documentos recentes",
+      onClick: () => { onClose(); },
+    },
+    {
+      icon: "/assets/icons/svg/users.svg",
+      lucideIcon: "users",
+      label: "Partilhados comigo",
+      onClick: () => { onClose(); },
+    },
+    {
+      icon: "/assets/icons/svg/archive.svg",
+      lucideIcon: "archive",
+      label: "Arquivo",
+      onClick: () => { onClose(); },
+    },
+    {
+      icon: "/assets/icons/svg/settings.svg",
+      lucideIcon: "settings",
+      label: "Configurações",
+      onClick: () => { 
+        onClose(); 
+        onNavigateToSettings?.();
+      },
     },
   ];
 
-  let globalIdx = 0;
-
   return (
-    <>
-      <style>{`
-        @keyframes drawerScrimIn  { from{opacity:0} to{opacity:1} }
-        @keyframes drawerScrimOut { from{opacity:1} to{opacity:0} }
-        @keyframes drawerPanelIn  { from{transform:translateX(-100%)} to{transform:translateX(0)} }
-        @keyframes drawerPanelOut { from{transform:translateX(0)} to{transform:translateX(-100%)} }
-        .dr-item { transition: background .1s; }
-        .dr-item:hover  { background: var(--dr-hover) !important; }
-        .dr-item:active { transform: scale(.98); transition: transform .06s; }
-      `}</style>
-
-      {/* Scrim com blur suave */}
-      <div onClick={dismiss} style={{
-        position: "fixed", inset: 0, zIndex: 8000,
-        background: "rgba(0,0,0,.44)",
-        backdropFilter: "blur(3px)",
-        WebkitBackdropFilter: "blur(3px)",
-        animation: closing ? "drawerScrimOut .26s ease both" : "drawerScrimIn .2s ease both",
-      }} />
-
-      {/* Painel */}
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 99999,
+        background: "rgba(0,0,0,0.4)",
+        display: "flex",
+        animation: "fadeIn 0.15s ease both",
+      }}
+    >
       <div
-        ref={panelRef}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
+        onClick={(e) => e.stopPropagation()}
         style={{
-          position: "fixed", top: 0, left: 0, bottom: 0,
-          width: 292,
-          zIndex: 8001,
-          background: bg,
-          backdropFilter: "blur(28px) saturate(1.9)",
-          WebkitBackdropFilter: "blur(28px) saturate(1.9)",
-          borderRight: `1px solid ${divider}`,
-          boxShadow: "6px 0 48px rgba(0,0,0,.26)",
+          width: "85%", maxWidth: 340,
+          background: menuBg,
+          boxShadow: "2px 0 40px rgba(0,0,0,0.2)",
+          animation: "slideInLeft 0.24s cubic-bezier(0.25,0.46,0.45,0.94) both",
           display: "flex", flexDirection: "column",
-          willChange: "transform",
-          animation: closing
-            ? "drawerPanelOut .26s cubic-bezier(.4,0,.6,1) both"
-            : "drawerPanelIn .28s cubic-bezier(.25,.46,.45,.94) both",
+          height: "100%",
         }}
       >
         {/* Header */}
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "56px 18px 18px",
-          borderBottom: `1px solid ${divider}`,
+          padding: "20px 20px 16px",
+          borderBottom: `1px solid ${menuBdr}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-            <img src="/assets/icons/app_icon.svg" alt="Doction" width={34} height={34}
-              style={{ borderRadius: 9, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: "1rem", fontWeight: 700, color: textClr, letterSpacing: "-.01em" }}>Doction</div>
-              <div style={{ fontSize: ".72rem", color: subClr, marginTop: 1 }}>Editor de documentos</div>
-            </div>
-          </div>
-          <button onClick={dismiss} style={{
-            width: 30, height: 30, borderRadius: 8, border: "none",
-            background: isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.06)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", flexShrink: 0,
+          <h2 style={{
+            fontSize: 20,
+            fontWeight: 700,
+            color: menuClr,
+            margin: 0,
           }}>
-            <Icon fallback="x" size={15} color={subClr} />
+            Doction
+          </h2>
+
+          {/* Botão X sem container */}
+          <button
+            onClick={onClose}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: menuClr,
+              padding: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 32,
+              height: 32,
+            }}
+          >
+            <Icon src="/assets/icons/svg/x.svg" fallback="x" size={20} />
           </button>
         </div>
 
-        {/* Documento actual */}
-        <div style={{
-          margin: "10px 10px 0",
-          padding: "10px 13px",
-          borderRadius: 11,
-          background: isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)",
-          border: `1px solid ${divider}`,
-          display: "flex", alignItems: "center", gap: 9,
-        }}>
-          <Icon src="/assets/icons/svg/document.svg" fallback="file-text" size={15} color={textClr} opacity={0.5} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: ".67rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 2 }}>
-              Documento actual
+        {/* Documento atual */}
+        {documentTitle && (
+          <div style={{
+            padding: "16px 20px",
+            borderBottom: `1px solid ${menuBdr}`,
+          }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#888", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Documento atual
             </div>
-            <div style={{ fontSize: ".84rem", fontWeight: 600, color: textClr, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {documentTitle || "Sem título"}
+            <div style={{ fontSize: 15, fontWeight: 600, color: menuClr }}>
+              {documentTitle}
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Navegação */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px 12px", marginTop: 8 }}>
-          {sections.map((section, si) => {
-            return (
-              <div key={si}>
-                {section.title && (
-                  <div style={{
-                    fontSize: ".67rem", fontWeight: 600, color: subClr,
-                    textTransform: "uppercase", letterSpacing: ".07em",
-                    padding: "10px 12px 5px",
-                  }}>
-                    {section.title}
-                  </div>
-                )}
-                {section.items.map((item) => {
-                  const idx = globalIdx++;
-                  const isActive = activeIdx === idx;
-                  return (
-                    <button
-                      key={idx}
-                      className="dr-item"
-                      onClick={() => setActiveIdx(idx)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12,
-                        width: "100%", padding: "11px 12px",
-                        borderRadius: 10,
-                        background: isActive ? activeItemBg : "none",
-                        border: "none",
-                        cursor: "pointer", textAlign: "left",
-                        color: isActive ? textClr : subClr,
-                        fontSize: ".875rem",
-                        fontWeight: isActive ? 600 : 500,
-                        "--dr-hover": hoverBg,
-                      } as React.CSSProperties}
-                    >
-                      <Icon
-                        src={item.src}
-                        fallback={item.fallback}
-                        size={18}
-                        color={isActive ? textClr : subClr}
-                        opacity={isActive ? 0.9 : 0.55}
-                      />
-                      <span style={{ flex: 1 }}>{item.label}</span>
-                      {item.badge && (
-                        <span style={{
-                          fontSize: ".65rem", fontWeight: 700,
-                          background: "#3B82F6", color: "#fff",
-                          borderRadius: 99, padding: "2px 7px",
-                          letterSpacing: ".02em",
-                        }}>
-                          {item.badge}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-                {si < sections.length - 1 && (
-                  <div style={{ height: 1, background: divider, margin: "6px 4px" }} />
-                )}
-              </div>
-            );
-          })}
+        {/* Menu items */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+          {menuItems.map((item, idx) => (
+            <button
+              key={idx}
+              onClick={item.onClick}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+                padding: "14px 20px",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: item.isDanger ? "#dc2626" : menuClr,
+                fontSize: 15,
+                fontWeight: 500,
+                textAlign: "left",
+                transition: "background 0.1s",
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = menuItemHover}
+              onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+            >
+              <Icon src={item.icon} fallback={item.lucideIcon} size={20} />
+              {item.label}
+            </button>
+          ))}
         </div>
 
         {/* Footer */}
         <div style={{
-          padding: "12px 12px",
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 14px)",
-          borderTop: `1px solid ${divider}`,
+          padding: "16px 20px",
+          borderTop: `1px solid ${menuBdr}`,
+          fontSize: 12,
+          color: "#888",
         }}>
-          <button style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            width: "100%",
-            background: isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)",
-            border: `1px solid ${divider}`,
-            borderRadius: 10, padding: "9px 12px",
-            cursor: "pointer",
-          }}>
-            <span style={{ fontSize: ".76rem", color: subClr, fontWeight: 500 }}>Partilhe o Doction</span>
-            <Icon src="/assets/icons/svg/share-social.svg" fallback="share" size={15} color={subClr} opacity={0.6} />
-          </button>
+          Doction v1.0.0
         </div>
       </div>
-    </>
+
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideInLeft {
+          from { transform: translateX(-100%); }
+          to { transform: translateX(0); }
+        }
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+      `}</style>
+    </div>
   );
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   Sidebar — desktop
+   Sidebar — desktop only
    ───────────────────────────────────────────────────────────────── */
-function Sidebar({ isDark, documentTitle }: { isDark: boolean; documentTitle: string }) {
-  const bg      = isDark ? "#161616" : "#f5f5f5";
-  const border  = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.07)";
-  const textClr = isDark ? "#e8e8e8" : "#1a1a1a";
-  const subClr  = isDark ? "rgba(255,255,255,.38)" : "rgba(0,0,0,.38)";
-  const hoverBg  = isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)";
-  const activeBg = isDark ? "rgba(255,255,255,.09)" : "rgba(0,0,0,.07)";
+function Sidebar({
+  isDark,
+  documentTitle,
+  onNavigateToSettings,
+}: {
+  isDark: boolean;
+  documentTitle?: string;
+  onNavigateToSettings?: () => void;
+}) {
+  const sidebarBg = isDark ? "#0a0a0a" : "#fafafa";
+  const sidebarClr = isDark ? "#e0e0e0" : "#1a1a1a";
+  const sidebarBdr = isDark ? "#1a1a1a" : "#e0e0e0";
+  const itemHover = isDark ? "#1a1a1a" : "#f0f0f0";
 
-  const navItems = [
-    { label: "Documentos",  src: "/assets/icons/svg/document-text.svg", fallback: "file-text", active: true  },
-    { label: "Recentes",    src: "",                                     fallback: "clock",     active: false },
-    { label: "Partilhados", src: "/assets/icons/svg/people.svg",         fallback: "users",     active: false },
-    { label: "Arquivo",     src: "",                                     fallback: "archive",   active: false },
-    { label: "Definições",  src: "",                                     fallback: "settings",  active: false },
+  interface SidebarItem {
+    icon: string;
+    lucideIcon: string;
+    label: string;
+    onClick: () => void;
+  }
+
+  const items: SidebarItem[] = [
+    {
+      icon: "/assets/icons/svg/file-text.svg",
+      lucideIcon: "file-text",
+      label: "Documentos",
+      onClick: () => {},
+    },
+    {
+      icon: "/assets/icons/svg/clock.svg",
+      lucideIcon: "clock",
+      label: "Recentes",
+      onClick: () => {},
+    },
+    {
+      icon: "/assets/icons/svg/users.svg",
+      lucideIcon: "users",
+      label: "Partilhados",
+      onClick: () => {},
+    },
+    {
+      icon: "/assets/icons/svg/archive.svg",
+      lucideIcon: "archive",
+      label: "Arquivo",
+      onClick: () => {},
+    },
   ];
 
   return (
-    <div style={{ width: 240, flexShrink: 0, background: bg, borderRight: `1px solid ${border}`, display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 16px 14px", borderBottom: `1px solid ${border}` }}>
-        <img src="/assets/icons/app_icon.svg" alt="Doction" width={28} height={28} style={{ borderRadius: 7, flexShrink: 0 }} />
-        <span style={{ fontSize: ".95rem", fontWeight: 700, color: textClr }}>Doction</span>
+    <div style={{
+      width: 240,
+      background: sidebarBg,
+      borderRight: `1px solid ${sidebarBdr}`,
+      display: "flex",
+      flexDirection: "column",
+      flexShrink: 0,
+    }}>
+      {/* Logo */}
+      <div style={{
+        padding: "20px 16px",
+        borderBottom: `1px solid ${sidebarBdr}`,
+      }}>
+        <h1 style={{
+          fontSize: 20,
+          fontWeight: 700,
+          color: sidebarClr,
+          margin: 0,
+        }}>
+          Doction
+        </h1>
       </div>
-      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${border}` }}>
-        <div style={{ fontSize: ".68rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 5 }}>Aberto</div>
-        <div style={{ fontSize: ".82rem", fontWeight: 500, color: textClr, wordBreak: "break-word", lineHeight: 1.4 }}>
-          {documentTitle || "Sem título"}
-        </div>
-      </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }}>
-        {navItems.map((item, i) => (
-          <button key={i} style={{
-            display: "flex", alignItems: "center", gap: 10,
-            width: "100%", padding: "9px 10px", borderRadius: 8,
-            background: item.active ? activeBg : "none", border: "none",
-            cursor: "pointer", textAlign: "left",
-            color: item.active ? textClr : subClr,
-            fontSize: ".85rem", fontWeight: item.active ? 600 : 500,
-            transition: "background .12s, color .12s",
-          }}
-            onMouseEnter={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = hoverBg; }}
-            onMouseLeave={e => { if (!item.active) (e.currentTarget as HTMLElement).style.background = "none"; }}
+
+      {/* Navigation */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "12px 0" }}>
+        {items.map((item, idx) => (
+          <button
+            key={idx}
+            onClick={item.onClick}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 16px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: sidebarClr,
+              fontSize: 14,
+              fontWeight: 500,
+              textAlign: "left",
+              transition: "background 0.1s",
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = itemHover}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
           >
-            <Icon src={item.src} fallback={item.fallback} size={16} color={item.active ? textClr : subClr} opacity={item.active ? 0.85 : 0.5} />
+            <Icon src={item.icon} fallback={item.lucideIcon} size={18} />
             {item.label}
           </button>
         ))}
+      </div>
+
+      {/* Settings button */}
+      <div style={{
+        padding: "12px 0",
+        borderTop: `1px solid ${sidebarBdr}`,
+      }}>
+        <button
+          onClick={onNavigateToSettings}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "10px 16px",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: sidebarClr,
+            fontSize: 14,
+            fontWeight: 500,
+            textAlign: "left",
+            transition: "background 0.1s",
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = itemHover}
+          onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+        >
+          <Icon src="/assets/icons/svg/settings.svg" fallback="settings" size={18} />
+          Configurações
+        </button>
       </div>
     </div>
   );
@@ -706,222 +650,381 @@ function AppBar({
   popupAnchorRef,
   popupItems,
   onPopupClose,
+  onRenameDocument,
 }: {
   isDark: boolean;
-  isMobile: boolean;
-  documentTitle: string;
-  onMenuClick: () => void;
-  onPopupToggle: () => void;
-  popupOpen: boolean;
-  popupAnchorRef: React.RefObject<HTMLButtonElement | null>;
-  popupItems: { label: string; src?: string; fallback?: string; onClick: () => void; danger?: boolean }[];
-  onPopupClose: () => void;
+  isMobile?: boolean;
+  documentTitle?: string;
+  onMenuClick?: () => void;
+  onPopupToggle?: () => void;
+  popupOpen?: boolean;
+  popupAnchorRef?: React.RefObject<HTMLButtonElement>;
+  popupItems?: Array<{
+    icon?: string;
+    lucideIcon?: string;
+    label: string;
+    onClick: () => void;
+    isDanger?: boolean;
+  }>;
+  onPopupClose?: () => void;
+  onRenameDocument?: () => void;
 }) {
-  /* Light → branco puro; Dark → quase preto sólido */
-  const bg       = isDark ? "rgba(14,14,14,0.97)" : "#ffffff";
-  const titleClr = isDark ? "#f0f0f0" : "#111111";
-  const subLabelClr = isDark ? "rgba(255,255,255,.28)" : "rgba(0,0,0,.28)";
-  const btnHover = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.07)";
-  const iconClr  = isDark ? "rgba(255,255,255,.68)" : "rgba(0,0,0,.60)";
-
-  /* Sombra subtil em vez de border sólida */
-  const shadow = isDark
-    ? "0 1px 0 rgba(255,255,255,.06)"
-    : "0 1px 0 rgba(0,0,0,.07), 0 2px 10px rgba(0,0,0,.03)";
+  const appbarBg = isDark ? "#0a0a0a" : "#fff";
+  const appbarClr = isDark ? "#e0e0e0" : "#1a1a1a";
+  const appbarBdr = isDark ? "#1a1a1a" : "#e0e0e0";
 
   return (
     <div style={{
-      height: 52, flexShrink: 0,
-      display: "flex", alignItems: "center",
-      padding: "0 10px 0 12px",
-      background: bg,
-      boxShadow: shadow,
-      position: "relative", zIndex: 100,
+      height: 56,
+      background: appbarBg,
+      borderBottom: `1px solid ${appbarBdr}`,
+      display: "flex",
+      alignItems: "center",
+      padding: "0 16px",
+      gap: 12,
+      flexShrink: 0,
     }}>
-      {/* Esquerda — ícone app (abre drawer no mobile) */}
-      <button onClick={isMobile ? onMenuClick : undefined} style={{
-        width: 36, height: 36, borderRadius: 10,
-        border: "none", background: "none",
-        cursor: isMobile ? "pointer" : "default",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0, padding: 0,
-      }}>
-        <img src="/assets/icons/app_icon.svg" alt="Doction" width={28} height={28} style={{ borderRadius: 7, display: "block" }} />
-      </button>
-
-      {/* Centro — título */}
-      {isMobile ? (
-        <div style={{
-          position: "absolute", left: "50%", transform: "translateX(-50%)",
-          maxWidth: "calc(100% - 120px)",
-          display: "flex", flexDirection: "column", alignItems: "center",
-          pointerEvents: "none", userSelect: "none",
-        }}>
-          <span style={{
-            fontSize: ".875rem", fontWeight: 700,
-            color: titleClr, letterSpacing: "-.01em",
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%",
-          }}>
-            {documentTitle || "Sem título"}
-          </span>
-          <span style={{ fontSize: ".65rem", color: subLabelClr, marginTop: 1, fontWeight: 500 }}>
-            Documento
-          </span>
-        </div>
-      ) : (
-        <div style={{ flex: 1 }} />
+      {/* Menu button (mobile only) */}
+      {isMobile && (
+        <button
+          onClick={onMenuClick}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+            color: appbarClr,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
       )}
 
-      {/* Direita — ··· */}
-      <div style={{ marginLeft: "auto", position: "relative" }}>
-        <button
-          ref={popupAnchorRef}
-          onClick={onPopupToggle}
+      {/* Document title (editable) */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <input
+          type="text"
+          value={documentTitle || "Sem título"}
+          onChange={(e) => onRenameDocument?.()}
+          onClick={onRenameDocument}
           style={{
-            width: 36, height: 36, borderRadius: 10, border: "none",
-            background: popupOpen ? btnHover : "none",
+            width: "100%",
+            background: "none",
+            border: "none",
+            outline: "none",
+            fontSize: isMobile ? 16 : 15,
+            fontWeight: 600,
+            color: appbarClr,
+            padding: "6px 8px",
+            borderRadius: 6,
             cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "background .12s", padding: 0,
           }}
-          onMouseEnter={e => { if (!popupOpen) (e.currentTarget as HTMLElement).style.background = btnHover; }}
-          onMouseLeave={e => { if (!popupOpen) (e.currentTarget as HTMLElement).style.background = "none"; }}
-        >
-          <Icon src="/assets/icons/svg/options.svg" fallback="more-vertical" size={20} color={iconClr} />
-        </button>
-
-        {popupOpen && (
-          <PopupMenu
-            items={popupItems}
-            onClose={onPopupClose}
-            anchorRef={popupAnchorRef as React.RefObject<HTMLElement | null>}
-            isDark={isDark}
-          />
-        )}
+          onFocus={(e) => {
+            e.target.style.background = isDark ? "#1a1a1a" : "#f4f4f4";
+          }}
+          onBlur={(e) => {
+            e.target.style.background = "none";
+          }}
+        />
       </div>
+
+      {/* More options button */}
+      <button
+        ref={popupAnchorRef}
+        onClick={onPopupToggle}
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 10,
+          border: "none",
+          background: popupOpen ? (isDark ? "#1a1a1a" : "#f0f0f0") : "none",
+          cursor: "pointer",
+          color: appbarClr,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <Icon src="/assets/icons/svg/more-vertical.svg" fallback="more-vertical" size={20} />
+      </button>
+
+      {/* Popup menu */}
+      {popupOpen && popupAnchorRef?.current && popupItems && (
+        <Popup
+          anchorEl={popupAnchorRef.current}
+          onClose={onPopupClose || (() => {})}
+          items={popupItems}
+          isDark={isDark}
+        />
+      )}
     </div>
   );
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   Main export
+   Popup
+   ───────────────────────────────────────────────────────────────── */
+function Popup({
+  anchorEl,
+  onClose,
+  items,
+  isDark,
+}: {
+  anchorEl: HTMLElement;
+  onClose: () => void;
+  items: Array<{
+    icon?: string;
+    lucideIcon?: string;
+    label: string;
+    onClick: () => void;
+    isDanger?: boolean;
+  }>;
+  isDark: boolean;
+}) {
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    const rect = anchorEl.getBoundingClientRect();
+    setPosition({
+      top: rect.bottom + 8,
+      left: rect.left - 200 + rect.width,
+    });
+  }, [anchorEl]);
+
+  const popupBg = isDark ? "#1a1a1a" : "#fff";
+  const popupClr = isDark ? "#e0e0e0" : "#1a1a1a";
+  const popupBdr = isDark ? "#2a2a2a" : "#e4e4e4";
+  const itemHover = isDark ? "#2a2a2a" : "#f4f4f4";
+
+  return (
+    <>
+      {/* Overlay */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 99997,
+        }}
+      />
+
+      {/* Popup */}
+      <div
+        style={{
+          position: "fixed",
+          top: position.top,
+          left: position.left,
+          zIndex: 99998,
+          background: popupBg,
+          border: `1px solid ${popupBdr}`,
+          borderRadius: 12,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+          minWidth: 220,
+          overflow: "hidden",
+          animation: "popIn 0.18s cubic-bezier(0.34,1.56,0.64,1) both",
+        }}
+      >
+        {items.map((item, idx) => (
+          <button
+            key={idx}
+            onClick={() => {
+              item.onClick();
+              onClose();
+            }}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "12px 16px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: item.isDanger ? "#dc2626" : popupClr,
+              fontSize: 14,
+              fontWeight: 500,
+              textAlign: "left",
+              transition: "background 0.1s",
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.background = itemHover}
+            onMouseLeave={(e) => e.currentTarget.style.background = "none"}
+          >
+            {item.icon && (
+              <Icon src={item.icon} fallback={item.lucideIcon || "file-text"} size={18} />
+            )}
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <style>{`
+        @keyframes popIn {
+          0% { opacity: 0; transform: scale(0.9) translateY(-4px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+      `}</style>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Main Component
    ───────────────────────────────────────────────────────────────── */
 export default function DocumentEditor({
   content,
   onChange,
-  placeholder = "Comece a escrever...",
+  placeholder = "Começa a escrever...",
   zoom,
   onZoomChange,
   isMobile = false,
-  documentTitle = "Documento sem título",
+  documentTitle = "Sem título",
   onTitleChange,
+  onNavigateToSettings,
 }: DocumentEditorProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
-  const containerRef     = useRef<HTMLDivElement>(null);
-  const pageRefs         = useRef<(HTMLDivElement | null)[]>([]);
-  const [pageCount, setPageCount]         = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const pagesContent = useRef<string[]>([""]);
+  const pinchRef = useRef<{ dist: number; startZoom: number } | null>(null);
+
+  const [pageCount, setPageCount] = useState(1);
   const [activePageIdx, setActivePageIdx] = useState(0);
-  const pagesContent     = useRef<string[]>([""]);
-  const pinchRef         = useRef<{ dist: number; startZoom: number } | null>(null);
-  const isInternalChange = useRef(false);
   const [showZoomModal, setShowZoomModal] = useState(false);
-  const [showDrawer,    setShowDrawer]    = useState(false);
-  const [popupOpen,     setPopupOpen]     = useState(false);
-  const popupAnchorRef   = useRef<HTMLButtonElement>(null);
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [popupOpen, setPopupOpen] = useState(false);
+  const popupAnchorRef = useRef<HTMLButtonElement>(null);
 
-  const canvasBg   = isDark ? "#1c1c1c" : "#e8e8e8";
-  const statusBg   = isDark ? "rgba(14,14,14,0.97)"  : "rgba(245,245,245,0.97)";
-  const statusBdr  = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.09)";
-  const statusClr  = isDark ? "rgba(255,255,255,.45)" : "rgba(0,0,0,.45)";
-  const statusSep  = isDark ? "rgba(255,255,255,.15)" : "rgba(0,0,0,.15)";
+  // Theme colors
+  const canvasBg = isDark ? "#000" : "#f4f4f4";
   const pageShadow = isDark
-    ? "0 2px 12px rgba(0,0,0,.5), 0 8px 40px rgba(0,0,0,.3)"
-    : "0 2px 8px rgba(0,0,0,.12), 0 8px 32px rgba(0,0,0,.08)";
-  const pageNumClr = isDark ? "#666" : "#aaa";
+    ? "0 4px 16px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.08)"
+    : "0 2px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04)";
+  const pageNumClr = isDark ? "#666" : "#999";
+  const statusBg = isDark ? "rgba(10,10,10,0.95)" : "rgba(255,255,255,0.95)";
+  const statusBdr = isDark ? "#1a1a1a" : "#e0e0e0";
+  const statusClr = isDark ? "#888" : "#666";
+  const statusSep = isDark ? "#333" : "#d0d0d0";
 
-  /* Popup items usando ícones reais da pasta */
+  // Popup items
   const popupItems = [
-    { label: "Partilhar",    src: "/assets/icons/svg/share-social.svg", fallback: "share",  onClick: () => {} },
-    { label: "Exportar PDF", src: "/assets/icons/svg/download.svg",     fallback: "archive", onClick: () => {} },
-    { label: "Renomear",     src: "/assets/icons/svg/pencil.svg",       fallback: "edit",   onClick: () => {} },
-    { label: "Apagar",       src: "",                                   fallback: "trash",  onClick: () => {}, danger: true },
+    {
+      icon: "/assets/icons/svg/edit.svg",
+      lucideIcon: "edit",
+      label: "Renomear documento",
+      onClick: () => {
+        const newTitle = prompt("Novo nome do documento:", documentTitle);
+        if (newTitle && newTitle.trim()) {
+          onTitleChange?.(newTitle.trim());
+        }
+      },
+    },
+    {
+      icon: "/assets/icons/svg/download.svg",
+      lucideIcon: "download",
+      label: "Transferir como PDF",
+      onClick: () => {
+        // Implementar download PDF
+        alert("Funcionalidade de download em desenvolvimento");
+      },
+    },
+    {
+      icon: "/assets/icons/svg/share.svg",
+      lucideIcon: "share",
+      label: "Partilhar documento",
+      onClick: () => {
+        alert("Funcionalidade de partilha em desenvolvimento");
+      },
+    },
+    {
+      icon: "/assets/icons/svg/trash.svg",
+      lucideIcon: "trash",
+      label: "Eliminar documento",
+      onClick: () => {
+        if (confirm("Tens a certeza que queres eliminar este documento?")) {
+          alert("Documento eliminado");
+        }
+      },
+      isDanger: true,
+    },
   ];
 
   useEffect(() => {
-    const calc = () => {
-      if (!containerRef.current) return;
-      const adapted = isMobile ? computeAdaptiveZoom(containerRef.current.clientWidth) : 100;
-      onZoomChange(adapted);
-    };
-    calc();
-    const ro = new ResizeObserver(calc);
-    if (containerRef.current) ro.observe(containerRef.current);
-    return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile]);
+    if (!containerRef.current || !isMobile) return;
+    const w = containerRef.current.offsetWidth;
+    const adaptiveZoom = computeAdaptiveZoom(w);
+    if (Math.abs(zoom - adaptiveZoom) > 5) onZoomChange(adaptiveZoom);
+  }, [isMobile, zoom, onZoomChange]);
 
-  useEffect(() => {
-    if (isInternalChange.current) { isInternalChange.current = false; return; }
-    const el = pageRefs.current[0];
-    if (el && el.innerHTML !== content) { el.innerHTML = content; pagesContent.current[0] = content; }
-  }, [content]);
-
-  const handlePageInput = useCallback((pageIdx: number) => {
-    const el = pageRefs.current[pageIdx];
+  const handlePageInput = useCallback((idx: number) => {
+    const el = pageRefs.current[idx];
     if (!el) return;
-    pagesContent.current[pageIdx] = el.innerHTML;
+    pagesContent.current[idx] = el.innerHTML;
+
+    const allHTML = pagesContent.current.join("");
+    onChange(allHTML);
+
     if (el.scrollHeight > CONTENT_H + 20) {
-      const overflow = detectOverflowedNodes(el, CONTENT_H);
-      if (overflow.length > 0) {
-        const nextIdx = pageIdx + 1;
-        if (nextIdx >= pageCount) { setPageCount(c => c + 1); pagesContent.current[nextIdx] = ""; }
-        const overflowHTML = overflow.map(n => {
-          const tmp = document.createElement("div");
-          tmp.appendChild(n.cloneNode(true));
-          n.parentNode?.removeChild(n);
-          return tmp.innerHTML;
-        }).join("");
-        pagesContent.current[pageIdx] = el.innerHTML;
-        const nextEl = pageRefs.current[nextIdx];
-        if (nextEl) { nextEl.innerHTML = overflowHTML + (pagesContent.current[nextIdx] || ""); pagesContent.current[nextIdx] = nextEl.innerHTML; }
-        else { pagesContent.current[nextIdx] = overflowHTML + (pagesContent.current[nextIdx] || ""); }
+      const overflowHTML = extractOverflow(el);
+      if (overflowHTML.trim()) {
+        if (idx === pageCount - 1) {
+          pagesContent.current.push(overflowHTML);
+          setPageCount((c) => c + 1);
+        } else {
+          const nextEl = pageRefs.current[idx + 1];
+          if (nextEl) {
+            nextEl.innerHTML = overflowHTML + nextEl.innerHTML;
+            pagesContent.current[idx + 1] = nextEl.innerHTML;
+          }
+        }
       }
     }
-    isInternalChange.current = true;
-    onChange(pagesContent.current[0] || "");
   }, [pageCount, onChange]);
 
-  function detectOverflowedNodes(el: HTMLDivElement, maxH: number): Node[] {
-    const overflowed: Node[] = [];
-    for (let i = el.childNodes.length - 1; i >= 0; i--) {
-      if (el.scrollHeight <= maxH + 10) break;
-      const child = el.childNodes[i];
-      overflowed.unshift(child);
+  function extractOverflow(el: HTMLDivElement): string {
+    const children = Array.from(el.childNodes);
+    let overflow = "";
+    for (let i = children.length - 1; i >= 0; i--) {
+      const child = children[i];
+      if (el.scrollHeight <= CONTENT_H + 20) break;
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        overflow = (child as HTMLElement).outerHTML + overflow;
+      } else if (child.nodeType === Node.TEXT_NODE) {
+        overflow = (child.textContent || "") + overflow;
+      }
       el.removeChild(child);
     }
-    return overflowed;
+    return overflow;
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, pageIdx: number) => {
-    if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertHTML", false, "&nbsp;&nbsp;&nbsp;&nbsp;"); }
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-      switch (e.key) {
-        case "b": e.preventDefault(); document.execCommand("bold");      break;
-        case "i": e.preventDefault(); document.execCommand("italic");    break;
-        case "u": e.preventDefault(); document.execCommand("underline"); break;
-        case "=": e.preventDefault(); onZoomChange(Math.min(200, zoom + 10)); break;
-        case "-": e.preventDefault(); onZoomChange(Math.max(25,  zoom - 10)); break;
-        case "0": e.preventDefault(); onZoomChange(100); break;
-      }
-    }
-    if (e.key === "Enter") {
-      const el = pageRefs.current[pageIdx];
-      if (el && el.scrollHeight >= CONTENT_H - 20) {
+  const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    if (e.key === "Backspace") {
+      const el = pageRefs.current[idx];
+      if (el && el.innerHTML === "" && idx > 0) {
         e.preventDefault();
-        const nextIdx = pageIdx + 1;
-        if (nextIdx >= pageCount) setPageCount(c => c + 1);
+        pagesContent.current.splice(idx, 1);
+        setPageCount((c) => c - 1);
+        const prevEl = pageRefs.current[idx - 1];
+        if (prevEl) { prevEl.focus(); placeCursorAtEnd(prevEl); }
+      }
+    } else if (e.key === "Enter" && e.shiftKey) {
+      e.preventDefault();
+      const nextIdx = idx + 1;
+      if (nextIdx >= pageCount) {
+        pagesContent.current.push("");
+        setPageCount((c) => c + 1);
         setTimeout(() => {
           const nextEl = pageRefs.current[nextIdx];
           if (nextEl) { nextEl.focus(); placeCursorAtStart(nextEl); }
@@ -929,6 +1032,15 @@ export default function DocumentEditor({
       }
     }
   };
+
+  function placeCursorAtEnd(el: HTMLElement) {
+    const range = document.createRange();
+    const sel   = window.getSelection();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }
 
   function placeCursorAtStart(el: HTMLElement) {
     const range = document.createRange();
@@ -979,7 +1091,7 @@ export default function DocumentEditor({
   return (
     <div style={{ display: "flex", flexDirection: "row", height: "100%", overflow: "hidden" }}>
 
-      {!isMobile && <Sidebar isDark={isDark} documentTitle={documentTitle} />}
+      {!isMobile && <Sidebar isDark={isDark} documentTitle={documentTitle} onNavigateToSettings={onNavigateToSettings} />}
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
@@ -993,6 +1105,12 @@ export default function DocumentEditor({
           popupAnchorRef={popupAnchorRef}
           popupItems={popupItems}
           onPopupClose={() => setPopupOpen(false)}
+          onRenameDocument={() => {
+            const newTitle = prompt("Novo nome do documento:", documentTitle);
+            if (newTitle && newTitle.trim()) {
+              onTitleChange?.(newTitle.trim());
+            }
+          }}
         />
 
         <div
@@ -1008,7 +1126,12 @@ export default function DocumentEditor({
           )}
 
           {showDrawer && isMobile && (
-            <DrawerMenu onClose={() => setShowDrawer(false)} isDark={isDark} documentTitle={documentTitle} />
+            <DrawerMenu 
+              onClose={() => setShowDrawer(false)} 
+              isDark={isDark} 
+              documentTitle={documentTitle}
+              onNavigateToSettings={onNavigateToSettings}
+            />
           )}
 
           <div style={{
@@ -1075,13 +1198,12 @@ export default function DocumentEditor({
             </div>
           </div>
 
+          {/* Status bar - SEM BLUR */}
           <div style={{
             height: 28, background: statusBg,
             borderTop: `1.5px solid ${statusBdr}`,
             display: "flex", alignItems: "center",
             padding: "0 14px", gap: 10, flexShrink: 0,
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
           }}>
             <span style={{ fontSize: 11, color: statusClr, fontWeight: 500 }}>Pronto</span>
             <span style={{ fontSize: 11, color: statusSep }}>·</span>
@@ -1097,7 +1219,7 @@ export default function DocumentEditor({
               }}
             >
               {isMobile && (
-                <Icon src="/assets/icons/svg/zoom-in.svg" fallback="zoom-in" size={10} color={statusClr} opacity={0.35} />
+                <Icon src="/assets/icons/svg/zoom-in.svg" fallback="zoom-in" size={10} color={statusClr} />
               )}
               {Math.round(zoom)}%
             </button>
