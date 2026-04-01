@@ -43,9 +43,8 @@ async function loadPdfJs(): Promise<any> {
   });
 }
 
-/* Upload canvas to freeimage.host — returns hosted URL */
-async function uploadToFreeimage(canvas: HTMLCanvasElement): Promise<string> {
-  const base64 = canvas.toDataURL("image/jpeg", 0.88).split(",")[1];
+/* Upload image blob/dataURL to freeimage.host — returns hosted URL */
+async function uploadToFreeimage(base64: string): Promise<string> {
   const fd = new FormData();
   fd.append("key", FREEIMAGE_KEY);
   fd.append("source", base64);
@@ -58,6 +57,158 @@ async function uploadToFreeimage(canvas: HTMLCanvasElement): Promise<string> {
     data?.image?.url?.full ||
     ""
   );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   PDF page → HTML  (text layout + embedded images via freeimage.host)
+───────────────────────────────────────────────────────────────── */
+async function pdfPageToHTML(
+  page: any,
+  onStatus: (msg: string) => void
+): Promise<string> {
+  const viewport = page.getViewport({ scale: 1 });
+  const pageW    = viewport.width;
+  const pageH    = viewport.height;
+
+  /* ── 1. Extract text content ── */
+  const textContent = await page.getTextContent();
+
+  /* Group items into lines by proximity of y-coordinate */
+  type TextItem = { str: string; x: number; y: number; w: number; h: number; fontName: string };
+  const items: TextItem[] = [];
+
+  for (const item of textContent.items as any[]) {
+    if (!item.str?.trim() && !item.str?.includes(" ")) continue;
+    const tx = item.transform;
+    // tx = [scaleX, skewY, skewX, scaleY, translateX, translateY]
+    items.push({
+      str:      item.str,
+      x:        tx[4],
+      y:        pageH - tx[5],   // flip Y so 0 = top
+      w:        item.width  ?? 0,
+      h:        Math.abs(tx[3]) || item.height || 12,
+      fontName: (item.fontName as string) ?? "",
+    });
+  }
+
+  /* Sort top→bottom, left→right */
+  items.sort((a, b) => a.y - b.y || a.x - b.x);
+
+  /* Group into lines (items within 4px vertically) */
+  const lines: TextItem[][] = [];
+  let curLine: TextItem[] = [];
+  let lastY = -9999;
+  for (const it of items) {
+    if (it.y - lastY > 4 && curLine.length > 0) { lines.push(curLine); curLine = []; }
+    curLine.push(it);
+    lastY = it.y;
+  }
+  if (curLine.length > 0) lines.push(curLine);
+
+  /* Build HTML paragraphs from lines */
+  const htmlLines: string[] = [];
+  let prevY = 0;
+  for (const line of lines) {
+    const text = line.map(it => it.str).join(" ").trim();
+    if (!text) continue;
+
+    const sample    = line[0];
+    const fontSize  = Math.round(sample.h);
+    const isBold    = /bold/i.test(sample.fontName);
+    const isItalic  = /italic|oblique/i.test(sample.fontName);
+    const gap       = sample.y - prevY;
+    prevY           = sample.y;
+
+    /* Detect heading by font size */
+    let tag = "p";
+    if (fontSize >= 20) tag = "h1";
+    else if (fontSize >= 16) tag = "h2";
+    else if (fontSize >= 14) tag = "h3";
+
+    let style = `font-size:${fontSize}px;`;
+    if (isBold)   style += "font-weight:700;";
+    if (isItalic) style += "font-style:italic;";
+    if (gap > fontSize * 1.5) style += "margin-top:1em;"; // extra spacing between blocks
+
+    htmlLines.push(`<${tag} style="${style}">${escapeHtml(text)}</${tag}>`);
+  }
+
+  /* ── 2. Extract embedded images ── */
+  onStatus("a extrair imagens…");
+  let imageHTML = "";
+
+  try {
+    const ops = await page.getOperatorList();
+    const OPS = (window as any).pdfjsLib.OPS;
+
+    // Collect unique image XObject names
+    const imgNames = new Set<string>();
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      if (ops.fnArray[i] === OPS.paintImageXObject || ops.fnArray[i] === OPS.paintImageXObjectRepeat) {
+        imgNames.add(ops.argsArray[i][0] as string);
+      }
+    }
+
+    for (const name of imgNames) {
+      onStatus(`a enviar imagem "${name}"…`);
+      try {
+        // Get image data from common object store
+        const imgData: any = await new Promise((res, rej) => {
+          page.commonObjs.get(name, (obj: any) => {
+            if (obj) res(obj); else rej(new Error("no obj"));
+          });
+        });
+
+        if (!imgData?.data) continue;
+
+        /* Draw image onto a temp canvas */
+        const tmpCanvas           = document.createElement("canvas");
+        tmpCanvas.width           = imgData.width;
+        tmpCanvas.height          = imgData.height;
+        const ctx                 = tmpCanvas.getContext("2d")!;
+        const idata               = ctx.createImageData(imgData.width, imgData.height);
+
+        // PDF image data may be RGB (3 channels) or RGBA (4)
+        const src = imgData.data as Uint8ClampedArray | Uint8Array;
+        const channels = src.length / (imgData.width * imgData.height);
+        if (channels === 3) {
+          for (let p = 0, q = 0; p < src.length; p += 3, q += 4) {
+            idata.data[q]     = src[p];
+            idata.data[q + 1] = src[p + 1];
+            idata.data[q + 2] = src[p + 2];
+            idata.data[q + 3] = 255;
+          }
+        } else {
+          idata.data.set(src);
+        }
+        ctx.putImageData(idata, 0, 0);
+
+        const base64 = tmpCanvas.toDataURL("image/jpeg", 0.88).split(",")[1];
+        const url    = await uploadToFreeimage(base64);
+        if (url) {
+          // Compute approximate display width as fraction of page
+          const displayW = Math.round((imgData.width / pageW) * CONTENT_W);
+          imageHTML += `<img src="${url}" alt="" style="max-width:100%;width:${displayW}px;height:auto;display:block;margin:8px 0;" />`;
+        }
+      } catch {
+        /* skip this image if extraction fails */
+      }
+    }
+  } catch {
+    /* operator list not available — skip images */
+  }
+
+  /* ── 3. Compose final page HTML ── */
+  const bodyHTML = htmlLines.join("\n") + (imageHTML ? `\n<div style="margin-top:12px;">${imageHTML}</div>` : "");
+  return bodyHTML || "<p></p>";
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -179,7 +330,6 @@ function PdfProgressModal({ isDark, label, pct }: { isDark: boolean; label: stri
         width: "min(320px,88vw)",
         boxShadow: "0 24px 80px rgba(0,0,0,.4)",
       }}>
-        {/* PDF icon */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
           <div style={{ width: 48, height: 48, borderRadius: 12, background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <Icon fallback="file-import" size={24} color="#fff" />
@@ -187,7 +337,6 @@ function PdfProgressModal({ isDark, label, pct }: { isDark: boolean; label: stri
         </div>
         <div style={{ fontSize: ".95rem", fontWeight: 700, color: textClr, textAlign: "center", marginBottom: 6 }}>A importar PDF</div>
         <div style={{ fontSize: ".8rem", color: subClr, textAlign: "center", marginBottom: 20, lineHeight: 1.4 }}>{label}</div>
-        {/* Progress bar */}
         <div style={{ height: 6, background: trackBg, borderRadius: 99, overflow: "hidden" }}>
           <div style={{ height: "100%", width: `${pct}%`, background: "#2563EB", borderRadius: 99, transition: "width .3s ease" }} />
         </div>
@@ -198,7 +347,7 @@ function PdfProgressModal({ isDark, label, pct }: { isDark: boolean; label: stri
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   SettingsModal — simplified: only Themes + Language, no blur, compact
+   SettingsModal
 ───────────────────────────────────────────────────────────────── */
 function SettingsModal({ isDark, onClose, onThemeChange }: {
   isDark: boolean; onClose: () => void; onThemeChange: (t: "light" | "dark" | "system") => void;
@@ -237,128 +386,45 @@ function SettingsModal({ isDark, onClose, onThemeChange }: {
         transform: "translate(-50%,-50%)", zIndex: 9801,
         background: bg, border: `1px solid ${border}`,
         borderRadius: 16, width: "min(400px,92vw)",
-        boxShadow: isDark ? "0 24px 80px rgba(0,0,0,.7)" : "0 24px 80px rgba(0,0,0,.18)",
-        overflow: "hidden", animation: "modalIn .2s ease both",
-      }}
-        onClick={e => e.stopPropagation()}>
-
+        boxShadow: "0 24px 80px rgba(0,0,0,.4)",
+        overflow: "hidden",
+      }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 14px", borderBottom: `1px solid ${divider}` }}>
-          <span style={{ fontSize: ".95rem", fontWeight: 700, color: textClr }}>Definições</span>
-          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: isDark ? "rgba(255,255,255,.09)" : "rgba(0,0,0,.07)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icon fallback="x" size={14} color={subClr} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 20px 16px", borderBottom: `1px solid ${divider}` }}>
+          <span style={{ fontSize: "1rem", fontWeight: 700, color: textClr }}>Definições</span>
+          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: subClr }}>
+            <Icon fallback="x" size={16} color={subClr} />
           </button>
         </div>
 
-        <div style={{ padding: "18px 18px 22px", display: "flex", flexDirection: "column", gap: 22 }}>
-
-          {/* ── Aparência ── */}
+        <div style={{ padding: "16px 20px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Theme */}
           <div>
-            <div style={{ fontSize: ".68rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>Aparência</div>
-            <div style={{ display: "flex", gap: 10 }}>
-              {themes.map(t => {
-                const isActive = theme === t.id;
-                return (
-                  <button key={t.id} onClick={() => onThemeChange(t.id)} style={{
-                    flex: 1, padding: 0, border: `2px solid ${isActive ? selBorder : border}`,
-                    borderRadius: 12, background: isActive
-                      ? (isDark ? "rgba(37,99,235,.14)" : "rgba(37,99,235,.08)")
-                      : surface,
-                    cursor: "pointer", overflow: "hidden", transition: "border-color .12s",
-                  }}>
-                    {/* Preview swatch */}
-                    <div style={{
-                      width: "100%", height: 52,
-                      background: t.id === "dark"
-                        ? "#1a1a1a"
-                        : t.id === "system"
-                        ? "linear-gradient(135deg,#f5f5f5 50%,#1a1a1a 50%)"
-                        : "#f5f5f5",
-                      display: "flex", flexDirection: "column", gap: 5, padding: "10px 8px",
-                    }}>
-                      <div style={{ height: 5, borderRadius: 3, background: t.id === "dark" ? "#333" : "#d5d5d5", width: "75%" }} />
-                      <div style={{ height: 4, borderRadius: 3, background: t.id === "dark" ? "#2a2a2a" : "#e0e0e0", width: "55%" }} />
-                      <div style={{ height: 4, borderRadius: 3, background: t.id === "dark" ? "#2a2a2a" : "#e0e0e0", width: "65%" }} />
-                    </div>
-                    <div style={{ padding: "7px 4px 9px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                      <Icon fallback={t.icon} size={13} color={isActive ? selBorder : subClr} />
-                      <span style={{ fontSize: ".7rem", fontWeight: isActive ? 700 : 500, color: isActive ? selBorder : subClr }}>{t.label}</span>
-                    </div>
-                  </button>
-                );
-              })}
+            <div style={{ fontSize: ".72rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Tema</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {themes.map(t => (
+                <button key={t.id} onClick={() => onThemeChange(t.id)}
+                  style={{ flex: 1, padding: "10px 0", borderRadius: 10, border: `1.5px solid ${theme === t.id ? selBorder : border}`, background: theme === t.id ? (isDark ? "rgba(37,99,235,.15)" : "rgba(37,99,235,.06)") : surface, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, transition: "all .12s" }}>
+                  <Icon fallback={t.icon} size={18} color={theme === t.id ? selBorder : subClr} />
+                  <span style={{ fontSize: ".75rem", fontWeight: 600, color: theme === t.id ? selBorder : subClr }}>{t.label}</span>
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Divider */}
-          <div style={{ height: 1, background: divider }} />
-
-          {/* ── Idioma ── */}
+          {/* Language */}
           <div>
-            <div style={{ fontSize: ".68rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>Idioma</div>
-            <div style={{ position: "relative" }}>
-              <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-                <Icon fallback="globe" size={15} color={subClr} />
-              </div>
-              <select
-                value={language}
-                onChange={e => setLanguage(e.target.value)}
-                style={{
-                  width: "100%", padding: "10px 36px 10px 36px",
-                  borderRadius: 10, border: `1.5px solid ${border}`,
-                  background: surface, color: textClr,
-                  fontSize: ".88rem", fontWeight: 500,
-                  appearance: "none", outline: "none", cursor: "pointer",
-                  fontFamily: "inherit",
-                }}>
-                {languages.map(l => (
-                  <option key={l.code} value={l.code}>{l.label}</option>
-                ))}
-              </select>
-              <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={subClr} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-              </div>
+            <div style={{ fontSize: ".72rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Idioma</div>
+            <div style={{ background: surface, borderRadius: 10, border: `1px solid ${border}`, overflow: "hidden" }}>
+              {languages.map((lang, i) => (
+                <div key={lang.code} onClick={() => setLanguage(lang.code)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", borderBottom: i < languages.length - 1 ? `1px solid ${divider}` : "none", cursor: "pointer", background: language === lang.code ? (isDark ? "rgba(37,99,235,.12)" : "rgba(37,99,235,.05)") : "none", transition: "background .1s" }}>
+                  <span style={{ fontSize: ".85rem", fontWeight: language === lang.code ? 600 : 400, color: language === lang.code ? selBorder : textClr }}>{lang.label}</span>
+                  {language === lang.code && <Icon fallback="check" size={15} color={selBorder} />}
+                </div>
+              ))}
             </div>
           </div>
-
-        </div>
-      </div>
-      <style>{`
-        @keyframes fadeInSm { from{opacity:0} to{opacity:1} }
-        @keyframes modalIn  { from{opacity:0;transform:translate(-50%,-50%) scale(.96)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
-      `}</style>
-    </>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────
-   ZoomModal — mobile only
-───────────────────────────────────────────────────────────────── */
-function ZoomModal({ zoom, onZoomChange, onClose }: { zoom: number; onZoomChange: (z: number) => void; onClose: () => void }) {
-  const startY = useRef<number | null>(null);
-  const PRESETS = [50, 75, 90, 100, 110, 125, 150, 175, 200];
-  return (
-    <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,.5)", animation: "zmFadeIn .16s ease both" }} />
-      <div
-        onTouchStart={e => { startY.current = e.touches[0].clientY; }}
-        onTouchMove={e => { if (startY.current !== null && e.touches[0].clientY - startY.current > 60) onClose(); }}
-        onTouchEnd={() => { startY.current = null; }}
-        style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999, background: "#191919", borderRadius: "20px 20px 0 0", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)", animation: "zmSlideUp .22s cubic-bezier(.25,.46,.45,.94) both", boxShadow: "0 -4px 48px rgba(0,0,0,.5)" }}>
-        <style>{`@keyframes zmFadeIn{from{opacity:0}to{opacity:1}}@keyframes zmSlideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
-        <div style={{ width: 36, height: 4, background: "rgba(255,255,255,.15)", borderRadius: 99, margin: "12px auto 18px" }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px 16px" }}>
-          <button onClick={() => onZoomChange(Math.max(25, zoom - 10))} style={{ width: 46, height: 46, borderRadius: 13, border: "1.5px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Icon fallback="zoom-out" size={20} color="rgba(255,255,255,.9)" />
-          </button>
-          <div style={{ flex: 1, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
-            {PRESETS.map(p => (
-              <button key={p} onClick={() => onZoomChange(p)} style={{ flexShrink: 0, height: 46, padding: "0 14px", borderRadius: 12, border: zoom === p ? "1.5px solid rgba(255,255,255,.75)" : "1.5px solid rgba(255,255,255,.09)", background: zoom === p ? "rgba(255,255,255,.15)" : "rgba(255,255,255,.04)", color: zoom === p ? "#fff" : "rgba(255,255,255,.5)", fontSize: ".8rem", fontWeight: zoom === p ? 700 : 500, cursor: "pointer" }}>{p}%</button>
-            ))}
-          </div>
-          <button onClick={() => onZoomChange(Math.min(200, zoom + 10))} style={{ width: 46, height: 46, borderRadius: 13, border: "1.5px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Icon fallback="zoom-in" size={20} color="rgba(255,255,255,.9)" />
-          </button>
         </div>
       </div>
     </>
@@ -370,34 +436,59 @@ function ZoomModal({ zoom, onZoomChange, onClose }: { zoom: number; onZoomChange
 ───────────────────────────────────────────────────────────────── */
 function PopupMenu({ items, onClose, anchorRef, isDark }: {
   items: { label: string; src?: string; fallback?: string; onClick: () => void; danger?: boolean }[];
-  onClose: () => void; anchorRef: React.RefObject<HTMLElement | null>; isDark: boolean;
+  onClose: () => void;
+  anchorRef: React.RefObject<HTMLElement | null>;
+  isDark: boolean;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [closing, setClosing] = useState(false);
-  const dismiss = useCallback(() => { setClosing(true); setTimeout(onClose, 150); }, [onClose]);
-  useEffect(() => {
-    const h = (e: PointerEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node) && anchorRef.current && !anchorRef.current.contains(e.target as Node)) dismiss();
-    };
-    document.addEventListener("pointerdown", h, true);
-    return () => document.removeEventListener("pointerdown", h, true);
-  }, [dismiss, anchorRef]);
-
   const bg      = isDark ? "#1e1e1e" : "#ffffff";
-  const border  = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
-  const textClr = isDark ? "#e8e8e8" : "#1a1a1a";
+  const border  = isDark ? "rgba(255,255,255,.09)" : "rgba(0,0,0,.09)";
+  const textClr = isDark ? "#e8e8e8" : "#111111";
   const hoverBg = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.05)";
 
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node) && !anchorRef.current?.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [onClose, anchorRef]);
+
+  return (
+    <div ref={menuRef} style={{
+      position: "absolute", top: "calc(100% + 6px)", right: 0,
+      background: bg, border: `1px solid ${border}`,
+      borderRadius: 12, padding: "5px",
+      boxShadow: isDark ? "0 12px 40px rgba(0,0,0,.55)" : "0 8px 32px rgba(0,0,0,.14)",
+      zIndex: 9000, minWidth: 192,
+      animation: "fadeInSm .1s ease both",
+    }}>
+      {items.map((item, i) => (
+        <button key={i} onClick={() => { item.onClick(); onClose(); }}
+          style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 10px", borderRadius: 8, border: "none", background: "none", cursor: "pointer", textAlign: "left", fontSize: ".85rem", fontWeight: 500, color: item.danger ? "#ef4444" : textClr, fontFamily: "inherit", transition: "background .1s" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = hoverBg; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; }}>
+          {item.fallback && <Icon src={item.src} fallback={item.fallback} size={16} color={item.danger ? "#ef4444" : textClr} opacity={0.75} />}
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   ZoomModal
+───────────────────────────────────────────────────────────────── */
+function ZoomModal({ zoom, onZoomChange, onClose }: { zoom: number; onZoomChange: (z: number) => void; onClose: () => void }) {
+  const steps = [50, 75, 100, 125, 150, 200];
   return (
     <>
-      <style>{`@keyframes popIn{from{opacity:0;transform:scale(.88) translateY(-10px)}to{opacity:1;transform:scale(1) translateY(0)}}@keyframes popOut{from{opacity:1;transform:scale(1) translateY(0)}to{opacity:0;transform:scale(.9) translateY(-8px)}}.pm-item{transition:background .1s}.pm-item:hover{background:var(--pm-hover)!important}`}</style>
-      <div onPointerDown={dismiss} style={{ position: "fixed", inset: 0, zIndex: 999 }} />
-      <div ref={menuRef} style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 1000, background: bg, border: `1px solid ${border}`, borderRadius: 14, boxShadow: isDark ? "0 16px 56px rgba(0,0,0,.65)" : "0 16px 56px rgba(0,0,0,.13)", minWidth: 195, overflow: "hidden", transformOrigin: "top right", animation: closing ? "popOut .15s cubic-bezier(.4,0,.6,1) both" : "popIn .2s cubic-bezier(.34,1.56,.64,1) both" }}>
-        {items.map((item, i) => (
-          <button key={i} className="pm-item" onClick={() => { item.onClick(); dismiss(); }}
-            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 15px", background: "none", border: "none", borderTop: i > 0 ? `1px solid ${border}` : "none", cursor: "pointer", textAlign: "left", color: item.danger ? "#e05555" : textClr, fontSize: ".875rem", fontWeight: 500, "--pm-hover": hoverBg } as React.CSSProperties}>
-            {(item.src !== undefined || item.fallback) && <Icon src={item.src} fallback={item.fallback || "file-text"} size={15} color={item.danger ? "#e05555" : textClr} opacity={0.8} />}
-            {item.label}
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9800, background: "rgba(0,0,0,.4)" }} />
+      <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", zIndex: 9801, background: "#1e1e1e", borderRadius: 14, padding: "8px", display: "flex", gap: 6, boxShadow: "0 12px 40px rgba(0,0,0,.5)" }}>
+        {steps.map(s => (
+          <button key={s} onClick={() => { onZoomChange(s); onClose(); }}
+            style={{ padding: "8px 14px", borderRadius: 9, border: "none", background: zoom === s ? "#2563EB" : "rgba(255,255,255,.08)", color: "#fff", cursor: "pointer", fontSize: ".8rem", fontWeight: 600 }}>
+            {s}%
           </button>
         ))}
       </div>
@@ -406,161 +497,50 @@ function PopupMenu({ items, onClose, anchorRef, isDark }: {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   DrawerMenu — mobile
+   DrawerMenu (mobile)
 ───────────────────────────────────────────────────────────────── */
 function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
   onClose: () => void; isDark: boolean; documentTitle: string; onOpenSettings: () => void;
 }) {
-  const [closing, setClosing]   = useState(false);
-  const [activeIdx, setActiveIdx] = useState(0);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const startX   = useRef<number | null>(null);
+  const bg      = isDark ? "#161616" : "#f5f5f5";
+  const border  = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.07)";
+  const textClr = isDark ? "#e8e8e8" : "#1a1a1a";
+  const subClr  = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
+  const hoverBg = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.05)";
 
-  const bg           = isDark ? "#101010" : "#f8f8f8";
-  const textClr      = isDark ? "#e8e8e8" : "#111111";
-  const subClr       = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
-  const activeItemBg = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.065)";
-  const hoverBg      = isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.033)";
-  const divider      = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.07)";
-
-  const dismiss = useCallback(() => {
-    setClosing(true);
-    setTimeout(onClose, 260);
-  }, [onClose]);
-
-  const onTouchStart = (e: React.TouchEvent) => { startX.current = e.touches[0].clientX; };
-  const onTouchMove  = (e: React.TouchEvent) => {
-    if (startX.current === null || !panelRef.current) return;
-    const dx = e.touches[0].clientX - startX.current;
-    if (dx < -10) panelRef.current.style.transform = `translateX(${Math.min(0, dx)}px)`;
-  };
-  const onTouchEnd = (e: React.TouchEvent) => {
-    if (startX.current === null) return;
-    const dx = e.changedTouches[0].clientX - startX.current;
-    startX.current = null;
-    if (dx < -70) {
-      dismiss();
-    } else if (panelRef.current) {
-      panelRef.current.style.transition = "transform .22s cubic-bezier(.25,.46,.45,.94)";
-      panelRef.current.style.transform  = "translateX(0)";
-      setTimeout(() => { if (panelRef.current) panelRef.current.style.transition = ""; }, 250);
-    }
-  };
-
-  const quickItems = [
-    { label: "Nova tarefa",  fallback: "file-plus", src: "/assets/icons/svg/document-add.svg" },
-    { label: "Procurar",     fallback: "search",    src: "" },
-    { label: "Biblioteca",   fallback: "archive",   src: "" },
-  ];
-  const projectItems = [
-    { label: "Documentos",  fallback: "file-text", src: "/assets/icons/svg/document-text.svg" },
-    { label: "Recentes",    fallback: "clock",      src: "" },
-    { label: "Favoritos",   fallback: "star",       src: "/assets/icons/svg/star.svg" },
-    { label: "Partilhados", fallback: "users",      src: "/assets/icons/svg/people.svg", badge: "Novo" },
-    { label: "Arquivo",     fallback: "archive",    src: "" },
+  const navItems = [
+    { label: "Documentos",  fallback: "file-text", action: onClose },
+    { label: "Recentes",    fallback: "clock",     action: onClose },
+    { label: "Partilhados", fallback: "users",     action: onClose },
+    { label: "Arquivo",     fallback: "archive",   action: onClose },
+    { label: "Definições",  fallback: "settings",  action: () => { onClose(); onOpenSettings(); } },
   ];
 
   return (
     <>
-      <style>{`
-        @keyframes drawerScrimIn  { from{opacity:0} to{opacity:1} }
-        @keyframes drawerScrimOut { from{opacity:1} to{opacity:0} }
-        @keyframes drawerPanelIn  { from{transform:translateX(-100%)} to{transform:translateX(0)} }
-        @keyframes drawerPanelOut { from{transform:translateX(0)} to{transform:translateX(-100%)} }
-        .dr-item { transition: background .1s; }
-        .dr-item:hover  { background: var(--dr-hover) !important; }
-        .dr-item:active { transform: scale(.98); }
-      `}</style>
-      <div onClick={dismiss} style={{ position: "fixed", inset: 0, zIndex: 8000, background: "rgba(0,0,0,.44)", animation: closing ? "drawerScrimOut .26s ease both" : "drawerScrimIn .2s ease both" }} />
-      <div ref={panelRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-        style={{ position: "fixed", top: 0, left: 0, bottom: 0, width: 286, zIndex: 8001, background: bg, borderRight: `1px solid ${divider}`, boxShadow: "6px 0 48px rgba(0,0,0,.26)", display: "flex", flexDirection: "column", willChange: "transform", animation: closing ? "drawerPanelOut .26s cubic-bezier(.4,0,.6,1) both" : "drawerPanelIn .28s cubic-bezier(.25,.46,.45,.94) both" }}>
-
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "54px 16px 14px", borderBottom: `1px solid ${divider}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src="/assets/icons/app_icon.svg" alt="Doction" width={32} height={32} style={{ borderRadius: 8, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: ".95rem", fontWeight: 700, color: textClr, letterSpacing: "-.01em" }}>Doction</div>
-              <div style={{ fontSize: ".7rem", color: subClr, marginTop: 1 }}>Editor de documentos</div>
-            </div>
-          </div>
-          <button onClick={dismiss} style={{ width: 34, height: 34, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: .7 }}>
-            <Icon fallback="sidebar" size={20} color={textClr} />
-          </button>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 8000, background: "rgba(0,0,0,.45)" }} />
+      <div style={{ position: "fixed", top: 0, left: 0, bottom: 0, width: "min(280px,80vw)", zIndex: 8001, background: bg, boxShadow: "4px 0 32px rgba(0,0,0,.3)", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 16px 14px", borderBottom: `1px solid ${border}` }}>
+          <img src="/assets/icons/app_icon.svg" alt="Doction" width={28} height={28} style={{ borderRadius: 7 }} />
+          <span style={{ fontSize: ".95rem", fontWeight: 700, color: textClr }}>Doction</span>
         </div>
-
-        {/* Current doc */}
-        <div style={{ margin: "10px 10px 0", padding: "9px 12px", borderRadius: 10, background: isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)", border: `1px solid ${divider}`, display: "flex", alignItems: "center", gap: 9 }}>
-          <Icon src="/assets/icons/svg/document.svg" fallback="file-text" size={14} color={textClr} opacity={0.7} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: ".63rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 2 }}>Documento actual</div>
-            <div style={{ fontSize: ".82rem", fontWeight: 600, color: textClr, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{documentTitle || "Sem título"}</div>
-          </div>
+        <div style={{ padding: "10px 8px", borderBottom: `1px solid ${border}` }}>
+          <div style={{ fontSize: ".68rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4, paddingLeft: 8 }}>Aberto</div>
+          <div style={{ fontSize: ".82rem", fontWeight: 500, color: textClr, paddingLeft: 8, wordBreak: "break-word" }}>{documentTitle || "Sem título"}</div>
         </div>
-
-        {/* Nav */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px 4px", marginTop: 8 }}>
-          {quickItems.map((item, i) => (
-            <button key={i} className="dr-item" onClick={() => setActiveIdx(i)}
-              style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 12px", borderRadius: 10, background: activeIdx === i ? activeItemBg : "none", border: "none", cursor: "pointer", textAlign: "left", color: activeIdx === i ? textClr : subClr, fontSize: ".875rem", fontWeight: activeIdx === i ? 600 : 500, "--dr-hover": hoverBg } as React.CSSProperties}>
-              <Icon src={item.src} fallback={item.fallback} size={18} color={activeIdx === i ? textClr : subClr} opacity={activeIdx === i ? 1 : 0.75} />
-              <span style={{ flex: 1 }}>{item.label}</span>
+        <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px" }}>
+          {navItems.map((item, i) => (
+            <button key={i} onClick={item.action}
+              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 10px", borderRadius: 9, border: "none", background: "none", cursor: "pointer", textAlign: "left", color: subClr, fontSize: ".875rem", fontWeight: 500, fontFamily: "inherit", transition: "background .12s" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = hoverBg; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; }}>
+              <Icon fallback={item.fallback} size={17} color={subClr} opacity={0.8} />
+              {item.label}
             </button>
           ))}
-
-          <div style={{ height: 1, background: divider, margin: "6px 4px" }} />
-
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px 5px" }}>
-            <span style={{ fontSize: ".67rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".07em" }}>Projetos</span>
-            <button style={{ width: 22, height: 22, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: subClr, opacity: .7 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
-          </div>
-          {projectItems.map((item, i) => {
-            const idx = quickItems.length + i;
-            const isActive = activeIdx === idx;
-            return (
-              <button key={idx} className="dr-item" onClick={() => setActiveIdx(idx)}
-                style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 12px", borderRadius: 10, background: isActive ? activeItemBg : "none", border: "none", cursor: "pointer", textAlign: "left", color: isActive ? textClr : subClr, fontSize: ".875rem", fontWeight: isActive ? 600 : 500, "--dr-hover": hoverBg } as React.CSSProperties}>
-                <Icon src={item.src} fallback={item.fallback} size={18} color={isActive ? textClr : subClr} opacity={isActive ? 1 : 0.75} />
-                <span style={{ flex: 1 }}>{item.label}</span>
-                {"badge" in item && item.badge && (
-                  <span style={{ fontSize: ".65rem", fontWeight: 700, background: "#3B82F6", color: "#fff", borderRadius: 99, padding: "2px 7px" }}>{item.badge}</span>
-                )}
-              </button>
-            );
-          })}
-
-          <div style={{ height: 1, background: divider, margin: "6px 4px" }} />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px 5px" }}>
-            <span style={{ fontSize: ".67rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".07em" }}>Todas as tarefas</span>
-          </div>
-          <button className="dr-item" onClick={() => setActiveIdx(99)}
-            style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", borderRadius: 10, background: activeIdx === 99 ? activeItemBg : "none", border: "none", cursor: "pointer", textAlign: "left", color: subClr, fontSize: ".875rem", "--dr-hover": hoverBg } as React.CSSProperties}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: isDark ? "#2a2a2a" : "#e8e8e8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Icon fallback="file-text" size={14} color={subClr} />
-            </div>
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{documentTitle || "Sem título"}</span>
-          </button>
         </div>
-
-        {/* Footer */}
-        <div style={{ borderTop: `1px solid ${divider}`, padding: "8px 8px", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 14px)", display: "flex", flexDirection: "column", gap: 2 }}>
-          <button className="dr-item" onClick={() => { dismiss(); setTimeout(onOpenSettings, 300); }}
-            style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 12px", borderRadius: 10, background: "none", border: "none", cursor: "pointer", textAlign: "left", color: subClr, fontSize: ".875rem", fontWeight: 500, "--dr-hover": hoverBg } as React.CSSProperties}>
-            <Icon fallback="settings" size={18} color={subClr} opacity={0.85} />
-            <span style={{ flex: 1 }}>Definições</span>
-          </button>
-          <div style={{ margin: "4px 0 2px", padding: "10px 12px", borderRadius: 12, background: isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.035)", border: `1px solid ${divider}`, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <Icon src="/assets/icons/svg/share-social.svg" fallback="share" size={16} color={subClr} opacity={0.7} />
-              <div>
-                <div style={{ fontSize: ".78rem", fontWeight: 600, color: textClr }}>Partilhe o Doction</div>
-                <div style={{ fontSize: ".68rem", color: subClr }}>Convide amigos para usar</div>
-              </div>
-            </div>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={subClr} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-          </div>
+        <div style={{ padding: "12px 16px 24px", borderTop: `1px solid ${border}` }}>
+          <div style={{ fontSize: ".72rem", color: subClr, textAlign: "center" }}>Doction · v1.0</div>
         </div>
       </div>
     </>
@@ -850,7 +830,7 @@ export default function DocumentEditor({
   const handleExport       = () => exportToPDF(pagesContent.current, documentTitle);
   const handleRenameConfirm = (newTitle: string) => { setShowRename(false); onTitleChange?.(newTitle); };
 
-  /* ── PDF import ── */
+  /* ── PDF import → HTML real ── */
   const handlePdfImport = useCallback(async (file: File) => {
     setPdfImporting(true);
     setPdfPct(0);
@@ -865,54 +845,29 @@ export default function DocumentEditor({
       const pageHTMLs: string[] = [];
 
       for (let i = 1; i <= total; i++) {
-        const progress = ((i - 1) / total) * 100;
-        setPdfPct(progress);
-        setPdfLabel(`Página ${i} de ${total} — a renderizar…`);
+        setPdfPct(((i - 1) / total) * 90);
+        setPdfLabel(`Página ${i} de ${total} — a converter…`);
 
-        const page     = doc.getPage(i);
-        const pg       = await page;
+        const page = await doc.getPage(i);
+        const html = await pdfPageToHTML(page, (msg) => {
+          setPdfLabel(`Página ${i} de ${total} — ${msg}`);
+        });
 
-        /* Render to canvas at document page width */
-        const RENDER_SCALE = CONTENT_W / pg.getViewport({ scale: 1 }).width;
-        const viewport      = pg.getViewport({ scale: RENDER_SCALE });
-
-        const canvas  = document.createElement("canvas");
-        canvas.width  = Math.round(viewport.width);
-        canvas.height = Math.round(viewport.height);
-        await pg.render({ canvasContext: canvas.getContext("2d")!, viewport }).promise;
-
-        setPdfLabel(`Página ${i} de ${total} — a enviar imagem…`);
-
-        /* Upload to freeimage.host */
-        let imgUrl = "";
-        try {
-          imgUrl = await uploadToFreeimage(canvas);
-        } catch {
-          /* fallback: keep as blank — upload failed */
-          imgUrl = "";
-        }
-
-        /* Build page HTML: image + optional caption */
-        const imgTag = imgUrl
-          ? `<img src="${imgUrl}" alt="Página ${i}" style="width:100%;display:block;border-radius:4px;" />`
-          : `<p style="color:#999;font-size:12px;">[Página ${i} — imagem não carregada]</p>`;
-
-        pageHTMLs.push(`<div style="margin-bottom:0;">${imgTag}</div>`);
-        setPdfPct(((i) / total) * 100);
+        pageHTMLs.push(html);
+        setPdfPct((i / total) * 95);
       }
 
       /* Insert into editor pages */
-      /* Clear existing content */
       pagesContent.current = pageHTMLs;
       setPageCount(pageHTMLs.length || 1);
 
-      /* Force re-init pages after render */
       setTimeout(() => {
         pageHTMLs.forEach((html, idx) => {
           const el = pageRefs.current[idx];
           if (el) { el.innerHTML = html; }
         });
         onChange(pageHTMLs[0] || "");
+        setPdfPct(100);
       }, 80);
 
     } catch (err) {
@@ -996,6 +951,7 @@ export default function DocumentEditor({
   /* ── KeyDown ── */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, pageIdx: number) => {
     if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertHTML", false, "&nbsp;&nbsp;&nbsp;&nbsp;"); }
+
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
       switch (e.key) {
         case "b": e.preventDefault(); document.execCommand("bold");      break;
@@ -1006,15 +962,34 @@ export default function DocumentEditor({
         case "0": e.preventDefault(); onZoomChange(100); break;
       }
     }
+
+    /* ── FIX: Enter só move para nova página se já houve overflow real ──
+       Não bloqueia o Enter — deixa o browser inserir a quebra de linha
+       normalmente. O handlePageInput irá detectar o overflow e mover o
+       conteúdo excedente para a página seguinte automaticamente.
+       Só criamos a nova página antecipadamente se a página estiver
+       completamente cheia (scrollHeight já excede CONTENT_H antes do Enter).
+    */
     if (e.key === "Enter") {
       const el = pageRefs.current[pageIdx];
-      if (el && el.scrollHeight >= CONTENT_H - 2) {
+      if (!el) return;
+      // A página está mesmo cheia? Então move o cursor para a próxima.
+      if (el.scrollHeight > CONTENT_H) {
         e.preventDefault();
         const nextIdx = pageIdx + 1;
-        if (nextIdx >= pageCount) { pagesContent.current.push(""); setPageCount(c => c + 1); }
-        setTimeout(() => { const nextEl = pageRefs.current[nextIdx]; if (nextEl) { nextEl.focus(); placeCursorAtStart(nextEl); } }, 30);
+        if (nextIdx >= pageCount) {
+          pagesContent.current.push("");
+          setPageCount(c => c + 1);
+        }
+        setTimeout(() => {
+          const nextEl = pageRefs.current[nextIdx];
+          if (nextEl) { nextEl.focus(); placeCursorAtStart(nextEl); }
+        }, 30);
       }
+      // Se não está cheia: não faz nada — deixa o browser inserir <br>/div normalmente
+      // e o handlePageInput trata do overflow se acontecer
     }
+
     if (e.key === "Backspace" && pageIdx > 0) {
       const el = pageRefs.current[pageIdx];
       if (!el) return;
