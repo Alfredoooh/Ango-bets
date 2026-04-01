@@ -12,11 +12,13 @@ interface DocumentEditorProps {
   onTitleChange?: (title: string) => void;
 }
 
-const PAGE_W          = 794;
-const PAGE_H          = 1123;
-const PAGE_MARGIN_PX  = 96;
-const CONTENT_W       = PAGE_W - PAGE_MARGIN_PX * 2;
-const CONTENT_H       = PAGE_H - PAGE_MARGIN_PX * 2;
+const PAGE_W         = 794;
+const PAGE_H         = 1123;
+const PAGE_MARGIN_PX = 96;
+const CONTENT_W      = PAGE_W - PAGE_MARGIN_PX * 2;
+const CONTENT_H      = PAGE_H - PAGE_MARGIN_PX * 2;
+
+const FREEIMAGE_KEY = "6d207e02198a847aa98d0a2a901485a5";
 
 function computeAdaptiveZoom(containerW: number): number {
   const raw = ((containerW - 32) / PAGE_W) * 100;
@@ -24,33 +26,70 @@ function computeAdaptiveZoom(containerW: number): number {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
+   PDF.js dynamic loader
+───────────────────────────────────────────────────────────────── */
+async function loadPdfJs(): Promise<any> {
+  if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = () => {
+      (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      resolve((window as any).pdfjsLib);
+    };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+/* Upload canvas to freeimage.host — returns hosted URL */
+async function uploadToFreeimage(canvas: HTMLCanvasElement): Promise<string> {
+  const base64 = canvas.toDataURL("image/jpeg", 0.88).split(",")[1];
+  const fd = new FormData();
+  fd.append("key", FREEIMAGE_KEY);
+  fd.append("source", base64);
+  fd.append("format", "json");
+  const res  = await fetch("https://freeimage.host/api/1/upload", { method: "POST", body: fd });
+  const data = await res.json();
+  return (
+    data?.image?.url?.direct ||
+    data?.image?.display_url ||
+    data?.image?.url?.full ||
+    ""
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
    Lucide SVG fallbacks
 ───────────────────────────────────────────────────────────────── */
 const LUCIDE: Record<string, (sz: number) => JSX.Element> = {
-  "file-text": sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>),
-  "file-plus": sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>),
-  "clock":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>),
-  "users":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>),
-  "archive":   sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>),
-  "settings":  sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>),
-  "search":    sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>),
-  "more-vertical": sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>),
-  "share":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>),
-  "edit":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>),
-  "trash":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>),
-  "x":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>),
-  "zoom-in":   sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>),
-  "zoom-out":  sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>),
-  "download":  sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>),
-  "star":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>),
-  "arrow-left":sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>),
-  "sidebar":   sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>),
-  "moon":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>),
-  "sun":       sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>),
-  "monitor":   sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>),
-  "check":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>),
-  "type":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>),
-  "image":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>),
+  "file-text":    sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>),
+  "file-plus":    sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>),
+  "clock":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>),
+  "users":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>),
+  "archive":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>),
+  "settings":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>),
+  "search":       sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>),
+  "more-vertical":sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>),
+  "share":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>),
+  "edit":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>),
+  "trash":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>),
+  "x":            sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>),
+  "zoom-in":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>),
+  "zoom-out":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>),
+  "download":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>),
+  "star":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>),
+  "arrow-left":   sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>),
+  "sidebar":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>),
+  "moon":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>),
+  "sun":          sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>),
+  "monitor":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>),
+  "check":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>),
+  "type":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>),
+  "image":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>),
+  "file-import":  sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="16" x2="12" y2="10"/></svg>),
+  "globe":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>),
 };
 
 function Icon({ src, fallback, size = 18, color = "currentColor", opacity = 1, style }: {
@@ -66,8 +105,11 @@ function Icon({ src, fallback, size = 18, color = "currentColor", opacity = 1, s
     const fn = LUCIDE[fallback];
     return <span style={wrapStyle}>{fn ? fn(size) : null}</span>;
   }
-  return <img src={src} alt="" width={size} height={size} onError={() => setUseFallback(true)}
-    style={{ flexShrink: 0, opacity, display: "block", ...style }} />;
+  return (
+    <img src={src} alt="" width={size} height={size}
+      onError={() => setUseFallback(true)}
+      style={{ flexShrink: 0, opacity, display: "block", ...style }} />
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────────────
@@ -81,8 +123,8 @@ function RenameModal({ isDark, currentTitle, onConfirm, onCancel }: {
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setTimeout(() => inputRef.current?.select(), 80); }, []);
 
-  const bg     = isDark ? "#1e1e1e" : "#ffffff";
-  const border = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
+  const bg      = isDark ? "#1e1e1e" : "#ffffff";
+  const border  = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
   const textClr = isDark ? "#f0f0f0" : "#111";
   const subClr  = isDark ? "rgba(255,255,255,.40)" : "rgba(0,0,0,.45)";
   const inputBg = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.04)";
@@ -117,213 +159,175 @@ function RenameModal({ isDark, currentTitle, onConfirm, onCancel }: {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   SettingsModal — modal inline, sem substituir a página
+   PdfProgressModal
+───────────────────────────────────────────────────────────────── */
+function PdfProgressModal({ isDark, label, pct }: { isDark: boolean; label: string; pct: number }) {
+  const bg      = isDark ? "#1e1e1e" : "#ffffff";
+  const border  = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
+  const textClr = isDark ? "#f0f0f0" : "#111";
+  const subClr  = isDark ? "rgba(255,255,255,.40)" : "rgba(0,0,0,.45)";
+  const trackBg = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.08)";
+
+  return (
+    <>
+      <div style={{ position: "fixed", inset: 0, zIndex: 9900, background: "rgba(0,0,0,.5)" }} />
+      <div style={{
+        position: "fixed", top: "50%", left: "50%",
+        transform: "translate(-50%,-50%)", zIndex: 9901,
+        background: bg, border: `1px solid ${border}`,
+        borderRadius: 16, padding: "28px 28px 24px",
+        width: "min(320px,88vw)",
+        boxShadow: "0 24px 80px rgba(0,0,0,.4)",
+      }}>
+        {/* PDF icon */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon fallback="file-import" size={24} color="#fff" />
+          </div>
+        </div>
+        <div style={{ fontSize: ".95rem", fontWeight: 700, color: textClr, textAlign: "center", marginBottom: 6 }}>A importar PDF</div>
+        <div style={{ fontSize: ".8rem", color: subClr, textAlign: "center", marginBottom: 20, lineHeight: 1.4 }}>{label}</div>
+        {/* Progress bar */}
+        <div style={{ height: 6, background: trackBg, borderRadius: 99, overflow: "hidden" }}>
+          <div style={{ height: "100%", width: `${pct}%`, background: "#2563EB", borderRadius: 99, transition: "width .3s ease" }} />
+        </div>
+        <div style={{ textAlign: "right", marginTop: 6, fontSize: ".75rem", color: subClr }}>{Math.round(pct)}%</div>
+      </div>
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   SettingsModal — simplified: only Themes + Language, no blur, compact
 ───────────────────────────────────────────────────────────────── */
 function SettingsModal({ isDark, onClose, onThemeChange }: {
   isDark: boolean; onClose: () => void; onThemeChange: (t: "light" | "dark" | "system") => void;
 }) {
   const { theme } = useTheme();
-  const [activeTab, setActiveTab] = useState<"conta" | "definicoes" | "utilizacao">("definicoes");
+  const [language, setLanguage] = useState("pt-PT");
 
-  const bg        = isDark ? "#181818" : "#ffffff";
-  const surface   = isDark ? "#222" : "#f7f7f7";
-  const border    = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.08)";
-  const textClr   = isDark ? "#f0f0f0" : "#111";
-  const subClr    = isDark ? "rgba(255,255,255,.45)" : "rgba(0,0,0,.45)";
-  const divider   = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.07)";
-  const selBorder = "#3B82F6";
+  const bg      = isDark ? "#1c1c1c" : "#ffffff";
+  const surface = isDark ? "#282828" : "#f2f2f7";
+  const border  = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.09)";
+  const textClr = isDark ? "#f0f0f0" : "#111";
+  const subClr  = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
+  const divider = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.07)";
+  const selBorder = "#2563EB";
 
   const themes: { id: "light" | "dark" | "system"; label: string; icon: string }[] = [
-    { id: "light",  label: "Claro",          icon: "sun"     },
-    { id: "dark",   label: "Escuro",          icon: "moon"    },
-    { id: "system", label: "Seguir Sistema",  icon: "monitor" },
+    { id: "light",  label: "Claro",   icon: "sun"     },
+    { id: "dark",   label: "Escuro",  icon: "moon"    },
+    { id: "system", label: "Sistema", icon: "monitor" },
   ];
 
-  const tabs: { id: "conta" | "definicoes" | "utilizacao"; label: string }[] = [
-    { id: "conta",      label: "Conta"       },
-    { id: "definicoes", label: "Definições"  },
-    { id: "utilizacao", label: "Utilização"  },
+  const languages = [
+    { code: "pt-PT", label: "Português (Portugal)" },
+    { code: "pt-BR", label: "Português (Brasil)"   },
+    { code: "en",    label: "English"               },
+    { code: "es",    label: "Español"               },
+    { code: "fr",    label: "Français"              },
   ];
 
   return (
     <>
       <div onClick={onClose}
-        style={{ position: "fixed", inset: 0, zIndex: 9800, background: "rgba(0,0,0,.5)", animation: "fadeInSm .15s ease both" }} />
+        style={{ position: "fixed", inset: 0, zIndex: 9800, background: "rgba(0,0,0,.45)", animation: "fadeInSm .15s ease both" }} />
       <div style={{
-        position: "fixed", inset: 0, zIndex: 9801,
-        display: "flex", alignItems: "flex-start", justifyContent: "center",
-        padding: "48px 16px 24px", overflowY: "auto",
-        pointerEvents: "none",
-      }}>
-        <div style={{
-          width: "min(560px,100%)", background: bg,
-          borderRadius: 20, overflow: "hidden",
-          boxShadow: isDark ? "0 32px 100px rgba(0,0,0,.8)" : "0 32px 100px rgba(0,0,0,.22)",
-          pointerEvents: "all",
-          animation: "modalIn .2s ease both",
-        }}
-          onClick={e => e.stopPropagation()}>
+        position: "fixed", top: "50%", left: "50%",
+        transform: "translate(-50%,-50%)", zIndex: 9801,
+        background: bg, border: `1px solid ${border}`,
+        borderRadius: 16, width: "min(400px,92vw)",
+        boxShadow: isDark ? "0 24px 80px rgba(0,0,0,.7)" : "0 24px 80px rgba(0,0,0,.18)",
+        overflow: "hidden", animation: "modalIn .2s ease both",
+      }}
+        onClick={e => e.stopPropagation()}>
 
-          {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "22px 22px 16px", borderBottom: `1px solid ${divider}` }}>
-            <span style={{ fontSize: "1.05rem", fontWeight: 700, color: textClr }}>Configurações</span>
-            <button onClick={onClose}
-              style={{ width: 32, height: 32, borderRadius: 8, border: "none", background: isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Icon fallback="x" size={16} color={subClr} />
-            </button>
-          </div>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 14px", borderBottom: `1px solid ${divider}` }}>
+          <span style={{ fontSize: ".95rem", fontWeight: 700, color: textClr }}>Definições</span>
+          <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: isDark ? "rgba(255,255,255,.09)" : "rgba(0,0,0,.07)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <Icon fallback="x" size={14} color={subClr} />
+          </button>
+        </div>
 
-          {/* Workspace header */}
-          <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 22px", borderBottom: `1px solid ${divider}` }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: "#7C3AED", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "#fff" }}>D</span>
+        <div style={{ padding: "18px 18px 22px", display: "flex", flexDirection: "column", gap: 22 }}>
+
+          {/* ── Aparência ── */}
+          <div>
+            <div style={{ fontSize: ".68rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>Aparência</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {themes.map(t => {
+                const isActive = theme === t.id;
+                return (
+                  <button key={t.id} onClick={() => onThemeChange(t.id)} style={{
+                    flex: 1, padding: 0, border: `2px solid ${isActive ? selBorder : border}`,
+                    borderRadius: 12, background: isActive
+                      ? (isDark ? "rgba(37,99,235,.14)" : "rgba(37,99,235,.08)")
+                      : surface,
+                    cursor: "pointer", overflow: "hidden", transition: "border-color .12s",
+                  }}>
+                    {/* Preview swatch */}
+                    <div style={{
+                      width: "100%", height: 52,
+                      background: t.id === "dark"
+                        ? "#1a1a1a"
+                        : t.id === "system"
+                        ? "linear-gradient(135deg,#f5f5f5 50%,#1a1a1a 50%)"
+                        : "#f5f5f5",
+                      display: "flex", flexDirection: "column", gap: 5, padding: "10px 8px",
+                    }}>
+                      <div style={{ height: 5, borderRadius: 3, background: t.id === "dark" ? "#333" : "#d5d5d5", width: "75%" }} />
+                      <div style={{ height: 4, borderRadius: 3, background: t.id === "dark" ? "#2a2a2a" : "#e0e0e0", width: "55%" }} />
+                      <div style={{ height: 4, borderRadius: 3, background: t.id === "dark" ? "#2a2a2a" : "#e0e0e0", width: "65%" }} />
+                    </div>
+                    <div style={{ padding: "7px 4px 9px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                      <Icon fallback={t.icon} size={13} color={isActive ? selBorder : subClr} />
+                      <span style={{ fontSize: ".7rem", fontWeight: isActive ? 700 : 500, color: isActive ? selBorder : subClr }}>{t.label}</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <div>
-              <div style={{ fontSize: ".9rem", fontWeight: 700, color: textClr }}>Doction</div>
-              <div style={{ fontSize: ".75rem", color: subClr }}>Pessoal</div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ height: 1, background: divider }} />
+
+          {/* ── Idioma ── */}
+          <div>
+            <div style={{ fontSize: ".68rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>Idioma</div>
+            <div style={{ position: "relative" }}>
+              <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                <Icon fallback="globe" size={15} color={subClr} />
+              </div>
+              <select
+                value={language}
+                onChange={e => setLanguage(e.target.value)}
+                style={{
+                  width: "100%", padding: "10px 36px 10px 36px",
+                  borderRadius: 10, border: `1.5px solid ${border}`,
+                  background: surface, color: textClr,
+                  fontSize: ".88rem", fontWeight: 500,
+                  appearance: "none", outline: "none", cursor: "pointer",
+                  fontFamily: "inherit",
+                }}>
+                {languages.map(l => (
+                  <option key={l.code} value={l.code}>{l.label}</option>
+                ))}
+              </select>
+              <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={subClr} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
             </div>
           </div>
 
-          {/* Tabs */}
-          <div style={{ display: "flex", borderBottom: `1px solid ${divider}`, padding: "0 22px" }}>
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-                padding: "12px 14px", border: "none", background: "none", cursor: "pointer",
-                fontSize: ".84rem", fontWeight: activeTab === t.id ? 700 : 500,
-                color: activeTab === t.id ? textClr : subClr,
-                borderBottom: activeTab === t.id ? `2px solid ${textClr}` : "2px solid transparent",
-                marginBottom: -1, transition: "color .12s",
-              }}>{t.label}</button>
-            ))}
-          </div>
-
-          {/* Tab content */}
-          <div style={{ padding: "22px 22px 28px" }}>
-
-            {activeTab === "definicoes" && (
-              <>
-                {/* Geral */}
-                <div style={{ fontSize: ".72rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>Geral</div>
-
-                {/* Idioma */}
-                <div style={{ marginBottom: 22 }}>
-                  <div style={{ fontSize: ".88rem", fontWeight: 600, color: textClr, marginBottom: 10 }}>Idioma</div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 14px", borderRadius: 10, border: `1.5px solid ${border}`, background: surface, cursor: "pointer" }}>
-                    <span style={{ fontSize: ".88rem", color: textClr }}>Português (Portugal)</span>
-                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={subClr} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                  </div>
-                </div>
-
-                {/* Aparência */}
-                <div style={{ marginBottom: 22 }}>
-                  <div style={{ fontSize: ".88rem", fontWeight: 600, color: textClr, marginBottom: 12 }}>Aparência</div>
-                  <div style={{ display: "flex", gap: 12 }}>
-                    {themes.map(t => {
-                      const isActive = theme === t.id;
-                      return (
-                        <button key={t.id} onClick={() => onThemeChange(t.id)} style={{
-                          flex: 1, padding: "0 0 10px", border: `2px solid ${isActive ? selBorder : border}`,
-                          borderRadius: 12, background: isActive ? (isDark ? "rgba(59,130,246,.12)" : "rgba(59,130,246,.07)") : surface,
-                          cursor: "pointer", transition: "all .14s",
-                          display: "flex", flexDirection: "column", alignItems: "center", gap: 0, overflow: "hidden",
-                        }}>
-                          {/* Preview card */}
-                          <div style={{
-                            width: "100%", height: 64, marginBottom: 8,
-                            background: t.id === "dark" ? "#1a1a1a" : t.id === "system" ? "linear-gradient(135deg, #fff 50%, #1a1a1a 50%)" : "#f5f5f5",
-                            display: "flex", flexDirection: "column", gap: 5, padding: "10px 8px",
-                          }}>
-                            <div style={{ height: 6, borderRadius: 3, background: t.id === "dark" ? "#333" : "#ddd", width: "80%" }} />
-                            <div style={{ height: 5, borderRadius: 3, background: t.id === "dark" ? "#2a2a2a" : "#e5e5e5", width: "60%" }} />
-                            <div style={{ height: 5, borderRadius: 3, background: t.id === "dark" ? "#2a2a2a" : "#e5e5e5", width: "70%" }} />
-                          </div>
-                          <span style={{ fontSize: ".73rem", fontWeight: isActive ? 700 : 500, color: isActive ? selBorder : subClr }}>{t.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Preferências de comunicação */}
-                <div>
-                  <div style={{ fontSize: ".72rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>Preferências</div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderTop: `1px solid ${divider}` }}>
-                    <div>
-                      <div style={{ fontSize: ".88rem", fontWeight: 500, color: textClr }}>Receber actualizações de produto</div>
-                      <div style={{ fontSize: ".76rem", color: subClr, marginTop: 2 }}>Receba acesso antecipado a novidades</div>
-                    </div>
-                    <ToggleSwitch isDark={isDark} />
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderTop: `1px solid ${divider}` }}>
-                    <div>
-                      <div style={{ fontSize: ".88rem", fontWeight: 500, color: textClr }}>Gravação automática</div>
-                      <div style={{ fontSize: ".76rem", color: subClr, marginTop: 2 }}>Guardar documentos automaticamente</div>
-                    </div>
-                    <ToggleSwitch isDark={isDark} defaultOn />
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 0", borderTop: `1px solid ${divider}` }}>
-                    <div>
-                      <div style={{ fontSize: ".88rem", fontWeight: 500, color: textClr }}>Mostrar número de páginas</div>
-                    </div>
-                    <ToggleSwitch isDark={isDark} defaultOn />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {activeTab === "conta" && (
-              <div style={{ textAlign: "center", padding: "40px 0" }}>
-                <div style={{ width: 56, height: 56, borderRadius: 16, background: "#7C3AED", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
-                  <span style={{ fontSize: "1.4rem", fontWeight: 800, color: "#fff" }}>D</span>
-                </div>
-                <div style={{ fontSize: ".94rem", fontWeight: 700, color: textClr }}>Utilizador Doction</div>
-                <div style={{ fontSize: ".8rem", color: subClr, marginTop: 4 }}>utilizador@doction.app</div>
-                <button style={{ marginTop: 20, padding: "10px 24px", borderRadius: 10, border: `1.5px solid ${border}`, background: "none", cursor: "pointer", fontSize: ".85rem", fontWeight: 600, color: "#e05555" }}>
-                  Terminar sessão
-                </button>
-              </div>
-            )}
-
-            {activeTab === "utilizacao" && (
-              <div>
-                <div style={{ fontSize: ".72rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>Armazenamento</div>
-                <div style={{ padding: "16px", borderRadius: 12, border: `1px solid ${border}`, background: surface }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                    <span style={{ fontSize: ".86rem", color: textClr, fontWeight: 500 }}>Documentos</span>
-                    <span style={{ fontSize: ".86rem", color: subClr }}>0.2 MB / 100 MB</span>
-                  </div>
-                  <div style={{ height: 6, background: isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.08)", borderRadius: 3, overflow: "hidden" }}>
-                    <div style={{ height: "100%", width: "0.2%", background: "#3B82F6", borderRadius: 3 }} />
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
       <style>{`
         @keyframes fadeInSm { from{opacity:0} to{opacity:1} }
-        @keyframes modalIn  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes modalIn  { from{opacity:0;transform:translate(-50%,-50%) scale(.96)} to{opacity:1;transform:translate(-50%,-50%) scale(1)} }
       `}</style>
     </>
-  );
-}
-
-/* Toggle Switch */
-function ToggleSwitch({ isDark, defaultOn = false }: { isDark: boolean; defaultOn?: boolean }) {
-  const [on, setOn] = useState(defaultOn);
-  return (
-    <button onClick={() => setOn(v => !v)} style={{
-      width: 44, height: 26, borderRadius: 99, border: "none", cursor: "pointer",
-      background: on ? "#3B82F6" : (isDark ? "rgba(255,255,255,.15)" : "rgba(0,0,0,.12)"),
-      position: "relative", transition: "background .18s", flexShrink: 0, padding: 0,
-    }}>
-      <div style={{
-        width: 20, height: 20, borderRadius: 99, background: "#fff",
-        position: "absolute", top: 3, left: on ? 21 : 3,
-        transition: "left .18s", boxShadow: "0 1px 4px rgba(0,0,0,.22)",
-      }} />
-    </button>
   );
 }
 
@@ -342,18 +346,12 @@ function ZoomModal({ zoom, onZoomChange, onClose }: { zoom: number; onZoomChange
         onTouchEnd={() => { startY.current = null; }}
         style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999, background: "#191919", borderRadius: "20px 20px 0 0", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 28px)", animation: "zmSlideUp .22s cubic-bezier(.25,.46,.45,.94) both", boxShadow: "0 -4px 48px rgba(0,0,0,.5)" }}>
         <style>{`@keyframes zmFadeIn{from{opacity:0}to{opacity:1}}@keyframes zmSlideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
-        <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 10px" }}>
-          <div style={{ width: 38, height: 4, borderRadius: 99, background: "rgba(255,255,255,.15)" }} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 9, padding: "6px 24px 18px" }}>
-          <Icon fallback="zoom-in" size={17} color="rgba(255,255,255,.85)" />
-          <span style={{ fontSize: ".87rem", fontWeight: 700, color: "#e8e8e8" }}>Zoom · {Math.round(zoom)}%</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 20px 4px" }}>
+        <div style={{ width: 36, height: 4, background: "rgba(255,255,255,.15)", borderRadius: 99, margin: "12px auto 18px" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 16px 16px" }}>
           <button onClick={() => onZoomChange(Math.max(25, zoom - 10))} style={{ width: 46, height: 46, borderRadius: 13, border: "1.5px solid rgba(255,255,255,.1)", background: "rgba(255,255,255,.06)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <Icon fallback="zoom-out" size={20} color="rgba(255,255,255,.9)" />
           </button>
-          <div style={{ flex: 1, display: "flex", gap: 6, overflowX: "auto", scrollbarWidth: "none", padding: "2px 0" }}>
+          <div style={{ flex: 1, display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
             {PRESETS.map(p => (
               <button key={p} onClick={() => onZoomChange(p)} style={{ flexShrink: 0, height: 46, padding: "0 14px", borderRadius: 12, border: zoom === p ? "1.5px solid rgba(255,255,255,.75)" : "1.5px solid rgba(255,255,255,.09)", background: zoom === p ? "rgba(255,255,255,.15)" : "rgba(255,255,255,.04)", color: zoom === p ? "#fff" : "rgba(255,255,255,.5)", fontSize: ".8rem", fontWeight: zoom === p ? 700 : 500, cursor: "pointer" }}>{p}%</button>
             ))}
@@ -385,8 +383,8 @@ function PopupMenu({ items, onClose, anchorRef, isDark }: {
     return () => document.removeEventListener("pointerdown", h, true);
   }, [dismiss, anchorRef]);
 
-  const bg = isDark ? "#1e1e1e" : "#ffffff";
-  const border = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
+  const bg      = isDark ? "#1e1e1e" : "#ffffff";
+  const border  = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
   const textClr = isDark ? "#e8e8e8" : "#1a1a1a";
   const hoverBg = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.05)";
 
@@ -408,22 +406,22 @@ function PopupMenu({ items, onClose, anchorRef, isDark }: {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   DrawerMenu — estilo Manus
+   DrawerMenu — mobile
 ───────────────────────────────────────────────────────────────── */
 function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
   onClose: () => void; isDark: boolean; documentTitle: string; onOpenSettings: () => void;
 }) {
-  const [closing, setClosing] = useState(false);
+  const [closing, setClosing]   = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const startX   = useRef<number | null>(null);
 
-  const bg         = isDark ? "#101010" : "#f8f8f8";
-  const textClr    = isDark ? "#e8e8e8" : "#111111";
-  const subClr     = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
+  const bg           = isDark ? "#101010" : "#f8f8f8";
+  const textClr      = isDark ? "#e8e8e8" : "#111111";
+  const subClr       = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
   const activeItemBg = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.065)";
-  const hoverBg    = isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.033)";
-  const divider    = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.07)";
+  const hoverBg      = isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.033)";
+  const divider      = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.07)";
 
   const dismiss = useCallback(() => {
     setClosing(true);
@@ -449,13 +447,11 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
     }
   };
 
-  /* Items — estilo Manus */
   const quickItems = [
     { label: "Nova tarefa",  fallback: "file-plus", src: "/assets/icons/svg/document-add.svg" },
     { label: "Procurar",     fallback: "search",    src: "" },
     { label: "Biblioteca",   fallback: "archive",   src: "" },
   ];
-
   const projectItems = [
     { label: "Documentos",  fallback: "file-text", src: "/assets/icons/svg/document-text.svg" },
     { label: "Recentes",    fallback: "clock",      src: "" },
@@ -475,15 +471,11 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
         .dr-item:hover  { background: var(--dr-hover) !important; }
         .dr-item:active { transform: scale(.98); }
       `}</style>
-
-      {/* Scrim */}
       <div onClick={dismiss} style={{ position: "fixed", inset: 0, zIndex: 8000, background: "rgba(0,0,0,.44)", animation: closing ? "drawerScrimOut .26s ease both" : "drawerScrimIn .2s ease both" }} />
-
-      {/* Painel */}
       <div ref={panelRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
         style={{ position: "fixed", top: 0, left: 0, bottom: 0, width: 286, zIndex: 8001, background: bg, borderRight: `1px solid ${divider}`, boxShadow: "6px 0 48px rgba(0,0,0,.26)", display: "flex", flexDirection: "column", willChange: "transform", animation: closing ? "drawerPanelOut .26s cubic-bezier(.4,0,.6,1) both" : "drawerPanelIn .28s cubic-bezier(.25,.46,.45,.94) both" }}>
 
-        {/* Header — ícone app + nome + botão ≡ toggle (estilo Manus) */}
+        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "54px 16px 14px", borderBottom: `1px solid ${divider}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img src="/assets/icons/app_icon.svg" alt="Doction" width={32} height={32} style={{ borderRadius: 8, flexShrink: 0 }} />
@@ -492,14 +484,12 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
               <div style={{ fontSize: ".7rem", color: subClr, marginTop: 1 }}>Editor de documentos</div>
             </div>
           </div>
-          {/* ícone de toggle do painel — igual ao do Manus (dois rectângulos) */}
-          <button onClick={dismiss}
-            style={{ width: 34, height: 34, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: .7 }}>
+          <button onClick={dismiss} style={{ width: 34, height: 34, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: .7 }}>
             <Icon fallback="sidebar" size={20} color={textClr} />
           </button>
         </div>
 
-        {/* Documento actual */}
+        {/* Current doc */}
         <div style={{ margin: "10px 10px 0", padding: "9px 12px", borderRadius: 10, background: isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)", border: `1px solid ${divider}`, display: "flex", alignItems: "center", gap: 9 }}>
           <Icon src="/assets/icons/svg/document.svg" fallback="file-text" size={14} color={textClr} opacity={0.7} />
           <div style={{ minWidth: 0 }}>
@@ -508,10 +498,8 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
           </div>
         </div>
 
-        {/* Navegação */}
+        {/* Nav */}
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px 4px", marginTop: 8 }}>
-
-          {/* Acções rápidas */}
           {quickItems.map((item, i) => (
             <button key={i} className="dr-item" onClick={() => setActiveIdx(i)}
               style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 12px", borderRadius: 10, background: activeIdx === i ? activeItemBg : "none", border: "none", cursor: "pointer", textAlign: "left", color: activeIdx === i ? textClr : subClr, fontSize: ".875rem", fontWeight: activeIdx === i ? 600 : 500, "--dr-hover": hoverBg } as React.CSSProperties}>
@@ -522,7 +510,6 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
 
           <div style={{ height: 1, background: divider, margin: "6px 4px" }} />
 
-          {/* Projetos */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px 5px" }}>
             <span style={{ fontSize: ".67rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".07em" }}>Projetos</span>
             <button style={{ width: 22, height: 22, border: "none", background: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: subClr, opacity: .7 }}>
@@ -537,7 +524,7 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
                 style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 12px", borderRadius: 10, background: isActive ? activeItemBg : "none", border: "none", cursor: "pointer", textAlign: "left", color: isActive ? textClr : subClr, fontSize: ".875rem", fontWeight: isActive ? 600 : 500, "--dr-hover": hoverBg } as React.CSSProperties}>
                 <Icon src={item.src} fallback={item.fallback} size={18} color={isActive ? textClr : subClr} opacity={isActive ? 1 : 0.75} />
                 <span style={{ flex: 1 }}>{item.label}</span>
-                {item.badge && (
+                {"badge" in item && item.badge && (
                   <span style={{ fontSize: ".65rem", fontWeight: 700, background: "#3B82F6", color: "#fff", borderRadius: 99, padding: "2px 7px" }}>{item.badge}</span>
                 )}
               </button>
@@ -545,13 +532,8 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
           })}
 
           <div style={{ height: 1, background: divider, margin: "6px 4px" }} />
-
-          {/* Todas as tarefas */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px 5px" }}>
             <span style={{ fontSize: ".67rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".07em" }}>Todas as tarefas</span>
-            <button style={{ border: "none", background: "none", cursor: "pointer", color: subClr, opacity: .6 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><polyline points="4 18 10 18"/></svg>
-            </button>
           </div>
           <button className="dr-item" onClick={() => setActiveIdx(99)}
             style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 12px", borderRadius: 10, background: activeIdx === 99 ? activeItemBg : "none", border: "none", cursor: "pointer", textAlign: "left", color: subClr, fontSize: ".875rem", "--dr-hover": hoverBg } as React.CSSProperties}>
@@ -559,9 +541,6 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
               <Icon fallback="file-text" size={14} color={subClr} />
             </div>
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{documentTitle || "Sem título"}</span>
-            <button style={{ border: "none", background: "none", cursor: "pointer", color: subClr, opacity: .5, padding: "2px 4px" }} onMouseDown={e => e.stopPropagation()}>
-              <Icon fallback="more-vertical" size={14} color={subClr} />
-            </button>
           </button>
         </div>
 
@@ -572,7 +551,6 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
             <Icon fallback="settings" size={18} color={subClr} opacity={0.85} />
             <span style={{ flex: 1 }}>Definições</span>
           </button>
-          {/* Partilhar Doction — card estilo Manus */}
           <div style={{ margin: "4px 0 2px", padding: "10px 12px", borderRadius: 12, background: isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.035)", border: `1px solid ${divider}`, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <Icon src="/assets/icons/svg/share-social.svg" fallback="share" size={16} color={subClr} opacity={0.7} />
@@ -595,11 +573,11 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
 function Sidebar({ isDark, documentTitle, onOpenSettings }: {
   isDark: boolean; documentTitle: string; onOpenSettings: () => void;
 }) {
-  const bg       = isDark ? "#161616" : "#f5f5f5";
-  const border   = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.07)";
-  const textClr  = isDark ? "#e8e8e8" : "#1a1a1a";
-  const subClr   = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
-  const hoverBg  = isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)";
+  const bg      = isDark ? "#161616" : "#f5f5f5";
+  const border  = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.07)";
+  const textClr = isDark ? "#e8e8e8" : "#1a1a1a";
+  const subClr  = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
+  const hoverBg = isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)";
   const activeBg = isDark ? "rgba(255,255,255,.09)" : "rgba(0,0,0,.07)";
 
   const navItems = [
@@ -681,7 +659,7 @@ function AppBar({ isDark, isMobile, documentTitle, onMenuClick, onPopupToggle, p
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   Image Resize Handles — handles ao selecionar imagem no editor
+   Image Resize Handles
 ───────────────────────────────────────────────────────────────── */
 function useImageResize(pageRefs: React.MutableRefObject<(HTMLDivElement | null)[]>) {
   useEffect(() => {
@@ -698,7 +676,6 @@ function useImageResize(pageRefs: React.MutableRefObject<(HTMLDivElement | null)
       removeOverlay();
       activeImg = img;
       const rect = img.getBoundingClientRect();
-      const scroll = { x: window.scrollX, y: window.scrollY };
 
       const ov = document.createElement("div");
       ov.style.cssText = `position:fixed;top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px;border:2px solid #3B82F6;pointer-events:none;z-index:9000;box-sizing:border-box;`;
@@ -716,13 +693,12 @@ function useImageResize(pageRefs: React.MutableRefObject<(HTMLDivElement | null)
       document.body.appendChild(ov);
       activeOverlay = ov;
 
-      // Reposição ao scroll/resize
       const reposition = () => {
         if (!activeImg || !activeOverlay) return;
         const r = activeImg.getBoundingClientRect();
-        activeOverlay.style.top    = r.top + "px";
-        activeOverlay.style.left   = r.left + "px";
-        activeOverlay.style.width  = r.width + "px";
+        activeOverlay.style.top    = r.top    + "px";
+        activeOverlay.style.left   = r.left   + "px";
+        activeOverlay.style.width  = r.width  + "px";
         activeOverlay.style.height = r.height + "px";
       };
       window.addEventListener("scroll", reposition, true);
@@ -736,33 +712,26 @@ function useImageResize(pageRefs: React.MutableRefObject<(HTMLDivElement | null)
       startX = e.clientX; startY = e.clientY;
       startW = activeImg.offsetWidth; startH = activeImg.offsetHeight;
       document.addEventListener("mousemove", doResize);
-      document.addEventListener("mouseup", endResize);
+      document.addEventListener("mouseup", stopResize);
     }
 
     function doResize(e: MouseEvent) {
-      if (!activeImg || !activeOverlay) return;
+      if (!activeImg) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
-      let newW = startW, newH = startH;
-      if (corner.includes("e")) newW = Math.max(40, startW + dx);
-      if (corner.includes("s")) newH = Math.max(40, startH + dy);
-      if (corner.includes("w")) newW = Math.max(40, startW - dx);
-      if (corner.includes("n")) newH = Math.max(40, startH - dy);
-      activeImg.style.width  = newW + "px";
-      activeImg.style.height = newH + "px";
-      activeImg.style.maxWidth = "none";
-      // reposição overlay
-      const r = activeImg.getBoundingClientRect();
-      activeOverlay.style.top    = r.top + "px";
-      activeOverlay.style.left   = r.left + "px";
-      activeOverlay.style.width  = r.width + "px";
-      activeOverlay.style.height = r.height + "px";
+      let nw = startW, nh = startH;
+      if (corner.includes("e")) nw = Math.max(40, startW + dx);
+      if (corner.includes("s")) nh = Math.max(40, startH + dy);
+      if (corner.includes("w")) nw = Math.max(40, startW - dx);
+      if (corner.includes("n")) nh = Math.max(40, startH - dy);
+      activeImg.style.width  = nw + "px";
+      activeImg.style.height = nh + "px";
+      if (activeImg) attachOverlay(activeImg);
     }
 
-    function endResize() {
+    function stopResize() {
       document.removeEventListener("mousemove", doResize);
-      document.removeEventListener("mouseup", endResize);
-      // reattach para actualizar posição
+      document.removeEventListener("mouseup", stopResize);
       if (activeImg) attachOverlay(activeImg);
     }
 
@@ -774,12 +743,10 @@ function useImageResize(pageRefs: React.MutableRefObject<(HTMLDivElement | null)
         removeOverlay();
       }
     }
-
     function onPageKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") removeOverlay();
     }
 
-    // Attach to all page refs
     const pages = pageRefs.current.filter(Boolean) as HTMLDivElement[];
     pages.forEach(p => {
       p.addEventListener("click", onPageClick);
@@ -839,12 +806,13 @@ export default function DocumentEditor({
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
 
-  const containerRef      = useRef<HTMLDivElement>(null);
-  const pageRefs          = useRef<(HTMLDivElement | null)[]>([]);
-  const pagesContent      = useRef<string[]>([""]);
-  const pinchRef          = useRef<{ dist: number; startZoom: number } | null>(null);
-  const isInternalChange  = useRef(false);
-  const lastPageCount     = useRef(1);
+  const containerRef     = useRef<HTMLDivElement>(null);
+  const pageRefs         = useRef<(HTMLDivElement | null)[]>([]);
+  const pagesContent     = useRef<string[]>([""]);
+  const pinchRef         = useRef<{ dist: number; startZoom: number } | null>(null);
+  const isInternalChange = useRef(false);
+  const lastPageCount    = useRef(1);
+  const pdfInputRef      = useRef<HTMLInputElement>(null);
 
   const [pageCount,     setPageCount]     = useState(1);
   const [activePageIdx, setActivePageIdx] = useState(0);
@@ -855,12 +823,17 @@ export default function DocumentEditor({
   const [popupOpen,     setPopupOpen]     = useState(false);
   const popupAnchorRef = useRef<HTMLButtonElement>(null);
 
+  /* PDF import state */
+  const [pdfImporting, setPdfImporting] = useState(false);
+  const [pdfLabel,     setPdfLabel]     = useState("");
+  const [pdfPct,       setPdfPct]       = useState(0);
+
   /* ── colours ── */
-  const canvasBg  = isDark ? "#1c1c1c" : "#e8e8e8";
-  const statusBg  = isDark ? "rgba(14,14,14,0.97)"   : "rgba(245,245,245,0.97)";
-  const statusBdr = isDark ? "rgba(255,255,255,.07)"  : "rgba(0,0,0,.09)";
-  const statusClr = isDark ? "rgba(255,255,255,.55)"  : "rgba(0,0,0,.55)";
-  const statusSep = isDark ? "rgba(255,255,255,.18)"  : "rgba(0,0,0,.18)";
+  const canvasBg   = isDark ? "#1c1c1c" : "#e8e8e8";
+  const statusBg   = isDark ? "rgba(14,14,14,0.97)"   : "rgba(245,245,245,0.97)";
+  const statusBdr  = isDark ? "rgba(255,255,255,.07)"  : "rgba(0,0,0,.09)";
+  const statusClr  = isDark ? "rgba(255,255,255,.55)"  : "rgba(0,0,0,.55)";
+  const statusSep  = isDark ? "rgba(255,255,255,.18)"  : "rgba(0,0,0,.18)";
   const pageShadow = isDark
     ? "0 2px 12px rgba(0,0,0,.5),0 8px 40px rgba(0,0,0,.3)"
     : "0 2px 8px rgba(0,0,0,.12),0 8px 32px rgba(0,0,0,.08)";
@@ -874,15 +847,91 @@ export default function DocumentEditor({
     if (navigator.share) { navigator.share({ title: documentTitle, text: "Partilhado via Doction" }).catch(() => {}); }
     else { navigator.clipboard.writeText(window.location.href).catch(() => {}); }
   };
-  const handleExport      = () => exportToPDF(pagesContent.current, documentTitle);
+  const handleExport       = () => exportToPDF(pagesContent.current, documentTitle);
   const handleRenameConfirm = (newTitle: string) => { setShowRename(false); onTitleChange?.(newTitle); };
 
+  /* ── PDF import ── */
+  const handlePdfImport = useCallback(async (file: File) => {
+    setPdfImporting(true);
+    setPdfPct(0);
+    setPdfLabel("A carregar PDF…");
+
+    try {
+      const pdfjs = await loadPdfJs();
+      const buf   = await file.arrayBuffer();
+      const doc   = await pdfjs.getDocument({ data: buf }).promise;
+      const total = doc.numPages;
+
+      const pageHTMLs: string[] = [];
+
+      for (let i = 1; i <= total; i++) {
+        const progress = ((i - 1) / total) * 100;
+        setPdfPct(progress);
+        setPdfLabel(`Página ${i} de ${total} — a renderizar…`);
+
+        const page     = doc.getPage(i);
+        const pg       = await page;
+
+        /* Render to canvas at document page width */
+        const RENDER_SCALE = CONTENT_W / pg.getViewport({ scale: 1 }).width;
+        const viewport      = pg.getViewport({ scale: RENDER_SCALE });
+
+        const canvas  = document.createElement("canvas");
+        canvas.width  = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        await pg.render({ canvasContext: canvas.getContext("2d")!, viewport }).promise;
+
+        setPdfLabel(`Página ${i} de ${total} — a enviar imagem…`);
+
+        /* Upload to freeimage.host */
+        let imgUrl = "";
+        try {
+          imgUrl = await uploadToFreeimage(canvas);
+        } catch {
+          /* fallback: keep as blank — upload failed */
+          imgUrl = "";
+        }
+
+        /* Build page HTML: image + optional caption */
+        const imgTag = imgUrl
+          ? `<img src="${imgUrl}" alt="Página ${i}" style="width:100%;display:block;border-radius:4px;" />`
+          : `<p style="color:#999;font-size:12px;">[Página ${i} — imagem não carregada]</p>`;
+
+        pageHTMLs.push(`<div style="margin-bottom:0;">${imgTag}</div>`);
+        setPdfPct(((i) / total) * 100);
+      }
+
+      /* Insert into editor pages */
+      /* Clear existing content */
+      pagesContent.current = pageHTMLs;
+      setPageCount(pageHTMLs.length || 1);
+
+      /* Force re-init pages after render */
+      setTimeout(() => {
+        pageHTMLs.forEach((html, idx) => {
+          const el = pageRefs.current[idx];
+          if (el) { el.innerHTML = html; }
+        });
+        onChange(pageHTMLs[0] || "");
+      }, 80);
+
+    } catch (err) {
+      console.error("PDF import error:", err);
+    } finally {
+      setPdfImporting(false);
+      setPdfLabel("");
+      setPdfPct(0);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+    }
+  }, [onChange]);
+
   const popupItems = [
-    { label: "Partilhar",    src: "/assets/icons/svg/share-social.svg", fallback: "share",    onClick: handleShare  },
-    { label: "Exportar PDF", src: "/assets/icons/svg/download.svg",     fallback: "download", onClick: handleExport },
-    { label: "Renomear",     src: "/assets/icons/svg/pencil.svg",       fallback: "edit",     onClick: () => setShowRename(true) },
-    { label: "Definições",   src: "",                                   fallback: "settings", onClick: () => setShowSettings(true) },
-    { label: "Apagar",       src: "",                                   fallback: "trash",    onClick: () => {}, danger: true },
+    { label: "Partilhar",      src: "/assets/icons/svg/share-social.svg", fallback: "share",       onClick: handleShare  },
+    { label: "Importar PDF",   src: "",                                   fallback: "file-import",  onClick: () => pdfInputRef.current?.click() },
+    { label: "Exportar PDF",   src: "/assets/icons/svg/download.svg",     fallback: "download",     onClick: handleExport },
+    { label: "Renomear",       src: "/assets/icons/svg/pencil.svg",       fallback: "edit",         onClick: () => setShowRename(true) },
+    { label: "Definições",     src: "",                                   fallback: "settings",     onClick: () => setShowSettings(true) },
+    { label: "Apagar",         src: "",                                   fallback: "trash",        onClick: () => {}, danger: true },
   ];
 
   /* ── adaptive zoom ── */
@@ -906,47 +955,24 @@ export default function DocumentEditor({
     if (el && el.innerHTML !== content) { el.innerHTML = content; pagesContent.current[0] = content; }
   }, [content]);
 
-  /* ════════════════════════════════════════════════════════
-     PAGE OVERFLOW — lógica correta de documento
-     Regras:
-     1. A página só transborda quando a escrita no FINAL da
-        página atual empurra conteúdo para fora.
-     2. NUNCA move conteúdo para a página seguinte por causa
-        de edição a meio do documento — só quando scrollHeight
-        da página atual excede CONTENT_H.
-     3. Se blocos voltarem a caber (apagar texto), a página
-        extra pode ser removida.
-  ════════════════════════════════════════════════════════ */
+  /* ── Page overflow ── */
   const handlePageInput = useCallback((pageIdx: number) => {
     const el = pageRefs.current[pageIdx];
     if (!el) return;
     pagesContent.current[pageIdx] = el.innerHTML;
 
-    /* ── overflow: conteúdo ultrapassa a altura da página ── */
     if (el.scrollHeight > CONTENT_H + 10) {
       const overflow = detectOverflowedNodes(el, CONTENT_H);
       if (overflow.length > 0) {
         const nextIdx = pageIdx + 1;
-        /* Cria a próxima página apenas se ainda não existir */
-        if (nextIdx >= pagesContent.current.length) {
-          pagesContent.current.push("");
-        }
-        if (nextIdx >= pageCount) {
-          setPageCount(c => { lastPageCount.current = c + 1; return c + 1; });
-        }
-        const overflowHTML = overflow.map(n => {
-          const tmp = document.createElement("div");
-          tmp.appendChild(n.cloneNode(true));
-          return tmp.innerHTML;
-        }).join("");
+        if (nextIdx >= pagesContent.current.length) pagesContent.current.push("");
+        if (nextIdx >= pageCount) setPageCount(c => { lastPageCount.current = c + 1; return c + 1; });
+        const overflowHTML = overflow.map(n => { const tmp = document.createElement("div"); tmp.appendChild(n.cloneNode(true)); return tmp.innerHTML; }).join("");
         pagesContent.current[pageIdx] = el.innerHTML;
-
-        /* Pré-pende o HTML transbordado ao início da página seguinte */
         const nextEl = pageRefs.current[nextIdx];
         if (nextEl) {
           nextEl.innerHTML = overflowHTML + (pagesContent.current[nextIdx] || "");
           pagesContent.current[nextIdx] = nextEl.innerHTML;
-          /* Recursão: a página seguinte também pode transbordar */
           handlePageInput(nextIdx);
         } else {
           pagesContent.current[nextIdx] = overflowHTML + (pagesContent.current[nextIdx] || "");
@@ -954,16 +980,12 @@ export default function DocumentEditor({
       }
     }
 
-    /* ── underflow: a página ficou vazia e é a última — remove ── */
     if (pageIdx > 0 && el.innerHTML.replace(/<br\s*\/?>/gi, "").trim() === "") {
       const totalPages = pagesContent.current.length;
       if (pageIdx === totalPages - 1) {
         pagesContent.current.splice(pageIdx, 1);
         setPageCount(c => Math.max(1, c - 1));
-        setTimeout(() => {
-          const prev = pageRefs.current[pageIdx - 1];
-          if (prev) { prev.focus(); placeCursorAtEnd(prev); }
-        }, 30);
+        setTimeout(() => { const prev = pageRefs.current[pageIdx - 1]; if (prev) { prev.focus(); placeCursorAtEnd(prev); } }, 30);
       }
     }
 
@@ -984,25 +1006,15 @@ export default function DocumentEditor({
         case "0": e.preventDefault(); onZoomChange(100); break;
       }
     }
-
-    /* Enter perto do fim — muda de página, mas só se não houver espaço */
     if (e.key === "Enter") {
       const el = pageRefs.current[pageIdx];
       if (el && el.scrollHeight >= CONTENT_H - 2) {
         e.preventDefault();
         const nextIdx = pageIdx + 1;
-        if (nextIdx >= pageCount) {
-          pagesContent.current.push("");
-          setPageCount(c => c + 1);
-        }
-        setTimeout(() => {
-          const nextEl = pageRefs.current[nextIdx];
-          if (nextEl) { nextEl.focus(); placeCursorAtStart(nextEl); }
-        }, 30);
+        if (nextIdx >= pageCount) { pagesContent.current.push(""); setPageCount(c => c + 1); }
+        setTimeout(() => { const nextEl = pageRefs.current[nextIdx]; if (nextEl) { nextEl.focus(); placeCursorAtStart(nextEl); } }, 30);
       }
     }
-
-    /* Backspace no início da página — mescla com a anterior se a anterior tiver espaço */
     if (e.key === "Backspace" && pageIdx > 0) {
       const el = pageRefs.current[pageIdx];
       if (!el) return;
@@ -1023,7 +1035,6 @@ export default function DocumentEditor({
     range.setStart(el, 0); range.collapse(true);
     sel?.removeAllRanges(); sel?.addRange(range);
   }
-
   function placeCursorAtEnd(el: HTMLElement) {
     const range = document.createRange(), sel = window.getSelection();
     range.selectNodeContents(el); range.collapse(false);
@@ -1064,7 +1075,7 @@ export default function DocumentEditor({
     return () => el.removeEventListener("wheel", handler);
   }, [zoom, onZoomChange]);
 
-  /* ── page content inline styles ── */
+  /* ── page content styles ── */
   const pageContentStyle: React.CSSProperties = {
     position: "absolute",
     top: PAGE_MARGIN_PX, left: PAGE_MARGIN_PX,
@@ -1075,7 +1086,6 @@ export default function DocumentEditor({
     color: "#1a1a1a", wordBreak: "break-word", whiteSpace: "pre-wrap",
   };
 
-  /* ── page CSS classes ── */
   const pageContentClass = `
     [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-3 [&_h1]:mt-2 [&_h1]:font-sans [&_h1]:leading-tight
     [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-2 [&_h2]:font-sans
@@ -1098,6 +1108,15 @@ export default function DocumentEditor({
 
   return (
     <div style={{ display: "flex", flexDirection: "row", height: "100%", overflow: "hidden" }}>
+
+      {/* Hidden PDF file input */}
+      <input
+        ref={pdfInputRef}
+        type="file"
+        accept="application/pdf"
+        style={{ display: "none" }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfImport(f); }}
+      />
 
       {!isMobile && (
         <Sidebar isDark={isDark} documentTitle={documentTitle} onOpenSettings={() => setShowSettings(true)} />
@@ -1136,6 +1155,10 @@ export default function DocumentEditor({
               onThemeChange={(t) => setTheme(t)} />
           )}
 
+          {pdfImporting && (
+            <PdfProgressModal isDark={isDark} label={pdfLabel} pct={pdfPct} />
+          )}
+
           {/* Canvas */}
           <div style={{ flex: 1, overflowY: "auto", overflowX: "auto", padding: "24px 16px", display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
             <div style={{
@@ -1171,7 +1194,9 @@ export default function DocumentEditor({
 
           {/* Status bar */}
           <div style={{ height: 28, background: statusBg, borderTop: `1.5px solid ${statusBdr}`, display: "flex", alignItems: "center", padding: "0 14px", gap: 10, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: statusClr, fontWeight: 500 }}>Pronto</span>
+            <span style={{ fontSize: 11, color: statusClr, fontWeight: 500 }}>
+              {pdfImporting ? "A importar PDF…" : "Pronto"}
+            </span>
             <span style={{ fontSize: 11, color: statusSep }}>·</span>
             <span style={{ fontSize: 11, color: statusClr }}>Pág. {activePageIdx + 1} / {pageCount}</span>
             <span style={{ fontSize: 11, color: statusSep }}>·</span>
