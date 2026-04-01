@@ -14,15 +14,33 @@ interface DocumentEditorProps {
 
 const PAGE_W         = 794;
 const PAGE_H         = 1123;
-const PAGE_MARGIN_PX = 96;
-const CONTENT_W      = PAGE_W - PAGE_MARGIN_PX * 2;
-const CONTENT_H      = PAGE_H - PAGE_MARGIN_PX * 2;
-
 
 function computeAdaptiveZoom(containerW: number): number {
   const raw = ((containerW - 32) / PAGE_W) * 100;
   return Math.max(25, Math.min(150, Math.round(raw)));
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Canvas-editor types
+───────────────────────────────────────────────────────────────── */
+type ObjType = "text" | "image";
+interface CanvasObj {
+  id: string;
+  type: ObjType;
+  x: number; y: number;
+  w: number; h: number;
+  content: string;
+  fontSize?: number;
+  fontWeight?: string;
+  color?: string;
+  fontFamily?: string;
+}
+interface PageData {
+  bgUrl: string;
+  objects: CanvasObj[];
+}
+
+function uid() { return Math.random().toString(36).slice(2, 9); }
 
 /* ─────────────────────────────────────────────────────────────────────
    PDF.js dynamic loader
@@ -42,13 +60,9 @@ async function loadPdfJs(): Promise<any> {
   });
 }
 
-/* Canvas → blob URL (sem upload externo, instantâneo) */
-function canvasToObjectURL(canvas: HTMLCanvasElement): Promise<string> {
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => {
-      if (blob) resolve(URL.createObjectURL(blob));
-      else resolve("");
-    }, "image/jpeg", 0.92);
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<string> {
+  return new Promise(res => {
+    canvas.toBlob(b => res(b ? URL.createObjectURL(b) : ""), "image/jpeg", 0.92);
   });
 }
 
@@ -56,32 +70,34 @@ function canvasToObjectURL(canvas: HTMLCanvasElement): Promise<string> {
    Lucide SVG fallbacks
 ───────────────────────────────────────────────────────────────── */
 const LUCIDE: Record<string, (sz: number) => JSX.Element> = {
-  "file-text":    sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>),
-  "file-plus":    sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>),
-  "clock":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>),
-  "users":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>),
-  "archive":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>),
-  "settings":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>),
-  "search":       sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>),
-  "more-vertical":sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>),
-  "share":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>),
-  "edit":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>),
-  "trash":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>),
-  "x":            sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>),
-  "zoom-in":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>),
-  "zoom-out":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>),
-  "download":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>),
-  "star":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>),
-  "arrow-left":   sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>),
-  "sidebar":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>),
-  "moon":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>),
-  "sun":          sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>),
-  "monitor":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>),
-  "check":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>),
-  "type":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>),
-  "image":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>),
-  "file-import":  sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="16" x2="12" y2="10"/></svg>),
-  "globe":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>),
+  "file-text":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>),
+  "file-plus":     sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>),
+  "clock":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>),
+  "users":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>),
+  "archive":       sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>),
+  "settings":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>),
+  "search":        sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>),
+  "more-vertical": sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>),
+  "share":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>),
+  "edit":          sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>),
+  "trash":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>),
+  "x":             sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>),
+  "zoom-in":       sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>),
+  "zoom-out":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>),
+  "download":      sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>),
+  "star":          sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>),
+  "arrow-left":    sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>),
+  "sidebar":       sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>),
+  "moon":          sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>),
+  "sun":           sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>),
+  "monitor":       sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>),
+  "check":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>),
+  "type":          sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>),
+  "image":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>),
+  "file-import":   sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="16" x2="12" y2="10"/></svg>),
+  "globe":         sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>),
+  "chevron-right": sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>),
+  "chevron-down":  sz => (<svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>),
 };
 
 function Icon({ src, fallback, size = 18, color = "currentColor", opacity = 1, style }: {
@@ -114,24 +130,15 @@ function RenameModal({ isDark, currentTitle, onConfirm, onCancel }: {
   const [value, setValue] = useState(currentTitle);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { setTimeout(() => inputRef.current?.select(), 80); }, []);
-
   const bg      = isDark ? "#1e1e1e" : "#ffffff";
   const border  = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
   const textClr = isDark ? "#f0f0f0" : "#111";
   const subClr  = isDark ? "rgba(255,255,255,.40)" : "rgba(0,0,0,.45)";
   const inputBg = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.04)";
-
   return (
     <>
       <div onClick={onCancel} style={{ position: "fixed", inset: 0, zIndex: 9900, background: "rgba(0,0,0,.45)" }} />
-      <div style={{
-        position: "fixed", top: "50%", left: "50%",
-        transform: "translate(-50%,-50%)", zIndex: 9901,
-        background: bg, border: `1px solid ${border}`,
-        borderRadius: 16, padding: "24px 24px 20px",
-        width: "min(340px,90vw)",
-        boxShadow: "0 24px 80px rgba(0,0,0,.4)",
-      }}>
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 9901, background: bg, border: `1px solid ${border}`, borderRadius: 16, padding: "24px 24px 20px", width: "min(340px,90vw)", boxShadow: "0 24px 80px rgba(0,0,0,.4)" }}>
         <div style={{ fontSize: "1rem", fontWeight: 700, color: textClr, marginBottom: 4 }}>Renomear documento</div>
         <div style={{ fontSize: ".8rem", color: subClr, marginBottom: 16 }}>Insira o novo nome do documento</div>
         <input ref={inputRef} value={value} onChange={e => setValue(e.target.value)}
@@ -140,10 +147,7 @@ function RenameModal({ isDark, currentTitle, onConfirm, onCancel }: {
           autoFocus />
         <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
           <button onClick={onCancel} style={{ padding: "9px 16px", borderRadius: 9, border: `1px solid ${border}`, background: "none", cursor: "pointer", fontSize: ".85rem", color: subClr, fontWeight: 500, fontFamily: "inherit" }}>Cancelar</button>
-          <button onClick={() => { if (value.trim()) onConfirm(value.trim()); }}
-            style={{ padding: "9px 18px", borderRadius: 9, border: "none", background: "#2563EB", color: "#fff", cursor: "pointer", fontSize: ".85rem", fontWeight: 600, fontFamily: "inherit", opacity: value.trim() ? 1 : 0.5 }}>
-            Renomear
-          </button>
+          <button onClick={() => { if (value.trim()) onConfirm(value.trim()); }} style={{ padding: "9px 18px", borderRadius: 9, border: "none", background: "#2563EB", color: "#fff", cursor: "pointer", fontSize: ".85rem", fontWeight: 600, fontFamily: "inherit", opacity: value.trim() ? 1 : 0.5 }}>Renomear</button>
         </div>
       </div>
     </>
@@ -159,27 +163,17 @@ function PdfProgressModal({ isDark, label, pct }: { isDark: boolean; label: stri
   const textClr = isDark ? "#f0f0f0" : "#111";
   const subClr  = isDark ? "rgba(255,255,255,.40)" : "rgba(0,0,0,.45)";
   const trackBg = isDark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.08)";
-
   return (
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 9900, background: "rgba(0,0,0,.5)" }} />
-      <div style={{
-        position: "fixed", top: "50%", left: "50%",
-        transform: "translate(-50%,-50%)", zIndex: 9901,
-        background: bg, border: `1px solid ${border}`,
-        borderRadius: 16, padding: "28px 28px 24px",
-        width: "min(320px,88vw)",
-        boxShadow: "0 24px 80px rgba(0,0,0,.4)",
-      }}>
-        {/* PDF icon */}
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 9901, background: bg, border: `1px solid ${border}`, borderRadius: 16, padding: "28px 28px 24px", width: "min(320px,88vw)", boxShadow: "0 24px 80px rgba(0,0,0,.4)" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
           <div style={{ width: 48, height: 48, borderRadius: 12, background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Icon fallback="file-import" size={24} color="#fff" />
+            <Icon src="/assets/icons/svg/pdf-import.svg" fallback="file-import" size={24} color="#fff" />
           </div>
         </div>
         <div style={{ fontSize: ".95rem", fontWeight: 700, color: textClr, textAlign: "center", marginBottom: 6 }}>A importar PDF</div>
         <div style={{ fontSize: ".8rem", color: subClr, textAlign: "center", marginBottom: 20, lineHeight: 1.4 }}>{label}</div>
-        {/* Progress bar */}
         <div style={{ height: 6, background: trackBg, borderRadius: 99, overflow: "hidden" }}>
           <div style={{ height: "100%", width: `${pct}%`, background: "#2563EB", borderRadius: 99, transition: "width .3s ease" }} />
         </div>
@@ -190,13 +184,22 @@ function PdfProgressModal({ isDark, label, pct }: { isDark: boolean; label: stri
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   SettingsModal — simplified: only Themes + Language, no blur, compact
+   SettingsModal — preservado do original + language picker custom
 ───────────────────────────────────────────────────────────────── */
+const LANGUAGES = [
+  { code: "pt-PT", label: "Português (Portugal)" },
+  { code: "pt-BR", label: "Português (Brasil)"   },
+  { code: "en",    label: "English"               },
+  { code: "es",    label: "Español"               },
+  { code: "fr",    label: "Français"              },
+];
+
 function SettingsModal({ isDark, onClose, onThemeChange }: {
   isDark: boolean; onClose: () => void; onThemeChange: (t: "light" | "dark" | "system") => void;
 }) {
   const { theme } = useTheme();
   const [language, setLanguage] = useState("pt-PT");
+  const [showLangPicker, setShowLangPicker] = useState(false);
 
   const bg      = isDark ? "#1c1c1c" : "#ffffff";
   const surface = isDark ? "#282828" : "#f2f2f7";
@@ -212,26 +215,12 @@ function SettingsModal({ isDark, onClose, onThemeChange }: {
     { id: "system", label: "Sistema", icon: "monitor" },
   ];
 
-  const languages = [
-    { code: "pt-PT", label: "Português (Portugal)" },
-    { code: "pt-BR", label: "Português (Brasil)"   },
-    { code: "en",    label: "English"               },
-    { code: "es",    label: "Español"               },
-    { code: "fr",    label: "Français"              },
-  ];
+  const selectedLang = LANGUAGES.find(l => l.code === language) || LANGUAGES[0];
 
   return (
     <>
-      <div onClick={onClose}
-        style={{ position: "fixed", inset: 0, zIndex: 9800, background: "rgba(0,0,0,.45)", animation: "fadeInSm .15s ease both" }} />
-      <div style={{
-        position: "fixed", top: "50%", left: "50%",
-        transform: "translate(-50%,-50%)", zIndex: 9801,
-        background: bg, border: `1px solid ${border}`,
-        borderRadius: 16, width: "min(400px,92vw)",
-        boxShadow: isDark ? "0 24px 80px rgba(0,0,0,.7)" : "0 24px 80px rgba(0,0,0,.18)",
-        overflow: "hidden", animation: "modalIn .2s ease both",
-      }}
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 9800, background: "rgba(0,0,0,.45)", animation: "fadeInSm .15s ease both" }} />
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 9801, background: bg, border: `1px solid ${border}`, borderRadius: 16, width: "min(400px,92vw)", boxShadow: isDark ? "0 24px 80px rgba(0,0,0,.7)" : "0 24px 80px rgba(0,0,0,.18)", overflow: "hidden", animation: "modalIn .2s ease both" }}
         onClick={e => e.stopPropagation()}>
 
         {/* Header */}
@@ -243,31 +232,15 @@ function SettingsModal({ isDark, onClose, onThemeChange }: {
         </div>
 
         <div style={{ padding: "18px 18px 22px", display: "flex", flexDirection: "column", gap: 22 }}>
-
-          {/* ── Aparência ── */}
+          {/* Aparência */}
           <div>
             <div style={{ fontSize: ".68rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>Aparência</div>
             <div style={{ display: "flex", gap: 10 }}>
               {themes.map(t => {
                 const isActive = theme === t.id;
                 return (
-                  <button key={t.id} onClick={() => onThemeChange(t.id)} style={{
-                    flex: 1, padding: 0, border: `2px solid ${isActive ? selBorder : border}`,
-                    borderRadius: 12, background: isActive
-                      ? (isDark ? "rgba(37,99,235,.14)" : "rgba(37,99,235,.08)")
-                      : surface,
-                    cursor: "pointer", overflow: "hidden", transition: "border-color .12s",
-                  }}>
-                    {/* Preview swatch */}
-                    <div style={{
-                      width: "100%", height: 52,
-                      background: t.id === "dark"
-                        ? "#1a1a1a"
-                        : t.id === "system"
-                        ? "linear-gradient(135deg,#f5f5f5 50%,#1a1a1a 50%)"
-                        : "#f5f5f5",
-                      display: "flex", flexDirection: "column", gap: 5, padding: "10px 8px",
-                    }}>
+                  <button key={t.id} onClick={() => onThemeChange(t.id)} style={{ flex: 1, padding: 0, border: `2px solid ${isActive ? selBorder : border}`, borderRadius: 12, background: isActive ? (isDark ? "rgba(37,99,235,.14)" : "rgba(37,99,235,.08)") : surface, cursor: "pointer", overflow: "hidden", transition: "border-color .12s" }}>
+                    <div style={{ width: "100%", height: 52, background: t.id === "dark" ? "#1a1a1a" : t.id === "system" ? "linear-gradient(135deg,#f5f5f5 50%,#1a1a1a 50%)" : "#f5f5f5", display: "flex", flexDirection: "column", gap: 5, padding: "10px 8px" }}>
                       <div style={{ height: 5, borderRadius: 3, background: t.id === "dark" ? "#333" : "#d5d5d5", width: "75%" }} />
                       <div style={{ height: 4, borderRadius: 3, background: t.id === "dark" ? "#2a2a2a" : "#e0e0e0", width: "55%" }} />
                       <div style={{ height: 4, borderRadius: 3, background: t.id === "dark" ? "#2a2a2a" : "#e0e0e0", width: "65%" }} />
@@ -282,37 +255,39 @@ function SettingsModal({ isDark, onClose, onThemeChange }: {
             </div>
           </div>
 
-          {/* Divider */}
           <div style={{ height: 1, background: divider }} />
 
-          {/* ── Idioma ── */}
+          {/* Idioma — picker custom, sem <select> nativo */}
           <div>
             <div style={{ fontSize: ".68rem", fontWeight: 700, color: subClr, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 12 }}>Idioma</div>
-            <div style={{ position: "relative" }}>
-              <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-                <Icon fallback="globe" size={15} color={subClr} />
-              </div>
-              <select
-                value={language}
-                onChange={e => setLanguage(e.target.value)}
-                style={{
-                  width: "100%", padding: "10px 36px 10px 36px",
-                  borderRadius: 10, border: `1.5px solid ${border}`,
-                  background: surface, color: textClr,
-                  fontSize: ".88rem", fontWeight: 500,
-                  appearance: "none", outline: "none", cursor: "pointer",
-                  fontFamily: "inherit",
-                }}>
-                {languages.map(l => (
-                  <option key={l.code} value={l.code}>{l.label}</option>
-                ))}
-              </select>
-              <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={subClr} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-              </div>
-            </div>
-          </div>
 
+            {/* Trigger */}
+            <button onClick={() => setShowLangPicker(v => !v)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${showLangPicker ? selBorder : border}`, background: surface, cursor: "pointer", fontFamily: "inherit", transition: "border-color .15s" }}>
+              <Icon fallback="globe" size={15} color={subClr} />
+              <span style={{ flex: 1, textAlign: "left", fontSize: ".88rem", fontWeight: 500, color: textClr }}>{selectedLang.label}</span>
+              <span style={{ display: "inline-flex", transition: "transform .2s", transform: showLangPicker ? "rotate(180deg)" : "none" }}>
+                <Icon fallback="chevron-down" size={14} color={subClr} />
+              </span>
+            </button>
+
+            {/* Lista custom */}
+            {showLangPicker && (
+              <div style={{ marginTop: 6, borderRadius: 10, border: `1.5px solid ${border}`, background: bg, overflow: "hidden", boxShadow: isDark ? "0 8px 32px rgba(0,0,0,.5)" : "0 8px 32px rgba(0,0,0,.12)", animation: "fadeInSm .12s ease both" }}>
+                {LANGUAGES.map((lang, i) => {
+                  const isSel = lang.code === language;
+                  return (
+                    <button key={lang.code} onClick={() => { setLanguage(lang.code); setShowLangPicker(false); }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "11px 14px", background: isSel ? (isDark ? "rgba(37,99,235,.12)" : "rgba(37,99,235,.06)") : "none", border: "none", borderTop: i > 0 ? `1px solid ${divider}` : "none", cursor: "pointer", fontFamily: "inherit", transition: "background .1s" }}
+                      onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)"; }}
+                      onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLElement).style.background = "none"; }}>
+                      <span style={{ flex: 1, textAlign: "left", fontSize: ".88rem", fontWeight: isSel ? 600 : 400, color: isSel ? selBorder : textClr }}>{lang.label}</span>
+                      {isSel && <Icon fallback="check" size={14} color={selBorder} />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <style>{`
@@ -324,7 +299,7 @@ function SettingsModal({ isDark, onClose, onThemeChange }: {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   ZoomModal — mobile only
+   ZoomModal — mobile (preservado do original)
 ───────────────────────────────────────────────────────────────── */
 function ZoomModal({ zoom, onZoomChange, onClose }: { zoom: number; onZoomChange: (z: number) => void; onClose: () => void }) {
   const startY = useRef<number | null>(null);
@@ -358,7 +333,7 @@ function ZoomModal({ zoom, onZoomChange, onClose }: { zoom: number; onZoomChange
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   PopupMenu
+   PopupMenu (preservado do original)
 ───────────────────────────────────────────────────────────────── */
 function PopupMenu({ items, onClose, anchorRef, isDark }: {
   items: { label: string; src?: string; fallback?: string; onClick: () => void; danger?: boolean }[];
@@ -374,12 +349,10 @@ function PopupMenu({ items, onClose, anchorRef, isDark }: {
     document.addEventListener("pointerdown", h, true);
     return () => document.removeEventListener("pointerdown", h, true);
   }, [dismiss, anchorRef]);
-
   const bg      = isDark ? "#1e1e1e" : "#ffffff";
   const border  = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)";
   const textClr = isDark ? "#e8e8e8" : "#1a1a1a";
   const hoverBg = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.05)";
-
   return (
     <>
       <style>{`@keyframes popIn{from{opacity:0;transform:scale(.88) translateY(-10px)}to{opacity:1;transform:scale(1) translateY(0)}}@keyframes popOut{from{opacity:1;transform:scale(1) translateY(0)}to{opacity:0;transform:scale(.9) translateY(-8px)}}.pm-item{transition:background .1s}.pm-item:hover{background:var(--pm-hover)!important}`}</style>
@@ -398,12 +371,12 @@ function PopupMenu({ items, onClose, anchorRef, isDark }: {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   DrawerMenu — mobile
+   DrawerMenu — restaurado do original + ícone sidebar + settings footer
 ───────────────────────────────────────────────────────────────── */
 function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
   onClose: () => void; isDark: boolean; documentTitle: string; onOpenSettings: () => void;
 }) {
-  const [closing, setClosing]   = useState(false);
+  const [closing, setClosing]     = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const panelRef = useRef<HTMLDivElement>(null);
   const startX   = useRef<number | null>(null);
@@ -415,10 +388,7 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
   const hoverBg      = isDark ? "rgba(255,255,255,.04)" : "rgba(0,0,0,.033)";
   const divider      = isDark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.07)";
 
-  const dismiss = useCallback(() => {
-    setClosing(true);
-    setTimeout(onClose, 260);
-  }, [onClose]);
+  const dismiss = useCallback(() => { setClosing(true); setTimeout(onClose, 260); }, [onClose]);
 
   const onTouchStart = (e: React.TouchEvent) => { startX.current = e.touches[0].clientX; };
   const onTouchMove  = (e: React.TouchEvent) => {
@@ -430,9 +400,8 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
     if (startX.current === null) return;
     const dx = e.changedTouches[0].clientX - startX.current;
     startX.current = null;
-    if (dx < -70) {
-      dismiss();
-    } else if (panelRef.current) {
+    if (dx < -70) { dismiss(); }
+    else if (panelRef.current) {
       panelRef.current.style.transition = "transform .22s cubic-bezier(.25,.46,.45,.94)";
       panelRef.current.style.transform  = "translateX(0)";
       setTimeout(() => { if (panelRef.current) panelRef.current.style.transition = ""; }, 250);
@@ -467,7 +436,7 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
       <div ref={panelRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
         style={{ position: "fixed", top: 0, left: 0, bottom: 0, width: 286, zIndex: 8001, background: bg, borderRight: `1px solid ${divider}`, boxShadow: "6px 0 48px rgba(0,0,0,.26)", display: "flex", flexDirection: "column", willChange: "transform", animation: closing ? "drawerPanelOut .26s cubic-bezier(.4,0,.6,1) both" : "drawerPanelIn .28s cubic-bezier(.25,.46,.45,.94) both" }}>
 
-        {/* Header */}
+        {/* Header — ícone app + botão sidebar para fechar */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "54px 16px 14px", borderBottom: `1px solid ${divider}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img src="/assets/icons/app_icon.svg" alt="Doction" width={32} height={32} style={{ borderRadius: 8, flexShrink: 0 }} />
@@ -524,7 +493,7 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
           })}
 
           <div style={{ height: 1, background: divider, margin: "6px 4px" }} />
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px 5px" }}>
+          <div style={{ display: "flex", alignItems: "center", padding: "10px 12px 5px" }}>
             <span style={{ fontSize: ".67rem", fontWeight: 600, color: subClr, textTransform: "uppercase", letterSpacing: ".07em" }}>Todas as tarefas</span>
           </div>
           <button className="dr-item" onClick={() => setActiveIdx(99)}
@@ -536,7 +505,7 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
           </button>
         </div>
 
-        {/* Footer */}
+        {/* Footer — Definições em baixo */}
         <div style={{ borderTop: `1px solid ${divider}`, padding: "8px 8px", paddingBottom: "calc(env(safe-area-inset-bottom,0px) + 14px)", display: "flex", flexDirection: "column", gap: 2 }}>
           <button className="dr-item" onClick={() => { dismiss(); setTimeout(onOpenSettings, 300); }}
             style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 12px", borderRadius: 10, background: "none", border: "none", cursor: "pointer", textAlign: "left", color: subClr, fontSize: ".875rem", fontWeight: 500, "--dr-hover": hoverBg } as React.CSSProperties}>
@@ -551,7 +520,7 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
                 <div style={{ fontSize: ".68rem", color: subClr }}>Convide amigos para usar</div>
               </div>
             </div>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={subClr} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            <Icon fallback="chevron-right" size={14} color={subClr} />
           </div>
         </div>
       </div>
@@ -560,18 +529,17 @@ function DrawerMenu({ onClose, isDark, documentTitle, onOpenSettings }: {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   Sidebar — desktop
+   Sidebar — desktop (preservado)
 ───────────────────────────────────────────────────────────────── */
 function Sidebar({ isDark, documentTitle, onOpenSettings }: {
   isDark: boolean; documentTitle: string; onOpenSettings: () => void;
 }) {
-  const bg      = isDark ? "#161616" : "#f5f5f5";
-  const border  = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.07)";
-  const textClr = isDark ? "#e8e8e8" : "#1a1a1a";
-  const subClr  = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
-  const hoverBg = isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)";
+  const bg       = isDark ? "#161616" : "#f5f5f5";
+  const border   = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.07)";
+  const textClr  = isDark ? "#e8e8e8" : "#1a1a1a";
+  const subClr   = isDark ? "rgba(255,255,255,.42)" : "rgba(0,0,0,.42)";
+  const hoverBg  = isDark ? "rgba(255,255,255,.05)" : "rgba(0,0,0,.04)";
   const activeBg = isDark ? "rgba(255,255,255,.09)" : "rgba(0,0,0,.07)";
-
   const navItems = [
     { label: "Documentos",  src: "/assets/icons/svg/document-text.svg", fallback: "file-text", active: true,  action: () => {} },
     { label: "Recentes",    src: "",                                     fallback: "clock",     active: false, action: () => {} },
@@ -579,7 +547,6 @@ function Sidebar({ isDark, documentTitle, onOpenSettings }: {
     { label: "Arquivo",     src: "",                                     fallback: "archive",   active: false, action: () => {} },
     { label: "Definições",  src: "",                                     fallback: "settings",  active: false, action: onOpenSettings },
   ];
-
   return (
     <div style={{ width: 240, flexShrink: 0, background: bg, borderRight: `1px solid ${border}`, display: "flex", flexDirection: "column", height: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "18px 16px 14px", borderBottom: `1px solid ${border}` }}>
@@ -606,7 +573,7 @@ function Sidebar({ isDark, documentTitle, onOpenSettings }: {
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   AppBar
+   AppBar (preservado)
 ───────────────────────────────────────────────────────────────── */
 function AppBar({ isDark, isMobile, documentTitle, onMenuClick, onPopupToggle, popupOpen, popupAnchorRef, popupItems, onPopupClose }: {
   isDark: boolean; isMobile: boolean; documentTitle: string;
@@ -615,19 +582,17 @@ function AppBar({ isDark, isMobile, documentTitle, onMenuClick, onPopupToggle, p
   popupItems: { label: string; src?: string; fallback?: string; onClick: () => void; danger?: boolean }[];
   onPopupClose: () => void;
 }) {
-  const bg       = isDark ? "rgba(14,14,14,0.97)" : "#ffffff";
-  const titleClr = isDark ? "#f0f0f0" : "#111111";
+  const bg          = isDark ? "rgba(14,14,14,0.97)" : "#ffffff";
+  const titleClr    = isDark ? "#f0f0f0" : "#111111";
   const subLabelClr = isDark ? "rgba(255,255,255,.35)" : "rgba(0,0,0,.35)";
-  const btnHover = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.07)";
-  const iconClr  = isDark ? "rgba(255,255,255,.80)" : "rgba(0,0,0,.72)";
-  const shadow   = isDark ? "0 1px 0 rgba(255,255,255,.06)" : "0 1px 0 rgba(0,0,0,.07),0 2px 10px rgba(0,0,0,.03)";
-
+  const btnHover    = isDark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.07)";
+  const iconClr     = isDark ? "rgba(255,255,255,.80)" : "rgba(0,0,0,.72)";
+  const shadow      = isDark ? "0 1px 0 rgba(255,255,255,.06)" : "0 1px 0 rgba(0,0,0,.07),0 2px 10px rgba(0,0,0,.03)";
   return (
     <div style={{ height: 52, flexShrink: 0, display: "flex", alignItems: "center", padding: "0 10px 0 12px", background: bg, boxShadow: shadow, position: "relative", zIndex: 100 }}>
       <button onClick={isMobile ? onMenuClick : undefined} style={{ width: 36, height: 36, borderRadius: 10, border: "none", background: "none", cursor: isMobile ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, padding: 0 }}>
         <img src="/assets/icons/app_icon.svg" alt="Doction" width={28} height={28} style={{ borderRadius: 7, display: "block" }} />
       </button>
-
       {isMobile ? (
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 120px)", display: "flex", flexDirection: "column", alignItems: "center", pointerEvents: "none", userSelect: "none" }}>
           <span style={{ fontSize: ".875rem", fontWeight: 700, color: titleClr, letterSpacing: "-.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{documentTitle || "Sem título"}</span>
@@ -636,7 +601,6 @@ function AppBar({ isDark, isMobile, documentTitle, onMenuClick, onPopupToggle, p
       ) : (
         <div style={{ flex: 1 }} />
       )}
-
       <div style={{ marginLeft: "auto", position: "relative" }}>
         <button ref={popupAnchorRef} onClick={onPopupToggle}
           style={{ width: 36, height: 36, borderRadius: 10, border: "none", background: popupOpen ? btnHover : "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "background .12s", padding: 0 }}
@@ -651,280 +615,289 @@ function AppBar({ isDark, isMobile, documentTitle, onMenuClick, onPopupToggle, p
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   Image Resize Handles
+   CanvasObject — objecto individual arrastável/redimensionável/editável
 ───────────────────────────────────────────────────────────────── */
-function useImageResize(pageRefs: React.MutableRefObject<(HTMLDivElement | null)[]>) {
-  useEffect(() => {
-    const HANDLE_SIZE = 9;
-    let activeImg: HTMLImageElement | null = null;
-    let activeOverlay: HTMLDivElement | null = null;
-    let startX = 0, startY = 0, startW = 0, startH = 0, corner = "";
+function CanvasObject({ obj, isSelected, onSelect, onUpdate, onDelete, zoom }: {
+  obj: CanvasObj; isSelected: boolean;
+  onSelect: (id: string) => void;
+  onUpdate: (id: string, patch: Partial<CanvasObj>) => void;
+  onDelete: (id: string) => void;
+  zoom: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const textRef  = useRef<HTMLDivElement>(null);
+  const dragRef  = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+  const resRef   = useRef<{ sx: number; sy: number; ow: number; oh: number; ox: number; oy: number; c: string } | null>(null);
 
-    function removeOverlay() {
-      activeOverlay?.remove(); activeOverlay = null; activeImg = null;
-    }
-
-    function attachOverlay(img: HTMLImageElement) {
-      removeOverlay();
-      activeImg = img;
-      const rect = img.getBoundingClientRect();
-
-      const ov = document.createElement("div");
-      ov.style.cssText = `position:fixed;top:${rect.top}px;left:${rect.left}px;width:${rect.width}px;height:${rect.height}px;border:2px solid #3B82F6;pointer-events:none;z-index:9000;box-sizing:border-box;`;
-
-      const CORNERS = ["nw","ne","sw","se"];
-      CORNERS.forEach(c => {
-        const h = document.createElement("div");
-        const isN = c.startsWith("n"), isW = c.endsWith("w");
-        h.style.cssText = `position:absolute;width:${HANDLE_SIZE}px;height:${HANDLE_SIZE}px;background:#fff;border:2px solid #3B82F6;box-sizing:border-box;cursor:${c}-resize;pointer-events:all;z-index:9001;${isN ? "top:-5px" : "bottom:-5px"};${isW ? "left:-5px" : "right:-5px"};`;
-        h.dataset.corner = c;
-        h.addEventListener("mousedown", startResize);
-        ov.appendChild(h);
-      });
-
-      document.body.appendChild(ov);
-      activeOverlay = ov;
-
-      const reposition = () => {
-        if (!activeImg || !activeOverlay) return;
-        const r = activeImg.getBoundingClientRect();
-        activeOverlay.style.top    = r.top    + "px";
-        activeOverlay.style.left   = r.left   + "px";
-        activeOverlay.style.width  = r.width  + "px";
-        activeOverlay.style.height = r.height + "px";
-      };
-      window.addEventListener("scroll", reposition, true);
-      window.addEventListener("resize", reposition);
-    }
-
-    function startResize(e: MouseEvent) {
-      if (!activeImg) return;
-      e.preventDefault(); e.stopPropagation();
-      corner = (e.currentTarget as HTMLElement).dataset.corner || "se";
-      startX = e.clientX; startY = e.clientY;
-      startW = activeImg.offsetWidth; startH = activeImg.offsetHeight;
-      document.addEventListener("mousemove", doResize);
-      document.addEventListener("mouseup", stopResize);
-    }
-
-    function doResize(e: MouseEvent) {
-      if (!activeImg) return;
-      const dx = e.clientX - startX;
-      const dy = e.clientY - startY;
-      let nw = startW, nh = startH;
-      if (corner.includes("e")) nw = Math.max(40, startW + dx);
-      if (corner.includes("s")) nh = Math.max(40, startH + dy);
-      if (corner.includes("w")) nw = Math.max(40, startW - dx);
-      if (corner.includes("n")) nh = Math.max(40, startH - dy);
-      activeImg.style.width  = nw + "px";
-      activeImg.style.height = nh + "px";
-      if (activeImg) attachOverlay(activeImg);
-    }
-
-    function stopResize() {
-      document.removeEventListener("mousemove", doResize);
-      document.removeEventListener("mouseup", stopResize);
-      if (activeImg) attachOverlay(activeImg);
-    }
-
-    function onPageClick(e: MouseEvent) {
-      const target = e.target as HTMLElement;
-      if (target.tagName === "IMG") {
-        attachOverlay(target as HTMLImageElement);
-      } else if (!activeOverlay?.contains(target)) {
-        removeOverlay();
-      }
-    }
-    function onPageKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") removeOverlay();
-    }
-
-    const pages = pageRefs.current.filter(Boolean) as HTMLDivElement[];
-    pages.forEach(p => {
-      p.addEventListener("click", onPageClick);
-      p.addEventListener("keydown", onPageKeyDown);
-    });
-    document.addEventListener("keydown", onPageKeyDown);
-
-    return () => {
-      pages.forEach(p => {
-        p.removeEventListener("click", onPageClick);
-        p.removeEventListener("keydown", onPageKeyDown);
-      });
-      document.removeEventListener("keydown", onPageKeyDown);
-      removeOverlay();
+  /* drag */
+  const onMouseDownMove = (e: React.MouseEvent) => {
+    if (editing) return;
+    e.preventDefault(); e.stopPropagation();
+    onSelect(obj.id);
+    const scale = zoom / 100;
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: obj.x, oy: obj.y };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      onUpdate(obj.id, { x: dragRef.current.ox + (ev.clientX - dragRef.current.sx) / scale, y: dragRef.current.oy + (ev.clientY - dragRef.current.sy) / scale });
     };
-  }, [pageRefs]);
+    const onUp = () => { dragRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  /* resize */
+  const onMouseDownResize = (e: React.MouseEvent, c: string) => {
+    e.preventDefault(); e.stopPropagation();
+    const scale = zoom / 100;
+    resRef.current = { sx: e.clientX, sy: e.clientY, ow: obj.w, oh: obj.h, ox: obj.x, oy: obj.y, c };
+    const onMove = (ev: MouseEvent) => {
+      if (!resRef.current) return;
+      const { sx, sy, ow, oh, ox, oy, c: corner } = resRef.current;
+      const dx = (ev.clientX - sx) / scale, dy = (ev.clientY - sy) / scale;
+      let nw = ow, nh = oh, nx = ox, ny = oy;
+      if (corner.includes("e")) nw = Math.max(60, ow + dx);
+      if (corner.includes("s")) nh = Math.max(30, oh + dy);
+      if (corner.includes("w")) { nw = Math.max(60, ow - dx); nx = ox + (ow - nw); }
+      if (corner.includes("n")) { nh = Math.max(30, oh - dy); ny = oy + (oh - nh); }
+      onUpdate(obj.id, { w: nw, h: nh, x: nx, y: ny });
+    };
+    const onUp = () => { resRef.current = null; window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  /* double click → edit */
+  const onDblClick = (e: React.MouseEvent) => {
+    if (obj.type !== "text") return;
+    e.stopPropagation();
+    setEditing(true);
+    setTimeout(() => {
+      if (!textRef.current) return;
+      textRef.current.focus();
+      const r = document.createRange(); r.selectNodeContents(textRef.current); r.collapse(false);
+      window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(r);
+    }, 20);
+  };
+
+  const stopEditing = () => {
+    if (!editing) return;
+    setEditing(false);
+    if (textRef.current) onUpdate(obj.id, { content: textRef.current.innerText });
+  };
+
+  const SEL = "#3B82F6";
+  const H   = 8;
+
+  return (
+    <div
+      data-canvas-obj="1"
+      style={{ position: "absolute", left: obj.x, top: obj.y, width: obj.w, height: obj.h, cursor: editing ? "text" : "move", userSelect: editing ? "text" : "none", outline: isSelected ? `2px solid ${SEL}` : "none", boxSizing: "border-box" }}
+      onMouseDown={onMouseDownMove}
+      onClick={e => { e.stopPropagation(); onSelect(obj.id); }}
+      onDoubleClick={onDblClick}
+    >
+      {obj.type === "text" ? (
+        <div
+          ref={textRef}
+          contentEditable={editing}
+          suppressContentEditableWarning
+          onBlur={stopEditing}
+          onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); stopEditing(); } }}
+          style={{ width: "100%", height: "100%", fontSize: obj.fontSize ?? 14, fontWeight: obj.fontWeight ?? "normal", fontFamily: obj.fontFamily ?? "Georgia,'Times New Roman',serif", color: obj.color ?? "#1a1a1a", outline: "none", overflow: "hidden", wordBreak: "break-word", whiteSpace: "pre-wrap", padding: 4, boxSizing: "border-box", background: editing ? "rgba(59,130,246,.06)" : "transparent", lineHeight: 1.5 }}
+        >{obj.content}</div>
+      ) : (
+        <img src={obj.content} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block", pointerEvents: "none" }} draggable={false} />
+      )}
+
+      {isSelected && !editing && (
+        <>
+          {/* Delete */}
+          <button
+            onMouseDown={e => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={e => { e.stopPropagation(); onDelete(obj.id); }}
+            style={{ position: "absolute", top: -14, right: -14, width: 22, height: 22, borderRadius: "50%", background: "#ef4444", border: "2px solid #fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(0,0,0,.3)", zIndex: 10 }}>
+            <Icon fallback="x" size={10} color="#fff" />
+          </button>
+          {/* Resize handles */}
+          {(["nw","ne","sw","se"] as const).map(c => (
+            <div key={c} onMouseDown={e => onMouseDownResize(e, c)}
+              style={{ position: "absolute", width: H, height: H, background: "#fff", border: `2px solid ${SEL}`, borderRadius: 2, boxSizing: "border-box", cursor: `${c}-resize`, zIndex: 9, top: c.startsWith("n") ? -H/2 : undefined, bottom: c.startsWith("s") ? -H/2 : undefined, left: c.endsWith("w") ? -H/2 : undefined, right: c.endsWith("e") ? -H/2 : undefined }} />
+          ))}
+        </>
+      )}
+    </div>
+  );
 }
 
 /* ─────────────────────────────────────────────────────────────────────
-   Export to PDF/HTML
+   CanvasPage — fundo PDF + objectos editáveis
 ───────────────────────────────────────────────────────────────── */
-function exportToPDF(pagesContent: string[], documentTitle: string) {
-  const pagesHTML = pagesContent.map(html => `
-    <div style="width:794px;min-height:1123px;padding:96px;box-sizing:border-box;background:#fff;page-break-after:always;font-family:Georgia,'Times New Roman',serif;font-size:14px;line-height:1.6;color:#1a1a1a;">
-      ${html}
-    </div>`).join("");
-  const htmlContent = `<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8"/><title>${documentTitle}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#e8e8e8;display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px}@media print{body{background:none;padding:0;gap:0}div{page-break-after:always}div:last-child{page-break-after:avoid}}h1{font-size:1.5rem;font-weight:700;margin-bottom:.75rem;font-family:sans-serif}h2{font-size:1.25rem;font-weight:600;margin-bottom:.5rem;font-family:sans-serif}h3{font-size:1.125rem;font-weight:600;margin-bottom:.5rem;font-family:sans-serif}p{margin-bottom:.75rem}ul,ol{margin-left:1.25rem;margin-bottom:.75rem}li{margin-bottom:.25rem}a{color:#2563eb;text-decoration:underline}blockquote{border-left:4px solid #9ca3af;padding-left:1rem;font-style:italic;color:#4b5563;margin:.75rem 0}code{background:#f3f4f6;padding:0 .25rem;border-radius:.25rem;font-family:monospace;font-size:.875rem}pre{background:#f3f4f6;padding:.75rem;border-radius:.375rem;font-family:monospace;font-size:.875rem;margin:.75rem 0;overflow-x:auto}table{border-collapse:collapse;width:100%;margin:.75rem 0}th,td{border:1px solid #d1d5db;padding:.5rem}th{background:#f9fafb;font-weight:600;text-align:left}img{max-width:100%;height:auto;margin:.5rem 0}hr{border:none;border-top:1px solid #e5e7eb;margin:1rem 0}</style></head><body>${pagesHTML}<script>window.onload=()=>window.print();<\/script></body></html>`;
-  const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+function CanvasPage({ page, pageIdx, selectedId, onSelectObj, onUpdateObj, onDeleteObj, onAddTextAt, zoom }: {
+  page: PageData; pageIdx: number; selectedId: string | null;
+  onSelectObj: (id: string | null) => void;
+  onUpdateObj: (pi: number, id: string, patch: Partial<CanvasObj>) => void;
+  onDeleteObj: (pi: number, id: string) => void;
+  onAddTextAt: (pi: number, x: number, y: number) => void;
+  zoom: number;
+}) {
+  const handleDblClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.dataset.canvasObj) return;
+    const rect  = e.currentTarget.getBoundingClientRect();
+    const scale = zoom / 100;
+    onAddTextAt(pageIdx, (e.clientX - rect.left) / scale, (e.clientY - rect.top) / scale);
+  };
+
+  return (
+    <div style={{ width: PAGE_W, height: PAGE_H, position: "relative", overflow: "hidden" }}
+      onClick={e => { if (!(e.target as HTMLElement).dataset.canvasObj) onSelectObj(null); }}
+      onDoubleClick={handleDblClick}>
+      {page.bgUrl && (
+        <img src={page.bgUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none", userSelect: "none" }} draggable={false} />
+      )}
+      {page.objects.map(obj => (
+        <CanvasObject key={obj.id} obj={obj} isSelected={selectedId === obj.id}
+          onSelect={id => onSelectObj(id)}
+          onUpdate={(id, patch) => onUpdateObj(pageIdx, id, patch)}
+          onDelete={id => onDeleteObj(pageIdx, id)}
+          zoom={zoom} />
+      ))}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Export
+───────────────────────────────────────────────────────────────── */
+function exportToPDF(pages: PageData[], documentTitle: string) {
+  const pagesHTML = pages.map(pg => {
+    const objs = pg.objects.map(o =>
+      o.type === "text"
+        ? `<div style="position:absolute;left:${o.x}px;top:${o.y}px;width:${o.w}px;height:${o.h}px;font-size:${o.fontSize ?? 14}px;font-weight:${o.fontWeight ?? "normal"};font-family:${o.fontFamily ?? "Georgia,serif"};color:${o.color ?? "#1a1a1a"};word-break:break-word;white-space:pre-wrap;padding:4px;box-sizing:border-box;">${o.content.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/\n/g,"<br>")}</div>`
+        : `<img src="${o.content}" style="position:absolute;left:${o.x}px;top:${o.y}px;width:${o.w}px;height:${o.h}px;object-fit:contain;" />`
+    ).join("");
+    const bg = pg.bgUrl ? `background-image:url('${pg.bgUrl}');background-size:100% 100%;` : "background:#fff;";
+    return `<div style="width:794px;height:1123px;position:relative;flex-shrink:0;${bg}">${objs}</div>`;
+  }).join("");
+  const html = `<!DOCTYPE html><html lang="pt"><head><meta charset="UTF-8"/><title>${documentTitle}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#e8e8e8;display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px}@media print{body{background:none;padding:0;gap:0}}</style></head><body>${pagesHTML}<script>window.onload=()=>window.print();<\/script></body></html>`;
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url  = URL.createObjectURL(blob);
-  const a    = document.createElement("a");
-  a.href = url; a.download = `${documentTitle || "documento"}.html`; a.click();
+  const a    = document.createElement("a"); a.href = url; a.download = `${documentTitle || "documento"}.html`; a.click();
   URL.revokeObjectURL(url);
-}
-
-/* ─────────────────────────────────────────────────────────────────────
-   detectOverflowedNodes
-───────────────────────────────────────────────────────────────── */
-function detectOverflowedNodes(el: HTMLDivElement, maxH: number): Node[] {
-  const overflowed: Node[] = [];
-  for (let i = el.childNodes.length - 1; i >= 0; i--) {
-    if (el.scrollHeight <= maxH + 10) break;
-    const child = el.childNodes[i];
-    overflowed.unshift(child);
-    el.removeChild(child);
-  }
-  return overflowed;
 }
 
 /* ─────────────────────────────────────────────────────────────────────
    Main export
 ───────────────────────────────────────────────────────────────── */
 export default function DocumentEditor({
-  content, onChange, placeholder = "Comece a escrever...",
+  content, onChange, placeholder = "Duplo clique para adicionar texto…",
   zoom, onZoomChange, isMobile = false,
   documentTitle = "Documento sem título", onTitleChange,
 }: DocumentEditorProps) {
   const { theme, setTheme } = useTheme();
   const isDark = theme === "dark";
 
-  const containerRef     = useRef<HTMLDivElement>(null);
-  const pageRefs         = useRef<(HTMLDivElement | null)[]>([]);
-  const pagesContent     = useRef<string[]>([""]);
-  const pinchRef         = useRef<{ dist: number; startZoom: number } | null>(null);
-  const isInternalChange = useRef(false);
-  const lastPageCount    = useRef(1);
-  const pdfInputRef      = useRef<HTMLInputElement>(null);
+  const containerRef   = useRef<HTMLDivElement>(null);
+  const pinchRef       = useRef<{ dist: number; startZoom: number } | null>(null);
+  const pdfInputRef    = useRef<HTMLInputElement>(null);
+  const popupAnchorRef = useRef<HTMLButtonElement>(null);
 
-  const [pageCount,     setPageCount]     = useState(1);
+  const [pages,         setPages]         = useState<PageData[]>([{ bgUrl: "", objects: [] }]);
+  const [selectedId,    setSelectedId]    = useState<string | null>(null);
   const [activePageIdx, setActivePageIdx] = useState(0);
   const [showZoomModal, setShowZoomModal] = useState(false);
   const [showDrawer,    setShowDrawer]    = useState(false);
   const [showSettings,  setShowSettings]  = useState(false);
   const [showRename,    setShowRename]    = useState(false);
   const [popupOpen,     setPopupOpen]     = useState(false);
-  const popupAnchorRef = useRef<HTMLButtonElement>(null);
+  const [pdfImporting,  setPdfImporting]  = useState(false);
+  const [pdfLabel,      setPdfLabel]      = useState("");
+  const [pdfPct,        setPdfPct]        = useState(0);
 
-  /* PDF import state */
-  const [pdfImporting, setPdfImporting] = useState(false);
-  const [pdfLabel,     setPdfLabel]     = useState("");
-  const [pdfPct,       setPdfPct]       = useState(0);
-
-  /* ── colours ── */
   const canvasBg   = isDark ? "#1c1c1c" : "#e8e8e8";
   const statusBg   = isDark ? "rgba(14,14,14,0.97)"   : "rgba(245,245,245,0.97)";
   const statusBdr  = isDark ? "rgba(255,255,255,.07)"  : "rgba(0,0,0,.09)";
   const statusClr  = isDark ? "rgba(255,255,255,.55)"  : "rgba(0,0,0,.55)";
   const statusSep  = isDark ? "rgba(255,255,255,.18)"  : "rgba(0,0,0,.18)";
-  const pageShadow = isDark
-    ? "0 2px 12px rgba(0,0,0,.5),0 8px 40px rgba(0,0,0,.3)"
-    : "0 2px 8px rgba(0,0,0,.12),0 8px 32px rgba(0,0,0,.08)";
+  const pageShadow = isDark ? "0 2px 12px rgba(0,0,0,.5),0 8px 40px rgba(0,0,0,.3)" : "0 2px 8px rgba(0,0,0,.12),0 8px 32px rgba(0,0,0,.08)";
   const pageNumClr = isDark ? "#666" : "#aaa";
 
-  /* ── image resize ── */
-  useImageResize(pageRefs);
+  const updateObj = useCallback((pi: number, id: string, patch: Partial<CanvasObj>) => {
+    setPages(prev => prev.map((pg, i) => i !== pi ? pg : { ...pg, objects: pg.objects.map(o => o.id === id ? { ...o, ...patch } : o) }));
+  }, []);
 
-  /* ── handlers ── */
-  const handleShare = () => {
-    if (navigator.share) { navigator.share({ title: documentTitle, text: "Partilhado via Doction" }).catch(() => {}); }
-    else { navigator.clipboard.writeText(window.location.href).catch(() => {}); }
-  };
-  const handleExport       = () => exportToPDF(pagesContent.current, documentTitle);
-  const handleRenameConfirm = (newTitle: string) => { setShowRename(false); onTitleChange?.(newTitle); };
+  const deleteObj = useCallback((pi: number, id: string) => {
+    setPages(prev => prev.map((pg, i) => i !== pi ? pg : { ...pg, objects: pg.objects.filter(o => o.id !== id) }));
+    setSelectedId(null);
+  }, []);
 
-  /* ── PDF import ── */
+  const addTextAt = useCallback((pi: number, x: number, y: number) => {
+    const obj: CanvasObj = { id: uid(), type: "text", x: Math.max(0, x - 60), y: Math.max(0, y - 12), w: 200, h: 40, content: "", fontSize: 14, fontWeight: "normal", color: "#1a1a1a", fontFamily: "Georgia,'Times New Roman',serif" };
+    setPages(prev => prev.map((pg, i) => i !== pi ? pg : { ...pg, objects: [...pg.objects, obj] }));
+    setSelectedId(obj.id);
+  }, []);
+
+  /* Delete key */
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedId) {
+        const ae = document.activeElement as HTMLElement;
+        if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.contentEditable === "true")) return;
+        setPages(prev => prev.map((pg, i) => i !== activePageIdx ? pg : { ...pg, objects: pg.objects.filter(o => o.id !== selectedId) }));
+        setSelectedId(null);
+      }
+    };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [selectedId, activePageIdx]);
+
+  /* PDF import */
   const handlePdfImport = useCallback(async (file: File) => {
-    setPdfImporting(true);
-    setPdfPct(0);
-    setPdfLabel("A carregar PDF…");
-
+    setPdfImporting(true); setPdfPct(0); setPdfLabel("A carregar PDF…");
     try {
       const pdfjs = await loadPdfJs();
       const buf   = await file.arrayBuffer();
       const doc   = await pdfjs.getDocument({ data: buf }).promise;
       const total = doc.numPages;
-
-      const pageHTMLs: string[] = [];
-
+      const newPages: PageData[] = [];
       for (let i = 1; i <= total; i++) {
-        const progress = ((i - 1) / total) * 100;
-        setPdfPct(progress);
-        setPdfLabel(`Página ${i} de ${total} — a renderizar…`);
-
-        const page     = doc.getPage(i);
-        const pg       = await page;
-
-        /* Render to canvas at document page width */
-        const RENDER_SCALE = CONTENT_W / pg.getViewport({ scale: 1 }).width;
-        const viewport      = pg.getViewport({ scale: RENDER_SCALE });
-
-        const canvas  = document.createElement("canvas");
-        canvas.width  = Math.round(viewport.width);
-        canvas.height = Math.round(viewport.height);
+        setPdfPct(((i - 1) / total) * 100);
+        setPdfLabel(`Página ${i} de ${total}…`);
+        const pg       = await doc.getPage(i);
+        const scale    = PAGE_W / pg.getViewport({ scale: 1 }).width;
+        const viewport = pg.getViewport({ scale });
+        const canvas   = document.createElement("canvas");
+        canvas.width   = Math.round(viewport.width);
+        canvas.height  = Math.round(viewport.height);
         await pg.render({ canvasContext: canvas.getContext("2d")!, viewport }).promise;
-
-        /* Blob URL — instantâneo, sem upload externo */
-        const imgUrl = await canvasToObjectURL(canvas);
-
-        /* Build page HTML: image que preenche a área de conteúdo */
-        const imgTag = imgUrl
-          ? `<img src="${imgUrl}" alt="Página ${i}" style="width:100%;display:block;" />`
-          : `<p style="color:#999;font-size:12px;">[Página ${i} — erro ao renderizar]</p>`;
-
-        pageHTMLs.push(`<div style="margin-bottom:0;">${imgTag}</div>`);
-        setPdfPct(((i) / total) * 100);
+        const bgUrl = await canvasToBlob(canvas);
+        newPages.push({ bgUrl, objects: [] });
+        setPdfPct((i / total) * 100);
       }
+      setPages(newPages); setSelectedId(null); setActivePageIdx(0);
+    } catch (err) { console.error("PDF import error:", err); }
+    finally { setPdfImporting(false); setPdfLabel(""); setPdfPct(0); if (pdfInputRef.current) pdfInputRef.current.value = ""; }
+  }, []);
 
-      /* Insert into editor pages */
-      /* Clear existing content */
-      pagesContent.current = pageHTMLs;
-      setPageCount(pageHTMLs.length || 1);
-
-      /* Force re-init pages after render */
-      setTimeout(() => {
-        pageHTMLs.forEach((html, idx) => {
-          const el = pageRefs.current[idx];
-          if (el) { el.innerHTML = html; }
-        });
-        onChange(pageHTMLs[0] || "");
-      }, 80);
-
-    } catch (err) {
-      console.error("PDF import error:", err);
-    } finally {
-      setPdfImporting(false);
-      setPdfLabel("");
-      setPdfPct(0);
-      if (pdfInputRef.current) pdfInputRef.current.value = "";
-    }
-  }, [onChange]);
+  const handleShare = () => {
+    if (navigator.share) navigator.share({ title: documentTitle, text: "Partilhado via Doction" }).catch(() => {});
+    else navigator.clipboard.writeText(window.location.href).catch(() => {});
+  };
+  const handleExport        = () => exportToPDF(pages, documentTitle);
+  const handleRenameConfirm = (t: string) => { setShowRename(false); onTitleChange?.(t); };
 
   const popupItems = [
-    { label: "Partilhar",      src: "/assets/icons/svg/share-social.svg", fallback: "share",       onClick: handleShare  },
-    { label: "Importar PDF",   src: "/assets/icons/svg/pdf-import.svg",   fallback: "file-import",  onClick: () => pdfInputRef.current?.click() },
-    { label: "Exportar PDF",   src: "/assets/icons/svg/download.svg",     fallback: "download",     onClick: handleExport },
-    { label: "Renomear",       src: "/assets/icons/svg/pencil.svg",       fallback: "edit",         onClick: () => setTimeout(() => setShowRename(true), 160) },
-    { label: "Definições",     src: "",                                   fallback: "settings",     onClick: () => setShowSettings(true) },
-    { label: "Apagar",         src: "",                                   fallback: "trash",        onClick: () => {}, danger: true },
+    { label: "Partilhar",    src: "/assets/icons/svg/share-social.svg", fallback: "share",       onClick: handleShare },
+    { label: "Importar PDF", src: "/assets/icons/svg/pdf-import.svg",   fallback: "file-import", onClick: () => pdfInputRef.current?.click() },
+    { label: "Exportar PDF", src: "/assets/icons/svg/download.svg",     fallback: "download",    onClick: handleExport },
+    { label: "Renomear",     src: "/assets/icons/svg/pencil.svg",       fallback: "edit",        onClick: () => setTimeout(() => setShowRename(true), 160) },
+    { label: "Definições",   src: "",                                   fallback: "settings",    onClick: () => setShowSettings(true) },
+    { label: "Apagar",       src: "",                                   fallback: "trash",       onClick: () => {}, danger: true },
   ];
 
-  /* ── adaptive zoom ── */
+  /* adaptive zoom */
   useEffect(() => {
-    const calc = () => {
-      if (!containerRef.current) return;
-      const adapted = isMobile ? computeAdaptiveZoom(containerRef.current.clientWidth) : 100;
-      onZoomChange(adapted);
-    };
+    const calc = () => { if (!containerRef.current) return; onZoomChange(isMobile ? computeAdaptiveZoom(containerRef.current.clientWidth) : 100); };
     calc();
     const ro = new ResizeObserver(calc);
     if (containerRef.current) ro.observe(containerRef.current);
@@ -932,246 +905,72 @@ export default function DocumentEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMobile]);
 
-  /* ── sync external content ── */
-  useEffect(() => {
-    if (isInternalChange.current) { isInternalChange.current = false; return; }
-    const el = pageRefs.current[0];
-    if (el && el.innerHTML !== content) { el.innerHTML = content; pagesContent.current[0] = content; }
-  }, [content]);
-
-  /* ── Page overflow ── */
-  const handlePageInput = useCallback((pageIdx: number) => {
-    const el = pageRefs.current[pageIdx];
-    if (!el) return;
-    pagesContent.current[pageIdx] = el.innerHTML;
-
-    if (el.scrollHeight > CONTENT_H + 10) {
-      const overflow = detectOverflowedNodes(el, CONTENT_H);
-      if (overflow.length > 0) {
-        const nextIdx = pageIdx + 1;
-        if (nextIdx >= pagesContent.current.length) pagesContent.current.push("");
-        if (nextIdx >= pageCount) setPageCount(c => { lastPageCount.current = c + 1; return c + 1; });
-        const overflowHTML = overflow.map(n => { const tmp = document.createElement("div"); tmp.appendChild(n.cloneNode(true)); return tmp.innerHTML; }).join("");
-        pagesContent.current[pageIdx] = el.innerHTML;
-        const nextEl = pageRefs.current[nextIdx];
-        if (nextEl) {
-          nextEl.innerHTML = overflowHTML + (pagesContent.current[nextIdx] || "");
-          pagesContent.current[nextIdx] = nextEl.innerHTML;
-          handlePageInput(nextIdx);
-        } else {
-          pagesContent.current[nextIdx] = overflowHTML + (pagesContent.current[nextIdx] || "");
-        }
-      }
-    }
-
-    if (pageIdx > 0 && el.innerHTML.replace(/<br\s*\/?>/gi, "").trim() === "") {
-      const totalPages = pagesContent.current.length;
-      if (pageIdx === totalPages - 1) {
-        pagesContent.current.splice(pageIdx, 1);
-        setPageCount(c => Math.max(1, c - 1));
-        setTimeout(() => { const prev = pageRefs.current[pageIdx - 1]; if (prev) { prev.focus(); placeCursorAtEnd(prev); } }, 30);
-      }
-    }
-
-    isInternalChange.current = true;
-    onChange(pagesContent.current[0] || "");
-  }, [pageCount, onChange]);
-
-  /* ── KeyDown ── */
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>, pageIdx: number) => {
-    if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertHTML", false, "&nbsp;&nbsp;&nbsp;&nbsp;"); }
-    if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-      switch (e.key) {
-        case "b": e.preventDefault(); document.execCommand("bold");      break;
-        case "i": e.preventDefault(); document.execCommand("italic");    break;
-        case "u": e.preventDefault(); document.execCommand("underline"); break;
-        case "=": e.preventDefault(); onZoomChange(Math.min(200, zoom + 10)); break;
-        case "-": e.preventDefault(); onZoomChange(Math.max(25,  zoom - 10)); break;
-        case "0": e.preventDefault(); onZoomChange(100); break;
-      }
-    }
-    if (e.key === "Enter") {
-      const el = pageRefs.current[pageIdx];
-      if (el && el.scrollHeight > CONTENT_H) {
-        // Página já cheia antes do Enter — mover cursor para a próxima
-        e.preventDefault();
-        const nextIdx = pageIdx + 1;
-        if (nextIdx >= pageCount) { pagesContent.current.push(""); setPageCount(c => c + 1); }
-        setTimeout(() => { const nextEl = pageRefs.current[nextIdx]; if (nextEl) { nextEl.focus(); placeCursorAtStart(nextEl); } }, 30);
-      }
-      // Se não está cheia: Enter passa normalmente; handlePageInput trata overflow se ocorrer
-    }
-    if (e.key === "Backspace" && pageIdx > 0) {
-      const el = pageRefs.current[pageIdx];
-      if (!el) return;
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        if (range.startOffset === 0 && range.collapsed && el.childNodes.length <= 1) {
-          e.preventDefault();
-          const prevEl = pageRefs.current[pageIdx - 1];
-          if (prevEl) { prevEl.focus(); placeCursorAtEnd(prevEl); }
-        }
-      }
-    }
-  };
-
-  function placeCursorAtStart(el: HTMLElement) {
-    const range = document.createRange(), sel = window.getSelection();
-    range.setStart(el, 0); range.collapse(true);
-    sel?.removeAllRanges(); sel?.addRange(range);
-  }
-  function placeCursorAtEnd(el: HTMLElement) {
-    const range = document.createRange(), sel = window.getSelection();
-    range.selectNodeContents(el); range.collapse(false);
-    sel?.removeAllRanges(); sel?.addRange(range);
-  }
-
-  /* ── init pages ── */
-  const initPage = useCallback((el: HTMLDivElement | null, idx: number) => {
-    if (!el) return;
-    pageRefs.current[idx] = el;
-    if (el.innerHTML !== (pagesContent.current[idx] || "")) el.innerHTML = pagesContent.current[idx] || "";
-  }, []);
-
-  /* ── pinch zoom ── */
+  /* pinch zoom */
   const onTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      pinchRef.current = { dist: Math.hypot(dx, dy), startZoom: zoom };
-    }
+    if (e.touches.length === 2) { const dx = e.touches[0].clientX - e.touches[1].clientX; const dy = e.touches[0].clientY - e.touches[1].clientY; pinchRef.current = { dist: Math.hypot(dx, dy), startZoom: zoom }; }
   };
   const onTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2 && pinchRef.current) {
-      e.preventDefault();
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      onZoomChange(Math.max(25, Math.min(200, Math.round(pinchRef.current.startZoom * (Math.hypot(dx, dy) / pinchRef.current.dist)))));
-    }
+    if (e.touches.length === 2 && pinchRef.current) { e.preventDefault(); const dx = e.touches[0].clientX - e.touches[1].clientX; const dy = e.touches[0].clientY - e.touches[1].clientY; onZoomChange(Math.max(25, Math.min(200, Math.round(pinchRef.current.startZoom * (Math.hypot(dx, dy) / pinchRef.current.dist))))); }
   };
   const onTouchEnd = () => { pinchRef.current = null; };
 
   useEffect(() => {
     const el = containerRef.current; if (!el) return;
-    const handler = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) { e.preventDefault(); onZoomChange(Math.max(25, Math.min(200, zoom + (e.deltaY < 0 ? 10 : -10)))); }
-    };
-    el.addEventListener("wheel", handler, { passive: false });
-    return () => el.removeEventListener("wheel", handler);
+    const h = (e: WheelEvent) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); onZoomChange(Math.max(25, Math.min(200, zoom + (e.deltaY < 0 ? 10 : -10)))); } };
+    el.addEventListener("wheel", h, { passive: false });
+    return () => el.removeEventListener("wheel", h);
   }, [zoom, onZoomChange]);
-
-  /* ── page content styles ── */
-  const pageContentStyle: React.CSSProperties = {
-    position: "absolute",
-    top: PAGE_MARGIN_PX, left: PAGE_MARGIN_PX,
-    width: CONTENT_W, height: CONTENT_H,
-    outline: "none", overflow: "hidden",
-    fontFamily: "Georgia,'Times New Roman',serif",
-    fontSize: 14, lineHeight: "1.6",
-    color: "#1a1a1a", wordBreak: "break-word", whiteSpace: "pre-wrap",
-  };
-
-  const pageContentClass = `
-    [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-3 [&_h1]:mt-2 [&_h1]:font-sans [&_h1]:leading-tight
-    [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mb-2 [&_h2]:mt-2 [&_h2]:font-sans
-    [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-2 [&_h3]:font-sans
-    [&_h4]:text-base [&_h4]:font-semibold [&_h4]:mb-1 [&_h4]:font-sans
-    [&_p]:mb-3
-    [&_ul]:list-disc [&_ul]:ml-5 [&_ul]:mb-3
-    [&_ol]:list-decimal [&_ol]:ml-5 [&_ol]:mb-3
-    [&_li]:mb-1
-    [&_a]:text-blue-600 [&_a]:underline
-    [&_blockquote]:border-l-4 [&_blockquote]:border-gray-400 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-600 [&_blockquote]:my-3
-    [&_code]:bg-gray-100 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-sm
-    [&_pre]:bg-gray-100 [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-sm [&_pre]:my-3 [&_pre]:overflow-x-auto
-    [&_table]:border-collapse [&_table]:w-full [&_table]:my-3
-    [&_th]:border [&_th]:border-gray-300 [&_th]:p-2 [&_th]:bg-gray-50 [&_th]:font-semibold [&_th]:text-left
-    [&_td]:border [&_td]:border-gray-300 [&_td]:p-2
-    [&_img]:inline-block [&_img]:my-2 [&_img]:max-w-full
-    [&_hr]:border-gray-200 [&_hr]:my-4
-  `;
 
   return (
     <div style={{ display: "flex", flexDirection: "row", height: "100%", overflow: "hidden" }}>
+      <input ref={pdfInputRef} type="file" accept="application/pdf" style={{ display: "none" }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfImport(f); }} />
 
-      {/* Hidden PDF file input */}
-      <input
-        ref={pdfInputRef}
-        type="file"
-        accept="application/pdf"
-        style={{ display: "none" }}
-        onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfImport(f); }}
-      />
-
-      {!isMobile && (
-        <Sidebar isDark={isDark} documentTitle={documentTitle} onOpenSettings={() => setShowSettings(true)} />
-      )}
+      {!isMobile && <Sidebar isDark={isDark} documentTitle={documentTitle} onOpenSettings={() => setShowSettings(true)} />}
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-
-        <AppBar
-          isDark={isDark} isMobile={isMobile} documentTitle={documentTitle}
+        <AppBar isDark={isDark} isMobile={isMobile} documentTitle={documentTitle}
           onMenuClick={() => setShowDrawer(true)}
           onPopupToggle={() => setPopupOpen(v => !v)}
           popupOpen={popupOpen} popupAnchorRef={popupAnchorRef}
-          popupItems={popupItems} onPopupClose={() => setPopupOpen(false)}
-        />
+          popupItems={popupItems} onPopupClose={() => setPopupOpen(false)} />
 
         <div ref={containerRef} className="flex-1 flex flex-col overflow-hidden"
           onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
           style={{ background: canvasBg, touchAction: "pan-y pinch-zoom" }}>
 
-          {showZoomModal && isMobile && (
-            <ZoomModal zoom={zoom} onZoomChange={onZoomChange} onClose={() => setShowZoomModal(false)} />
-          )}
+          {showZoomModal && isMobile && <ZoomModal zoom={zoom} onZoomChange={onZoomChange} onClose={() => setShowZoomModal(false)} />}
+          {showDrawer    && isMobile && <DrawerMenu onClose={() => setShowDrawer(false)} isDark={isDark} documentTitle={documentTitle} onOpenSettings={() => setShowSettings(true)} />}
+          {showRename    && <RenameModal isDark={isDark} currentTitle={documentTitle} onConfirm={handleRenameConfirm} onCancel={() => setShowRename(false)} />}
+          {showSettings  && <SettingsModal isDark={isDark} onClose={() => setShowSettings(false)} onThemeChange={t => setTheme(t)} />}
+          {pdfImporting  && <PdfProgressModal isDark={isDark} label={pdfLabel} pct={pdfPct} />}
 
-          {showDrawer && isMobile && (
-            <DrawerMenu onClose={() => setShowDrawer(false)} isDark={isDark}
-              documentTitle={documentTitle} onOpenSettings={() => setShowSettings(true)} />
-          )}
+          {/* Hint bar */}
+          <div style={{ flexShrink: 0, padding: "4px 14px", background: isDark ? "rgba(255,255,255,.03)" : "rgba(0,0,0,.025)", borderBottom: `1px solid ${statusBdr}`, fontSize: 11, color: statusClr, display: "flex", gap: 12, alignItems: "center" }}>
+            <span>Duplo clique na página → adicionar texto</span>
+            <span style={{ opacity: .5 }}>·</span>
+            <span>Arrastar → mover</span>
+            <span style={{ opacity: .5 }}>·</span>
+            <span>Cantos → redimensionar</span>
+            <span style={{ opacity: .5 }}>·</span>
+            <span>Delete → apagar</span>
+          </div>
 
-          {showRename && (
-            <RenameModal isDark={isDark} currentTitle={documentTitle}
-              onConfirm={handleRenameConfirm} onCancel={() => setShowRename(false)} />
-          )}
-
-          {showSettings && (
-            <SettingsModal isDark={isDark} onClose={() => setShowSettings(false)}
-              onThemeChange={(t) => setTheme(t)} />
-          )}
-
-          {pdfImporting && (
-            <PdfProgressModal isDark={isDark} label={pdfLabel} pct={pdfPct} />
-          )}
-
-          {/* Canvas */}
+          {/* Canvas scroll area */}
           <div style={{ flex: 1, overflowY: "auto", overflowX: "auto", padding: "24px 16px", display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
-            <div style={{
-              transform: `scale(${zoom / 100})`,
-              transformOrigin: "top center",
-              transition: "transform 0.15s ease",
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 24,
-              marginBottom: `${(zoom / 100 - 1) * pageCount * (PAGE_H + 24) * 0.5}px`,
-            }}>
-              {Array.from({ length: pageCount }).map((_, idx) => (
-                <div key={idx} style={{ position: "relative" }}>
-                  {pageCount > 1 && (
-                    <div style={{ position: "absolute", top: -20, left: 0, right: 0, textAlign: "center", fontSize: 11, color: pageNumClr, userSelect: "none" }}>
-                      Página {idx + 1}
-                    </div>
+            <div style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top center", transition: "transform 0.15s ease", display: "flex", flexDirection: "column", alignItems: "center", gap: 24, marginBottom: `${(zoom / 100 - 1) * pages.length * (PAGE_H + 24) * 0.5}px` }}>
+              {pages.map((page, idx) => (
+                <div key={idx} style={{ position: "relative" }} onClick={() => setActivePageIdx(idx)}>
+                  {pages.length > 1 && (
+                    <div style={{ position: "absolute", top: -20, left: 0, right: 0, textAlign: "center", fontSize: 11, color: pageNumClr, userSelect: "none" }}>Página {idx + 1}</div>
                   )}
-                  <div style={{ width: PAGE_W, height: PAGE_H, background: "#ffffff", boxShadow: pageShadow, position: "relative", overflow: "hidden", flexShrink: 0 }}>
-                    <div
-                      ref={(el) => initPage(el, idx)}
-                      contentEditable
-                      suppressContentEditableWarning
-                      onFocus={() => setActivePageIdx(idx)}
-                      onInput={() => handlePageInput(idx)}
-                      onKeyDown={(e) => handleKeyDown(e, idx)}
-                      style={pageContentStyle}
-                      className={pageContentClass}
-                    />
+                  <div style={{ background: "#ffffff", boxShadow: pageShadow, position: "relative", overflow: "hidden", flexShrink: 0 }}>
+                    <CanvasPage
+                      page={page} pageIdx={idx}
+                      selectedId={activePageIdx === idx ? selectedId : null}
+                      onSelectObj={id => { setActivePageIdx(idx); setSelectedId(id); }}
+                      onUpdateObj={updateObj} onDeleteObj={deleteObj} onAddTextAt={addTextAt}
+                      zoom={zoom} />
                   </div>
                 </div>
               ))}
@@ -1180,11 +979,9 @@ export default function DocumentEditor({
 
           {/* Status bar */}
           <div style={{ height: 28, background: statusBg, borderTop: `1.5px solid ${statusBdr}`, display: "flex", alignItems: "center", padding: "0 14px", gap: 10, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: statusClr, fontWeight: 500 }}>
-              {pdfImporting ? "A importar PDF…" : "Pronto"}
-            </span>
+            <span style={{ fontSize: 11, color: statusClr, fontWeight: 500 }}>{pdfImporting ? "A importar PDF…" : "Pronto"}</span>
             <span style={{ fontSize: 11, color: statusSep }}>·</span>
-            <span style={{ fontSize: 11, color: statusClr }}>Pág. {activePageIdx + 1} / {pageCount}</span>
+            <span style={{ fontSize: 11, color: statusClr }}>Pág. {activePageIdx + 1} / {pages.length}</span>
             <span style={{ fontSize: 11, color: statusSep }}>·</span>
             <button onClick={() => isMobile && setShowZoomModal(true)}
               style={{ fontSize: 11, color: statusClr, background: "none", border: "none", cursor: isMobile ? "pointer" : "default", padding: 0, display: "flex", alignItems: "center", gap: 4, fontWeight: 500 }}>
