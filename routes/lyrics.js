@@ -1,3 +1,4 @@
+// routes/lyrics.js
 const express = require('express');
 const router  = express.Router();
 
@@ -7,7 +8,6 @@ async function fetchJSON(url) {
   return res.json();
 }
 
-// Usa lyrics.ovh (gratuito, sem chave)
 router.get('/', async (req, res) => {
   const { track, artist } = req.query;
   if (!track || !artist) return res.status(400).json({ error: 'track e artist obrigatórios' });
@@ -18,7 +18,6 @@ router.get('/', async (req, res) => {
     );
     res.json({ lyrics: data.lyrics || null });
   } catch (err) {
-    // fallback: tenta chartlyrics
     try {
       const fb = await fetch(
         `http://api.chartlyrics.com/apiv1.asmx/SearchLyricDirect?artist=${encodeURIComponent(artist)}&song=${encodeURIComponent(track)}`
