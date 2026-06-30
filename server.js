@@ -1,9 +1,11 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const feedRouter    = require('./routes/feed');
 const searchRouter  = require('./routes/search');
 const audioRouter   = require('./routes/audio');
 const lyricsRouter  = require('./routes/lyrics');
+const artistRouter  = require('./routes/artist');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -15,6 +17,7 @@ app.use('/api/feed',    feedRouter);
 app.use('/api/search',  searchRouter);
 app.use('/api/audio',   audioRouter);
 app.use('/api/lyrics',  lyricsRouter);
+app.use('/api/artist',  artistRouter);
 
 app.get('/health', (_, res) => res.json({ ok: true }));
 
