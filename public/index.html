@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YouTube Scraper</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, sans-serif;
+    background: #0f0f0f;
+    color: #fff;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+  h1 { font-size: 20px; }
+  .search-box {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  input {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: #222;
+    color: #fff;
+    font-size: 14px;
+  }
+  button {
+    padding: 12px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #ff0000;
+    color: #fff;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .result {
+    display: flex;
+    gap: 12px;
+    background: #1a1a1a;
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+    align-items: center;
+    cursor: pointer;
+  }
+  .result img {
+    width: 120px;
+    height: 68px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+  .result-info { overflow: hidden; }
+  .result-title {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .result-id {
+    font-size: 12px;
+    color: #888;
+    margin-top: 4px;
+  }
+  .status { color: #888; font-size: 13px; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h1>🔍 YouTube Scraper</h1>
+
+<div class="search-box">
+  <input type="text" id="query" placeholder="Título e artista..." />
+  <button id="btn" onclick="search()">Buscar</button>
+</div>
+
+<div class="status" id="status"></div>
+<div id="results"></div>
+
+<script>
+async function search() {
+  const query = document.getElementById('query').value.trim();
+  const status = document.getElementById('status');
+  const results = document.getElementById('results');
+  const btn = document.getElementById('btn');
+
+  if (!query) return;
+
+  btn.disabled = true;
+  status.textContent = 'Buscando...';
+  results.innerHTML = '';
+
+  try {
+    const res = await fetch('/api/search?q=' + encodeURIComponent(query));
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
+
+    if (data.results.length === 0) {
+      status.textContent = 'Nenhum resultado encontrado.';
+      btn.disabled = false;
+      return;
+    }
+
+    status.textContent = data.results.length + ' resultados encontrados';
+
+    data.results.forEach((item) => {
+      const div = document.createElement('div');
+      div.className = 'result';
+      div.innerHTML = `
+        <img src="${item.thumbnail}" />
+        <div class="result-info">
+          <div class="result-title">${item.title}</div>
+          <div class="result-id">ID: ${item.videoId}</div>
+        </div>
+      `;
+      div.onclick = () => window.open('https://www.youtube.com/watch?v=' + item.videoId, '_blank');
+      results.appendChild(div);
+    });
+
+  } catch (err) {
+    status.textContent = 'Erro: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('query').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') search();
+});
+</script>
+
+</body>
+</html>
