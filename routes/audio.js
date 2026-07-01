@@ -1,19 +1,27 @@
 // routes/audio.js
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const router = express.Router();
 const { spawn } = require('child_process');
 
-// Binário standalone baixado no build, na raiz do projeto
 const YTDLP_PATH = path.join(__dirname, '..', 'yt-dlp');
 const FFMPEG_PATH = require('ffmpeg-static');
+const COOKIES_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 function runYtDlp(args) {
   return new Promise((resolve, reject) => {
+    const extraArgs = fs.existsSync(COOKIES_PATH) ?
+      ['--cookies', COOKIES_PATH] :
+      [];
+    
     const proc = spawn(YTDLP_PATH, [
       ...args,
+      ...extraArgs,
       '--ffmpeg-location', FFMPEG_PATH,
+      '--extractor-args', 'youtube:player_client=android',
     ]);
+    
     let stdout = '';
     let stderr = '';
     
