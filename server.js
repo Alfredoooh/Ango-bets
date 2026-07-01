@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 const { Readable } = require('stream');
 const app = express();
@@ -19,14 +20,18 @@ function runYtDlp(args, { playerClient = null } = {}) {
       ? ['--extractor-args', `youtube:player_client=${playerClient}`]
       : [];
 
-    const proc = spawn(YTDLP_PATH, [
+    const fullArgs = [
       ...args,
       '--ffmpeg-location', FFMPEG_PATH,
       ...clientArgs,
       '--no-check-certificates',
       '--geo-bypass',
       '--socket-timeout', '15',
-    ]);
+    ];
+
+    console.log('[yt-dlp] exec:', YTDLP_PATH, fullArgs.join(' '));
+
+    const proc = spawn(YTDLP_PATH, fullArgs);
 
     let stdout = '';
     let stderr = '';
@@ -34,10 +39,14 @@ function runYtDlp(args, { playerClient = null } = {}) {
     proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
     proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
 
-    proc.on('error', (err) => reject(new Error(`Falha ao iniciar yt-dlp: ${err.message}`)));
+    proc.on('error', (err) => {
+      console.error('[yt-dlp] erro ao iniciar processo:', err.message);
+      reject(new Error(`Falha ao iniciar yt-dlp: ${err.message}`));
+    });
 
     proc.on('close', (code) => {
       if (code !== 0) {
+        console.error('[yt-dlp] saiu com código', code, 'stderr:', stderr.slice(0, 800));
         reject(new Error(`yt-dlp saiu com código ${code}: ${stderr.slice(0, 500)}`));
         return;
       }
@@ -93,6 +102,31 @@ async function getDirectAudioUrl(videoId) {
   return url;
 }
 
+// Endpoint de diagnóstico: confirma se o binário yt-dlp existe e é executável
+app.get('/api/health', (req, res) => {
+  const exists = fs.existsSync(YTDLP_PATH);
+  let executable = false;
+  let stat = null;
+  if (exists) {
+    try {
+      fs.accessSync(YTDLP_PATH, fs.constants.X_OK);
+      executable = true;
+      stat = fs.statSync(YTDLP_PATH);
+    } catch (e) {
+      executable = false;
+    }
+  }
+  res.json({
+    ytdlpPath: YTDLP_PATH,
+    ytdlpExists: exists,
+    ytdlpExecutable: executable,
+    size: stat ? stat.size : null,
+    ffmpegPath: FFMPEG_PATH,
+    ffmpegExists: fs.existsSync(FFMPEG_PATH),
+    nodeVersion: process.version,
+  });
+});
+
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ error: 'query obrigatória' });
@@ -132,7 +166,6 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-// Mantido para compatibilidade / debug, mas o player agora usa /api/stream
 app.get('/api/extract', async (req, res) => {
   const { videoId } = req.query;
   if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
@@ -149,28 +182,24 @@ app.get('/api/extract', async (req, res) => {
   }
 });
 
-// Endpoint que o <audio> do frontend usa diretamente.
-// O servidor faz de proxy: pede ao Google a partir do PRÓPRIO IP (o mesmo
-// que gerou a URL), e reenvia o stream para o browser. Isto evita o 403
-// que acontece quando a URL crua do googlevideo é usada a partir de outro IP.
 app.get('/api/stream', async (req, res) => {
   const { videoId } = req.query;
   if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
 
   try {
+    console.log('[Stream] pedido para videoId:', videoId);
     const directUrl = await getDirectAudioUrl(videoId);
+    console.log('[Stream] URL direta obtida, a fazer fetch upstream...');
 
-    const upstreamHeaders = {
-      'User-Agent': UPSTREAM_UA,
-    };
-    if (req.headers.range) {
-      upstreamHeaders['Range'] = req.headers.range;
-    }
+    const upstreamHeaders = { 'User-Agent': UPSTREAM_UA };
+    if (req.headers.range) upstreamHeaders['Range'] = req.headers.range;
 
     const upstreamRes = await fetch(directUrl, { headers: upstreamHeaders });
+    console.log('[Stream] upstream status:', upstreamRes.status);
 
     if (!upstreamRes.ok && upstreamRes.status !== 206) {
-      console.error('[Stream] Upstream devolveu', upstreamRes.status);
+      const bodyPreview = await upstreamRes.text().catch(() => '');
+      console.error('[Stream] Upstream devolveu', upstreamRes.status, bodyPreview.slice(0, 300));
       return res.status(502).json({ error: 'Falha ao obter stream do YouTube (HTTP ' + upstreamRes.status + ')' });
     }
 
@@ -185,13 +214,13 @@ app.get('/api/stream', async (req, res) => {
     if (!res.getHeader('content-type')) res.setHeader('Content-Type', 'audio/mp4');
 
     if (!upstreamRes.body) {
+      console.error('[Stream] body vazio do upstream');
       return res.status(502).json({ error: 'Stream vazio do upstream' });
     }
 
     Readable.fromWeb(upstreamRes.body).pipe(res);
 
     req.on('close', () => {
-      // Se o cliente cancelar (trocar de música), aborta o pedido upstream
       if (upstreamRes.body && typeof upstreamRes.body.cancel === 'function') {
         upstreamRes.body.cancel().catch(() => {});
       }
@@ -206,4 +235,5 @@ app.get('/api/stream', async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`yt-dlp path: ${YTDLP_PATH}, existe: ${fs.existsSync(YTDLP_PATH)}`);
 });
