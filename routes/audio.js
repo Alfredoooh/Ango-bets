@@ -102,8 +102,7 @@ async function runYtDlpWithClientCascade(args) {
 }
 
 // Extração de áudio: tenta primeiro formato legado "18" (mp4 360p progressive,
-// servido por pipeline diferente, às vezes escapa da verificação), depois cai
-// para o melhor áudio disponível se "18" não existir.
+// às vezes escapa da verificação), depois cai para o melhor áudio disponível.
 async function getAudioStreamUrl(videoId) {
   const formatsToTry = [
     '18',
