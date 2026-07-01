@@ -11,109 +11,44 @@ const COOKIES_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 const CLIENT_CASCADE = ['android', 'ios', 'tv', 'web_creator'];
 
-// Lista de instâncias Piped, atualizada dinamicamente a partir da API oficial de status.
-// Cache em memória por 1h pra não bater nessa API toda hora.
-let pipedInstancesCache = { list: [], ts: 0 };
-const PIPED_LIST_TTL_MS = 60 * 60 * 1000; // 1h
-
-// Fallback fixo, usado apenas se a busca dinâmica falhar
-const PIPED_FALLBACK_STATIC = [
-  'https://pipedapi.kavin.rocks',
-  'https://pipedapi.adminforge.de',
-];
-
-function fetchJson(url, timeoutMs = 8000) {
-  return new Promise((resolve, reject) => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    
-    fetch(url, { signal: controller.signal })
-      .then(async (res) => {
-        clearTimeout(timeout);
-        if (!res.ok) {
-          reject(new Error(`HTTP ${res.status}`));
-          return;
-        }
-        const data = await res.json();
-        resolve(data);
-      })
-      .catch((err) => {
-        clearTimeout(timeout);
-        reject(err.name === 'AbortError' ? new Error('Timeout') : err);
-      });
+// Busca o primeiro videoId fazendo scraping direto da página de resultados do YouTube.
+// Não usa a API oficial nem o "ytsearch" do yt-dlp — apenas faz um fetch HTML comum,
+// exatamente como um navegador faria ao carregar a página de busca.
+async function searchYouTubeHtml(query) {
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      'Accept-Language': 'pt-PT,pt;q=0.9,en;q=0.8',
+    },
   });
-}
-
-// Busca a lista de instâncias vivas na API pública de status do Piped.
-async function getLivePipedInstances() {
-  const now = Date.now();
-  if (pipedInstancesCache.list.length > 0 && (now - pipedInstancesCache.ts) < PIPED_LIST_TTL_MS) {
-    return pipedInstancesCache.list;
+  
+  if (!res.ok) {
+    throw new Error(`Busca HTML falhou: HTTP ${res.status}`);
   }
   
-  try {
-    // API oficial que lista instâncias registradas, com campo de saúde/uptime
-    const data = await fetchJson('https://piped-instances.kavin.rocks/');
-    const apiUrls = (Array.isArray(data) ? data : [])
-      .filter((inst) => inst.api_url)
-      .map((inst) => inst.api_url);
-    
-    if (apiUrls.length > 0) {
-      pipedInstancesCache = { list: apiUrls, ts: now };
-      console.log(`[Piped] Lista atualizada dinamicamente: ${apiUrls.length} instâncias`);
-      return apiUrls;
-    }
-  } catch (err) {
-    console.warn(`[Piped] Falha ao buscar lista dinâmica: ${err.message}`);
+  const html = await res.text();
+  
+  // O primeiro videoId aparece no padrão "videoId":"XXXXXXXXXXX" dentro do JSON embutido na página
+  const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+  if (!match) {
+    throw new Error('Nenhum videoId encontrado na página de resultados');
   }
   
-  // Se a busca dinâmica falhar, usa o fallback estático mínimo
-  return PIPED_FALLBACK_STATIC;
-}
-
-// Busca + extração via Piped: uma instância só resolve as duas etapas de uma vez.
-async function tryPipedSearch(query) {
-  const instances = await getLivePipedInstances();
-  let lastError = null;
+  const videoId = match[1];
   
-  for (const instance of instances) {
-    try {
-      const searchUrl = `${instance}/search?q=${encodeURIComponent(query)}&filter=videos`;
-      const searchData = await fetchJson(searchUrl, 6000);
-      
-      const items = Array.isArray(searchData) ? searchData : (searchData.items || []);
-      const firstItem = items.find((i) => i.url && i.url.includes('watch?v='));
-      if (!firstItem) throw new Error('Nenhum vídeo encontrado nesta instância');
-      
-      const videoId = firstItem.url.split('watch?v=')[1];
-      
-      const streamsUrl = `${instance}/streams/${videoId}`;
-      const streamsData = await fetchJson(streamsUrl, 6000);
-      
-      const audioStreams = streamsData.audioStreams || [];
-      if (audioStreams.length === 0) throw new Error('Sem streams de áudio nesta instância');
-      
-      const best = audioStreams.reduce((a, b) => ((b.bitrate || 0) > (a.bitrate || 0) ? b : a));
-      
-      console.log(`[Piped] Sucesso via ${instance} para "${query}"`);
-      
-      return {
-        url: best.url,
-        duration: streamsData.duration || firstItem.duration || null,
-        sourceTitle: streamsData.title || firstItem.title,
-        videoId,
-        source: `piped:${instance}`,
-      };
-    } catch (err) {
-      lastError = err;
-      console.warn(`[Piped] Instância ${instance} falhou: ${err.message}`);
-    }
+  // Tenta pegar o título também (best-effort, não é crítico se falhar)
+  let title = query;
+  const titleMatch = html.match(new RegExp(`"videoId":"${videoId}"[^}]*?"title":\\{"runs":\\[\\{"text":"([^"]+)"`));
+  if (titleMatch) {
+    title = titleMatch[1];
   }
   
-  throw lastError || new Error('Todas as instâncias Piped falharam');
+  return { videoId, title };
 }
 
-// --- Fallback: yt-dlp direto no YouTube, com cascata de player_client ---
+// --- Extração de áudio via yt-dlp, com cascata de player_client ---
 function runYtDlp(args, { playerClient = null } = {}) {
   return new Promise((resolve, reject) => {
     const extraArgs = fs.existsSync(COOKIES_PATH) ? ['--cookies', COOKIES_PATH] : [];
@@ -171,23 +106,8 @@ async function runYtDlpWithClientCascade(args) {
   throw lastError;
 }
 
-async function fallbackYtDlp(query) {
-  const searchArgs = [
-    `ytsearch1:${query}`,
-    '--dump-json',
-    '--no-playlist',
-    '--skip-download',
-    '--no-warnings',
-  ];
-  
-  const stdout = await runYtDlpWithClientCascade(searchArgs);
-  const line = stdout.trim().split('\n')[0];
-  if (!line) throw new Error('Nenhum vídeo encontrado (yt-dlp)');
-  
-  const info = JSON.parse(line);
-  const videoId = info.id;
-  
-  const urlArgs = [
+async function getAudioStreamUrl(videoId) {
+  const args = [
     `https://www.youtube.com/watch?v=${videoId}`,
     '-f', 'bestaudio[ext=m4a]/bestaudio/best',
     '--get-url',
@@ -195,17 +115,11 @@ async function fallbackYtDlp(query) {
     '--no-warnings',
   ];
   
-  const urlStdout = await runYtDlpWithClientCascade(urlArgs);
-  const url = urlStdout.trim().split('\n')[0];
-  if (!url) throw new Error('Sem formatos de áudio disponíveis (yt-dlp)');
+  const stdout = await runYtDlpWithClientCascade(args);
+  const url = stdout.trim().split('\n')[0];
+  if (!url) throw new Error('Sem formatos de áudio disponíveis');
   
-  return {
-    url,
-    duration: info.duration || null,
-    sourceTitle: info.title,
-    videoId,
-    source: 'yt-dlp',
-  };
+  return url;
 }
 
 router.get('/url', async (req, res) => {
@@ -215,21 +129,24 @@ router.get('/url', async (req, res) => {
   const query = artist ? `${artist} ${track} audio` : `${track} audio`;
   
   try {
-    const result = await tryPipedSearch(query);
-    return res.json({ ...result, type: 'music' });
+    const { videoId, title } = await searchYouTubeHtml(query);
+    const url = await getAudioStreamUrl(videoId);
+    
+    return res.json({
+      url,
+      sourceTitle: title,
+      videoId,
+      type: 'music',
+      source: 'html-scrape',
+    });
   } catch (err) {
-    console.error('[Audio] Piped falhou totalmente:', err.message);
-  }
-  
-  try {
-    const result = await fallbackYtDlp(query);
-    return res.json({ ...result, type: 'music' });
-  } catch (err) {
-    console.error('[Audio] yt-dlp também falhou:', err.message);
+    console.error('[Audio] Erro:', err.message);
     
     return res.status(500).json({
       error: err.message,
-      hint: 'Piped e yt-dlp falharam. Tenta novamente em instantes — instâncias públicas oscilam.',
+      hint: isBotCheckError(err.message) ?
+        'A extração do áudio foi bloqueada mesmo com videoId direto.' :
+        undefined,
     });
   }
 });
