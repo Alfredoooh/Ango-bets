@@ -7,7 +7,6 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Escreve o cookies.txt a partir da env var, se existir
 if (process.env.YT_COOKIES) {
   const cookiesPath = path.join(__dirname, 'cookies.txt');
   fs.writeFileSync(cookiesPath, process.env.YT_COOKIES, 'utf8');
@@ -22,6 +21,7 @@ app.use('/api/audio', require('./routes/audio'));
 app.use('/api/lyrics', require('./routes/lyrics'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/artist', require('./routes/artist'));
+app.use('/api/recognize', require('./routes/recognize'));
 
 app.listen(PORT, () => {
   console.log(`Servidor na porta ${PORT}`);
