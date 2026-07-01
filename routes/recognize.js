@@ -9,6 +9,7 @@ const os = require('os');
 const MB_BASE = 'https://musicbrainz.org/ws/2';
 const CAA_BASE = 'https://coverartarchive.org';
 const MB_UA = 'MusicApp/1.0 (contact@example.com)';
+const FPCALC_PATH = path.join(__dirname, '..', 'fpcalc');
 
 async function fetchJSON(url, headers = {}, timeoutMs = 8000) {
   const ctrl = new AbortController();
@@ -26,7 +27,7 @@ async function fingerprintBuffer(buf, ext) {
   return new Promise((resolve, reject) => {
     const tmp = path.join(os.tmpdir(), `rec_${Date.now()}${ext}`);
     fs.writeFileSync(tmp, buf);
-    execFile('fpcalc', ['-json', tmp], { timeout: 15000 }, (err, stdout) => {
+    execFile(FPCALC_PATH, ['-json', tmp], { timeout: 15000 }, (err, stdout) => {
       fs.unlink(tmp, () => {});
       if (err) return reject(err);
       try { resolve(JSON.parse(stdout)); }
