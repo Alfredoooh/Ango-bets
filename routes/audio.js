@@ -12,8 +12,6 @@ const COOKIES_PATH = path.join(__dirname, '..', 'cookies.txt');
 const CLIENT_CASCADE = ['android', 'ios', 'tv', 'web_creator'];
 
 // Busca o primeiro videoId fazendo scraping direto da página de resultados do YouTube.
-// Não usa a API oficial nem o "ytsearch" do yt-dlp — apenas faz um fetch HTML comum,
-// exatamente como um navegador faria ao carregar a página de busca.
 async function searchYouTubeHtml(query) {
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
   
@@ -30,7 +28,6 @@ async function searchYouTubeHtml(query) {
   
   const html = await res.text();
   
-  // O primeiro videoId aparece no padrão "videoId":"XXXXXXXXXXX" dentro do JSON embutido na página
   const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
   if (!match) {
     throw new Error('Nenhum videoId encontrado na página de resultados');
@@ -38,7 +35,6 @@ async function searchYouTubeHtml(query) {
   
   const videoId = match[1];
   
-  // Tenta pegar o título também (best-effort, não é crítico se falhar)
   let title = query;
   const titleMatch = html.match(new RegExp(`"videoId":"${videoId}"[^}]*?"title":\\{"runs":\\[\\{"text":"([^"]+)"`));
   if (titleMatch) {
@@ -48,7 +44,6 @@ async function searchYouTubeHtml(query) {
   return { videoId, title };
 }
 
-// --- Extração de áudio via yt-dlp, com cascata de player_client ---
 function runYtDlp(args, { playerClient = null } = {}) {
   return new Promise((resolve, reject) => {
     const extraArgs = fs.existsSync(COOKIES_PATH) ? ['--cookies', COOKIES_PATH] : [];
@@ -87,7 +82,7 @@ function runYtDlp(args, { playerClient = null } = {}) {
 }
 
 function isBotCheckError(message) {
-  return /sign in to confirm|not a bot/i.test(message);
+  return /sign in to confirm|not a bot|please sign in/i.test(message);
 }
 
 async function runYtDlpWithClientCascade(args) {
@@ -106,20 +101,37 @@ async function runYtDlpWithClientCascade(args) {
   throw lastError;
 }
 
+// Extração de áudio: tenta primeiro formato legado "18" (mp4 360p progressive,
+// servido por pipeline diferente, às vezes escapa da verificação), depois cai
+// para o melhor áudio disponível se "18" não existir.
 async function getAudioStreamUrl(videoId) {
-  const args = [
-    `https://www.youtube.com/watch?v=${videoId}`,
-    '-f', 'bestaudio[ext=m4a]/bestaudio/best',
-    '--get-url',
-    '--no-playlist',
-    '--no-warnings',
+  const formatsToTry = [
+    '18',
+    'bestaudio[ext=m4a]/bestaudio/best',
   ];
   
-  const stdout = await runYtDlpWithClientCascade(args);
-  const url = stdout.trim().split('\n')[0];
-  if (!url) throw new Error('Sem formatos de áudio disponíveis');
+  let lastError = null;
   
-  return url;
+  for (const format of formatsToTry) {
+    try {
+      const args = [
+        `https://www.youtube.com/watch?v=${videoId}`,
+        '-f', format,
+        '--get-url',
+        '--no-playlist',
+        '--no-warnings',
+      ];
+      
+      const stdout = await runYtDlpWithClientCascade(args);
+      const url = stdout.trim().split('\n')[0];
+      if (url) return url;
+    } catch (err) {
+      lastError = err;
+      console.warn(`[Audio] Formato ${format} falhou: ${err.message}`);
+    }
+  }
+  
+  throw lastError || new Error('Sem formatos de áudio disponíveis');
 }
 
 router.get('/url', async (req, res) => {
@@ -145,7 +157,7 @@ router.get('/url', async (req, res) => {
     return res.status(500).json({
       error: err.message,
       hint: isBotCheckError(err.message) ?
-        'A extração do áudio foi bloqueada mesmo com videoId direto.' :
+        'A extração do áudio foi bloqueada mesmo com formato legado e cascata de clients.' :
         undefined,
     });
   }
