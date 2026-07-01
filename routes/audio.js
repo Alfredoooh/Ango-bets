@@ -1,70 +1,87 @@
 // routes/audio.js
 const express = require('express');
-const router  = express.Router();
-const ytdl    = require('@distube/ytdl-core');
+const router = express.Router();
+const { spawn } = require('child_process');
 
-// Busca no YouTube sem precisar de API key, usando a busca pública (HTML) do youtube.com
-async function searchYouTube(query) {
-  const url = `https://www.youtube.com/results?search_type=video&search_query=${encodeURIComponent(query)}`;
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+const YTDLP_PATH = process.env.YTDLP_PATH || 'yt-dlp';
+
+// Executa yt-dlp e retorna stdout como string
+function runYtDlp(args) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(YTDLP_PATH, args);
+    let stdout = '';
+    let stderr = '';
+    
+    proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    
+    proc.on('error', (err) => {
+      reject(new Error(`Falha ao iniciar yt-dlp: ${err.message}`));
+    });
+    
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`yt-dlp saiu com código ${code}: ${stderr.slice(0, 500)}`));
+        return;
+      }
+      resolve(stdout);
+    });
   });
-  const html = await res.text();
-
-  const match = html.match(/var ytInitialData = (\{.*?\});<\/script>/s);
-  if (!match) throw new Error('Não foi possível ler resultados do YouTube');
-
-  let data;
-  try {
-    data = JSON.parse(match[1]);
-  } catch {
-    throw new Error('Falha ao parsear resultados do YouTube');
-  }
-
-  const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents
-    ?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
-
-  for (const item of contents) {
-    const vr = item.videoRenderer;
-    if (vr?.videoId) {
-      return {
-        videoId: vr.videoId,
-        title: vr.title?.runs?.[0]?.text || '',
-        durationText: vr.lengthText?.simpleText || null,
-      };
-    }
-  }
-  throw new Error('Nenhum vídeo encontrado');
 }
 
-async function getAudioStreamUrl(videoId) {
-  const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${videoId}`);
-  const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
-  if (!audioFormats.length) throw new Error('Sem formatos de áudio disponíveis');
-
-  // Prioriza maior bitrate de áudio disponível
-  audioFormats.sort((a, b) => (b.audioBitrate || 0) - (a.audioBitrate || 0));
+// Busca no YouTube e retorna o primeiro resultado (via ytsearch do próprio yt-dlp)
+async function searchYouTube(query) {
+  const args = [
+    `ytsearch1:${query}`,
+    '--dump-json',
+    '--no-playlist',
+    '--skip-download',
+    '--no-warnings',
+  ];
+  
+  const stdout = await runYtDlp(args);
+  const line = stdout.trim().split('\n')[0];
+  if (!line) throw new Error('Nenhum vídeo encontrado');
+  
+  const info = JSON.parse(line);
   return {
-    url: audioFormats[0].url,
-    duration: parseInt(info.videoDetails.lengthSeconds, 10) || null,
-    title: info.videoDetails.title,
+    videoId: info.id,
+    title: info.title,
+    duration: info.duration || null,
   };
+}
+
+// Extrai a URL direta do stream de áudio para um videoId
+async function getAudioStreamUrl(videoId) {
+  const args = [
+    `https://www.youtube.com/watch?v=${videoId}`,
+    '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+    '--get-url',
+    '--no-playlist',
+    '--no-warnings',
+  ];
+  
+  const stdout = await runYtDlp(args);
+  const url = stdout.trim().split('\n')[0];
+  if (!url) throw new Error('Sem formatos de áudio disponíveis');
+  
+  return { url };
 }
 
 router.get('/url', async (req, res) => {
   const { track, artist } = req.query;
   if (!track) return res.status(400).json({ error: 'track obrigatório' });
-
+  
   const query = artist ? `${artist} ${track} audio` : `${track} audio`;
-
+  
   try {
     const found = await searchYouTube(query);
     const stream = await getAudioStreamUrl(found.videoId);
-
+    
     res.json({
       url: stream.url,
-      duration: stream.duration,
-      sourceTitle: stream.title,
+      duration: found.duration,
+      sourceTitle: found.title,
       videoId: found.videoId,
       type: 'music',
     });
