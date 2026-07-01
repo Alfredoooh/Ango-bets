@@ -37,7 +37,7 @@ async function fingerprintBuffer(buf, ext) {
 }
 
 async function lookupAcoustID(duration, fingerprint) {
-  const apiKey = 'COveVaNrFZ';
+  const apiKey = 'QnQw6SwIeF';
   const url = `https://api.acoustid.org/v2/lookup?client=${apiKey}&meta=recordingids+compress&duration=${Math.round(duration)}&fingerprint=${fingerprint}`;
   const data = await fetchJSON(url);
   if (data.status !== 'ok' || !data.results?.length) return null;
