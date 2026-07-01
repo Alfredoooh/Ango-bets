@@ -11,7 +11,6 @@ const COOKIES_PATH = path.join(__dirname, '..', 'cookies.txt');
 
 // Instâncias públicas Piped (proxy gratuito de YouTube, roda a partir do IP delas).
 // Lista pode precisar de atualização de tempos em tempos — instâncias públicas vêm e vão.
-// Lista atualizada em: https://github.com/TeamPiped/documentation (public-instances)
 const PIPED_INSTANCES = [
   'https://pipedapi.kavin.rocks',
   'https://pipedapi.adminforge.de',
@@ -41,13 +40,17 @@ function fetchJson(url, timeoutMs = 8000) {
       })
       .catch((err) => {
         clearTimeout(timeout);
-        reject(err);
+        if (err.name === 'AbortError') {
+          reject(new Error('Timeout'));
+        } else {
+          reject(err);
+        }
       });
   });
 }
 
 // Busca + extração via Piped: uma instância só resolve as duas etapas de uma vez.
-async function tryPipedSear(query) {
+async function tryPipedSearch(query) {
   let lastError = null;
   
   for (const instance of PIPED_INSTANCES) {
@@ -56,7 +59,8 @@ async function tryPipedSear(query) {
       const searchUrl = `${instance}/search?q=${encodeURIComponent(query)}&filter=videos`;
       const searchData = await fetchJson(searchUrl);
       
-      const firstItem = (searchData.items || []).find((i) => i.url && i.url.includes('watch?v='));
+      const items = Array.isArray(searchData) ? searchData : (searchData.items || []);
+      const firstItem = items.find((i) => i.url && i.url.includes('watch?v='));
       if (!firstItem) throw new Error('Nenhum vídeo encontrado nesta instância');
       
       const videoId = firstItem.url.split('watch?v=')[1];
@@ -69,7 +73,9 @@ async function tryPipedSear(query) {
       if (audioStreams.length === 0) throw new Error('Sem streams de áudio nesta instância');
       
       // Pega o de maior bitrate
-      const best = audioStreams.reduce((a, b) => (b.bitrate > a.bitrate ? b : a));
+      const best = audioStreams.reduce((a, b) => ((b.bitrate || 0) > (a.bitrate || 0) ? b : a));
+      
+      console.log(`[Piped] Sucesso via ${instance} para "${query}"`);
       
       return {
         url: best.url,
@@ -205,7 +211,7 @@ router.get('/url', async (req, res) => {
     
     return res.status(500).json({
       error: err.message,
-      hint: 'Piped e yt-dlp falharam. Instâncias Piped podem estar temporariamente fora do ar.',
+      hint: 'Piped e yt-dlp falharam. Instâncias Piped podem estar temporariamente indisponíveis.',
     });
   }
 });
