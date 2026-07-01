@@ -1,53 +1,145 @@
-// server.js
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const YTDLP_PATH = path.join(__dirname, 'yt-dlp');
+const FFMPEG_PATH = require('ffmpeg-static');
+
 app.use(express.static('public'));
+
+const CLIENT_CASCADE = ['android', 'ios', 'tv', 'web_creator'];
+
+function runYtDlp(args, { playerClient = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const clientArgs = playerClient
+      ? ['--extractor-args', `youtube:player_client=${playerClient}`]
+      : [];
+
+    const proc = spawn(YTDLP_PATH, [
+      ...args,
+      '--ffmpeg-location', FFMPEG_PATH,
+      ...clientArgs,
+      '--no-check-certificates',
+      '--geo-bypass',
+      '--socket-timeout', '15',
+    ]);
+
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    proc.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+
+    proc.on('error', (err) => reject(new Error(`Falha ao iniciar yt-dlp: ${err.message}`)));
+
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`yt-dlp saiu com código ${code}: ${stderr.slice(0, 500)}`));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
+}
+
+function isBotCheckError(message) {
+  return /sign in to confirm|not a bot|please sign in/i.test(message);
+}
+
+async function runYtDlpWithClientCascade(args) {
+  let lastError = null;
+  for (const client of CLIENT_CASCADE) {
+    try {
+      return await runYtDlp(args, { playerClient: client });
+    } catch (err) {
+      lastError = err;
+      if (!isBotCheckError(err.message)) throw err;
+      console.warn(`[Audio] player_client=${client} bloqueado, tentando próximo...`);
+    }
+  }
+  throw lastError;
+}
 
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ error: 'query obrigatória' });
-  
+
   try {
     const url = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
-    
     const ytRes = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         'Accept-Language': 'pt-PT,pt;q=0.9,en;q=0.8',
       },
     });
-    
-    if (!ytRes.ok) {
-      return res.status(502).json({ error: 'YouTube retornou HTTP ' + ytRes.status });
-    }
-    
+
+    if (!ytRes.ok) return res.status(502).json({ error: 'YouTube retornou HTTP ' + ytRes.status });
+
     const html = await ytRes.text();
-    
     const idMatches = [...html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)];
     const seen = new Set();
     const videoIds = [];
     for (const m of idMatches) {
-      if (!seen.has(m[1])) {
-        seen.add(m[1]);
-        videoIds.push(m[1]);
-      }
+      if (!seen.has(m[1])) { seen.add(m[1]); videoIds.push(m[1]); }
       if (videoIds.length >= 10) break;
     }
-    
+
     const titleMatches = [...html.matchAll(/"title":\{"runs":\[\{"text":"([^"]+)"\}/g)];
-    
+
     const results = videoIds.map((id, i) => ({
       videoId: id,
       title: titleMatches[i] ? titleMatches[i][1] : '(título não identificado)',
       thumbnail: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
     }));
-    
+
     res.json({ results });
   } catch (err) {
     console.error('[Search] Erro:', err.message);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/extract', async (req, res) => {
+  const { videoId } = req.query;
+  if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
+
+  try {
+    const args = [
+      `https://www.youtube.com/watch?v=${videoId}`,
+      '-f', '18',
+      '--get-url',
+      '--no-playlist',
+      '--no-warnings',
+    ];
+
+    let stdout;
+    try {
+      stdout = await runYtDlpWithClientCascade(args);
+    } catch (err) {
+      console.warn('[Extract] Formato 18 falhou, tentando bestaudio:', err.message);
+      const fallbackArgs = [
+        `https://www.youtube.com/watch?v=${videoId}`,
+        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+        '--get-url',
+        '--no-playlist',
+        '--no-warnings',
+      ];
+      stdout = await runYtDlpWithClientCascade(fallbackArgs);
+    }
+
+    const url = stdout.trim().split('\n')[0];
+    if (!url) throw new Error('Nenhuma URL retornada pelo yt-dlp');
+
+    res.json({ url, videoId });
+  } catch (err) {
+    console.error('[Extract] Erro:', err.message);
+    res.status(500).json({
+      error: err.message,
+      isBotCheck: isBotCheckError(err.message),
+    });
   }
 });
 
