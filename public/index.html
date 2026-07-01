@@ -84,9 +84,10 @@
   .result.loading .result-state::before { content: '⏳ A carregar áudio...'; }
   .result.playing .result-state { display: block; color: #4caf50; }
   .result.playing .result-state::before { content: '▶ A tocar'; }
+  .result.error .result-state { display: block; color: #ff5252; }
+  .result.error .result-state::before { content: '⚠ Erro ao tocar'; }
   .status { color: #888; font-size: 13px; margin-bottom: 10px; }
 
-  /* Player de áudio fixo em baixo */
   .player-bar {
     position: fixed;
     left: 0;
@@ -170,7 +171,6 @@
 <div class="status" id="status"></div>
 <div id="results"></div>
 
-<!-- Barra do player de áudio, fixa em baixo, dentro do app -->
 <div class="player-bar" id="playerBar">
   <img class="player-thumb" id="playerThumb" src="" alt="">
   <div class="player-info">
@@ -183,7 +183,7 @@
   <button class="player-close" onclick="closePlayer()">✕</button>
 </div>
 
-<audio id="audioPlayer"></audio>
+<audio id="audioPlayer" preload="auto"></audio>
 
 <script>
 let currentVideoId = null;
@@ -246,87 +246,93 @@ async function search() {
   }
 }
 
-async function playAudio(item, resultEl) {
-  // Se já está a tocar este vídeo, só alterna play/pause
+function setResultState(el, state) {
+  el.classList.remove('loading', 'playing', 'error');
+  if (state) el.classList.add(state);
+}
+
+function playAudio(item, resultEl) {
+  // Se já é o mesmo vídeo, só alterna play/pause
   if (currentVideoId === item.videoId && audio.src) {
     togglePlayPause();
     return;
   }
 
-  // Limpa estado visual do card anterior
-  if (currentResultEl) {
-    currentResultEl.classList.remove('playing', 'loading');
-  }
+  if (currentResultEl) setResultState(currentResultEl, null);
 
   currentVideoId = item.videoId;
   currentResultEl = resultEl;
-  resultEl.classList.add('loading');
-  resultEl.classList.remove('playing');
+  setResultState(resultEl, 'loading');
 
-  try {
-    const res = await fetch('/api/extract?videoId=' + encodeURIComponent(item.videoId));
-    const data = await res.json();
+  playerThumb.src = item.thumbnail;
+  playerTitle.textContent = item.title;
+  playerBar.classList.add('active');
+  playerToggleBtn.textContent = '⏸';
 
-    if (!res.ok) {
-      throw new Error(data.isBotCheck ? 'YouTube bloqueou o pedido, tenta outro vídeo.' : (data.error || 'Erro ao extrair áudio'));
-    }
-
-    // Se entretanto o utilizador clicou noutro vídeo, ignora esta resposta
-    if (currentVideoId !== item.videoId) return;
-
-    audio.src = data.url;
-    await audio.play();
-
-    resultEl.classList.remove('loading');
-    resultEl.classList.add('playing');
-
-    playerThumb.src = item.thumbnail;
-    playerTitle.textContent = item.title;
-    playerBar.classList.add('active');
-    playerToggleBtn.textContent = '⏸';
-  } catch (err) {
-    resultEl.classList.remove('loading');
-    document.getElementById('status').textContent = 'Erro: ' + err.message;
-    currentVideoId = null;
-    currentResultEl = null;
-  }
+  // Aponta diretamente para o endpoint de stream do servidor (mesma origem,
+  // sem CORS, sem problema de IP-lock do googlevideo)
+  audio.src = '/api/stream?videoId=' + encodeURIComponent(item.videoId) + '&t=' + Date.now();
+  audio.load();
+  audio.play().catch((err) => {
+    // Alguns browsers rejeitam o play() imediato se ainda não há dados
+    // suficientes; os eventos abaixo tratam do resto. Só logamos aqui.
+    console.warn('play() rejeitado inicialmente:', err.message);
+  });
 }
 
 function togglePlayPause() {
   if (!audio.src) return;
   if (audio.paused) {
     audio.play();
-    playerToggleBtn.textContent = '⏸';
-    if (currentResultEl) currentResultEl.classList.add('playing');
   } else {
     audio.pause();
     playerToggleBtn.textContent = '▶';
-    if (currentResultEl) currentResultEl.classList.remove('playing');
+    if (currentResultEl) setResultState(currentResultEl, null);
   }
 }
 
 function closePlayer() {
   audio.pause();
-  audio.src = '';
+  audio.removeAttribute('src');
+  audio.load();
   playerBar.classList.remove('active');
-  if (currentResultEl) currentResultEl.classList.remove('playing', 'loading');
+  if (currentResultEl) setResultState(currentResultEl, null);
   currentVideoId = null;
   currentResultEl = null;
 }
 
+audio.addEventListener('waiting', () => {
+  if (currentResultEl) setResultState(currentResultEl, 'loading');
+});
+
+audio.addEventListener('playing', () => {
+  playerToggleBtn.textContent = '⏸';
+  if (currentResultEl) setResultState(currentResultEl, 'playing');
+});
+
+audio.addEventListener('pause', () => {
+  if (!audio.ended) playerToggleBtn.textContent = '▶';
+});
+
+audio.addEventListener('error', () => {
+  const status = document.getElementById('status');
+  status.textContent = 'Erro ao tocar áudio. Tenta outro vídeo.';
+  if (currentResultEl) setResultState(currentResultEl, 'error');
+});
+
 audio.addEventListener('timeupdate', () => {
-  if (!audio.duration) return;
+  if (!audio.duration || !isFinite(audio.duration)) return;
   const pct = (audio.currentTime / audio.duration) * 100;
   playerProgressFill.style.width = pct + '%';
 });
 
 audio.addEventListener('ended', () => {
   playerToggleBtn.textContent = '▶';
-  if (currentResultEl) currentResultEl.classList.remove('playing');
+  if (currentResultEl) setResultState(currentResultEl, null);
 });
 
 playerProgress.addEventListener('click', (e) => {
-  if (!audio.duration) return;
+  if (!audio.duration || !isFinite(audio.duration)) return;
   const rect = playerProgress.getBoundingClientRect();
   const pct = (e.clientX - rect.left) / rect.width;
   audio.currentTime = pct * audio.duration;

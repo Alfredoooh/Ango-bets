@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 const { spawn } = require('child_process');
+const { Readable } = require('stream');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -11,6 +11,7 @@ const FFMPEG_PATH = require('ffmpeg-static');
 app.use(express.static('public'));
 
 const CLIENT_CASCADE = ['android', 'ios', 'tv', 'web_creator'];
+const UPSTREAM_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 
 function runYtDlp(args, { playerClient = null } = {}) {
   return new Promise((resolve, reject) => {
@@ -63,6 +64,35 @@ async function runYtDlpWithClientCascade(args) {
   throw lastError;
 }
 
+async function getDirectAudioUrl(videoId) {
+  const args = [
+    `https://www.youtube.com/watch?v=${videoId}`,
+    '-f', '18',
+    '--get-url',
+    '--no-playlist',
+    '--no-warnings',
+  ];
+
+  let stdout;
+  try {
+    stdout = await runYtDlpWithClientCascade(args);
+  } catch (err) {
+    console.warn('[Extract] Formato 18 falhou, tentando bestaudio:', err.message);
+    const fallbackArgs = [
+      `https://www.youtube.com/watch?v=${videoId}`,
+      '-f', 'bestaudio[ext=m4a]/bestaudio/best',
+      '--get-url',
+      '--no-playlist',
+      '--no-warnings',
+    ];
+    stdout = await runYtDlpWithClientCascade(fallbackArgs);
+  }
+
+  const url = stdout.trim().split('\n')[0];
+  if (!url) throw new Error('Nenhuma URL retornada pelo yt-dlp');
+  return url;
+}
+
 app.get('/api/search', async (req, res) => {
   const query = req.query.q;
   if (!query) return res.status(400).json({ error: 'query obrigatória' });
@@ -71,7 +101,7 @@ app.get('/api/search', async (req, res) => {
     const url = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
     const ytRes = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'User-Agent': UPSTREAM_UA,
         'Accept-Language': 'pt-PT,pt;q=0.9,en;q=0.8',
       },
     });
@@ -102,37 +132,13 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
+// Mantido para compatibilidade / debug, mas o player agora usa /api/stream
 app.get('/api/extract', async (req, res) => {
   const { videoId } = req.query;
   if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
 
   try {
-    const args = [
-      `https://www.youtube.com/watch?v=${videoId}`,
-      '-f', '18',
-      '--get-url',
-      '--no-playlist',
-      '--no-warnings',
-    ];
-
-    let stdout;
-    try {
-      stdout = await runYtDlpWithClientCascade(args);
-    } catch (err) {
-      console.warn('[Extract] Formato 18 falhou, tentando bestaudio:', err.message);
-      const fallbackArgs = [
-        `https://www.youtube.com/watch?v=${videoId}`,
-        '-f', 'bestaudio[ext=m4a]/bestaudio/best',
-        '--get-url',
-        '--no-playlist',
-        '--no-warnings',
-      ];
-      stdout = await runYtDlpWithClientCascade(fallbackArgs);
-    }
-
-    const url = stdout.trim().split('\n')[0];
-    if (!url) throw new Error('Nenhuma URL retornada pelo yt-dlp');
-
+    const url = await getDirectAudioUrl(videoId);
     res.json({ url, videoId });
   } catch (err) {
     console.error('[Extract] Erro:', err.message);
@@ -140,6 +146,61 @@ app.get('/api/extract', async (req, res) => {
       error: err.message,
       isBotCheck: isBotCheckError(err.message),
     });
+  }
+});
+
+// Endpoint que o <audio> do frontend usa diretamente.
+// O servidor faz de proxy: pede ao Google a partir do PRÓPRIO IP (o mesmo
+// que gerou a URL), e reenvia o stream para o browser. Isto evita o 403
+// que acontece quando a URL crua do googlevideo é usada a partir de outro IP.
+app.get('/api/stream', async (req, res) => {
+  const { videoId } = req.query;
+  if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
+
+  try {
+    const directUrl = await getDirectAudioUrl(videoId);
+
+    const upstreamHeaders = {
+      'User-Agent': UPSTREAM_UA,
+    };
+    if (req.headers.range) {
+      upstreamHeaders['Range'] = req.headers.range;
+    }
+
+    const upstreamRes = await fetch(directUrl, { headers: upstreamHeaders });
+
+    if (!upstreamRes.ok && upstreamRes.status !== 206) {
+      console.error('[Stream] Upstream devolveu', upstreamRes.status);
+      return res.status(502).json({ error: 'Falha ao obter stream do YouTube (HTTP ' + upstreamRes.status + ')' });
+    }
+
+    res.status(upstreamRes.status);
+
+    const passthroughHeaders = ['content-type', 'content-length', 'content-range', 'accept-ranges'];
+    for (const key of passthroughHeaders) {
+      const value = upstreamRes.headers.get(key);
+      if (value) res.setHeader(key, value);
+    }
+    if (!res.getHeader('accept-ranges')) res.setHeader('Accept-Ranges', 'bytes');
+    if (!res.getHeader('content-type')) res.setHeader('Content-Type', 'audio/mp4');
+
+    if (!upstreamRes.body) {
+      return res.status(502).json({ error: 'Stream vazio do upstream' });
+    }
+
+    Readable.fromWeb(upstreamRes.body).pipe(res);
+
+    req.on('close', () => {
+      // Se o cliente cancelar (trocar de música), aborta o pedido upstream
+      if (upstreamRes.body && typeof upstreamRes.body.cancel === 'function') {
+        upstreamRes.body.cancel().catch(() => {});
+      }
+    });
+  } catch (err) {
+    console.error('[Stream] Erro:', err.message);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message, isBotCheck: isBotCheckError(err.message) });
+    }
   }
 });
 
