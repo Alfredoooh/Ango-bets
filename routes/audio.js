@@ -1,14 +1,19 @@
 // routes/audio.js
 const express = require('express');
+const path = require('path');
 const router = express.Router();
 const { spawn } = require('child_process');
 
-const YTDLP_PATH = process.env.YTDLP_PATH || 'yt-dlp';
+// Binário standalone baixado no build, na raiz do projeto
+const YTDLP_PATH = path.join(__dirname, '..', 'yt-dlp');
+const FFMPEG_PATH = require('ffmpeg-static');
 
-// Executa yt-dlp e retorna stdout como string
 function runYtDlp(args) {
   return new Promise((resolve, reject) => {
-    const proc = spawn(YTDLP_PATH, args);
+    const proc = spawn(YTDLP_PATH, [
+      ...args,
+      '--ffmpeg-location', FFMPEG_PATH,
+    ]);
     let stdout = '';
     let stderr = '';
     
@@ -29,7 +34,6 @@ function runYtDlp(args) {
   });
 }
 
-// Busca no YouTube e retorna o primeiro resultado (via ytsearch do próprio yt-dlp)
 async function searchYouTube(query) {
   const args = [
     `ytsearch1:${query}`,
@@ -51,7 +55,6 @@ async function searchYouTube(query) {
   };
 }
 
-// Extrai a URL direta do stream de áudio para um videoId
 async function getAudioStreamUrl(videoId) {
   const args = [
     `https://www.youtube.com/watch?v=${videoId}`,
