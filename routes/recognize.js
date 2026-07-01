@@ -16,8 +16,12 @@ async function fetchJSON(url, headers = {}, timeoutMs = 8000) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const detail = body?.error?.message || JSON.stringify(body) || `HTTP ${res.status}`;
+      throw new Error(detail);
+    }
+    return body;
   } finally {
     clearTimeout(t);
   }
@@ -38,7 +42,7 @@ async function fingerprintBuffer(buf, ext) {
 
 async function lookupAcoustID(duration, fingerprint) {
   const apiKey = 'QnQw6SwIeF';
-  const url = `https://api.acoustid.org/v2/lookup?client=${apiKey}&meta=recordingids+compress&duration=${Math.round(duration)}&fingerprint=${fingerprint}`;
+  const url = `https://api.acoustid.org/v2/lookup?client=${apiKey}&meta=recordingids+compress&duration=${Math.round(duration)}&fingerprint=${encodeURIComponent(fingerprint)}`;
   const data = await fetchJSON(url);
   if (data.status !== 'ok' || !data.results?.length) return null;
   const best = data.results.sort((a, b) => (b.score || 0) - (a.score || 0))[0];
@@ -81,7 +85,13 @@ router.post('/', async (req, res) => {
       return res.status(422).json({ error: 'Fingerprint inválido' });
     }
     
-    const acoustResult = await lookupAcoustID(fp.duration, fp.fingerprint);
+    let acoustResult;
+    try {
+      acoustResult = await lookupAcoustID(fp.duration, fp.fingerprint);
+    } catch (e) {
+      console.error('[Recognize] AcoustID erro:', e.message);
+      return res.status(502).json({ error: `AcoustID: ${e.message}` });
+    }
     if (!acoustResult) {
       return res.status(404).json({ error: 'Música não reconhecida' });
     }
