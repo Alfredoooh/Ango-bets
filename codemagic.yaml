@@ -91,7 +91,8 @@ workflows:
               os.makedirs(os.path.dirname(dest), exist_ok=True)
               shutil.copy2(SPLASH, dest)
               print(f"  -> {dest}")
-          else:              print("AVISO: splash_icon.png nao encontrado, a usar placeholder...")
+          else:
+              print("AVISO: splash_icon.png nao encontrado, a usar placeholder...")
               placeholder = Image.new("RGBA", (192, 192), (0,0,0,0))
               dest = os.path.join(RES, "drawable", "splash_icon.png")
               os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -123,7 +124,8 @@ workflows:
 
   android-debug:
     name: Android Debug Build
-    max_build_duration: 30    environment:
+    max_build_duration: 30
+    environment:
       java: 17
     scripts:
       - name: Download gradle-wrapper.jar
@@ -212,7 +214,8 @@ workflows:
               os.makedirs(os.path.dirname(dest), exist_ok=True)
               shutil.copy2(SPLASH, dest)
               print(f"  -> {dest}")
-          else:              print("AVISO: splash_icon.png nao encontrado, a usar placeholder...")
+          else:
+              print("AVISO: splash_icon.png nao encontrado, a usar placeholder...")
               placeholder = Image.new("RGBA", (192, 192), (0,0,0,0))
               dest = os.path.join(RES, "drawable", "splash_icon.png")
               os.makedirs(os.path.dirname(dest), exist_ok=True)
