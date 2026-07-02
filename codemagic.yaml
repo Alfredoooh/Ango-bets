@@ -27,12 +27,12 @@ workflows:
             -keyalg RSA \
             -keysize 4096 \
             -validity 3650000 \
-            -keystore "${CM_BUILD_DIR}/app/nuxx_release.keystore" \
+            -keystore "${CM_BUILD_DIR}/app/nexa_release.keystore" \
             -storepass "@jonas00" \
             -keypass "@jonas00" \
             -dname "CN=Nexa, OU=Dev, O=Nexa, L=Lisboa, ST=Lisboa, C=PT" \
             -noprompt
-          echo "✅ Keystore gerado: app/nuxx_release.keystore"
+          echo "✅ Keystore gerado: app/nexa_release.keystore"
 
       - name: Install Pillow
         script: pip3 install Pillow --quiet
@@ -148,12 +148,12 @@ workflows:
             -keyalg RSA \
             -keysize 4096 \
             -validity 3650000 \
-            -keystore "${CM_BUILD_DIR}/app/nuxx_release.keystore" \
+            -keystore "${CM_BUILD_DIR}/app/nexa_release.keystore" \
             -storepass "@jonas00" \
             -keypass "@jonas00" \
             -dname "CN=Nexa, OU=Dev, O=Nexa, L=Lisboa, ST=Lisboa, C=PT" \
             -noprompt
-          echo "✅ Keystore gerado: app/nuxx_release.keystore"
+          echo "✅ Keystore gerado: app/nexa_release.keystore"
 
       - name: Install Pillow
         script: pip3 install Pillow --quiet
