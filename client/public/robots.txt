@@ -1,8 +1,0 @@
-User-agent: *
-Allow: /
-Allow: /editor
-Allow: /gallery
-
-Disallow: /404
-
-Sitemap: https://doccreator.manus.space/sitemap.xml
