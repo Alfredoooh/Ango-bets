@@ -1,5 +1,5 @@
 const express = require('express');
-const { spawn, execFile } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const router = express.Router();
@@ -177,8 +177,13 @@ router.get('/url', async (req, res) => {
 
     console.log('[Audio] escolhido:', chosen.id, chosen.title, `(${chosen.duration}s)`);
 
+    // URL direta do YouTube (sem streaming/proxy via ffmpeg).
+    // Atenção: esta URL costuma ter IP-lock (só funciona a partir do IP
+    // que a pediu) e expira ao fim de algumas horas.
+    const directUrl = await getDirectAudioUrl(chosen.id);
+
     const responseData = {
-      url: `https://${req.get('host')}/api/audio/stream/${chosen.id}`,
+      url: directUrl,
       sourceTitle: `${meta.title} - ${meta.artist}`.trim(),
       durationSeconds: chosen.duration || meta.durationSeconds,
       fullDurationSeconds: meta.durationSeconds,
@@ -201,104 +206,6 @@ router.get('/url', async (req, res) => {
         : err.message,
       botDetected: !!err.botDetected,
     });
-  }
-});
-
-// Streaming do áudio completo, convertido em tempo real para MP3
-router.get('/stream/:videoId', async (req, res) => {
-  const { videoId } = req.params;
-  if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
-
-  console.log('[Stream] pedido para videoId:', videoId, '| Range header:', req.headers.range || 'nenhum');
-
-  try {
-    const audioUrl = await getDirectAudioUrl(videoId);
-    console.log('[Stream] URL direta obtida, iniciando ffmpeg...');
-
-    const ffmpegPath = require('ffmpeg-static');
-    console.log('[Stream] ffmpeg-static path:', ffmpegPath, '| existe:', fs.existsSync(ffmpegPath));
-
-    if (!fs.existsSync(ffmpegPath)) {
-      console.error('[Stream] ffmpeg-static não encontrado no runtime!');
-      return res.status(500).json({ error: 'ffmpeg não disponível no servidor' });
-    }
-
-    const ffmpegArgs = [
-      '-reconnect', '1',
-      '-reconnect_streamed', '1',
-      '-reconnect_delay_max', '5',
-      '-i', audioUrl,
-      '-vn',
-      '-acodec', 'libmp3lame',
-      '-ab', '128k',
-      '-ar', '44100',
-      '-f', 'mp3',
-      '-write_xing', '0',
-      'pipe:1',
-    ];
-
-    // Headers importantes: sem Content-Length (não sabemos o tamanho final
-    // de um stream ao vivo), mas com Accept-Ranges=none explícito para o
-    // browser não tentar fazer seek via Range antes de ter buffer suficiente.
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'no-cache, no-store');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    const ffmpeg = spawn(ffmpegPath, ffmpegArgs);
-
-    let firstChunkSent = false;
-    let stderrBuf = '';
-
-    ffmpeg.stdout.on('data', (chunk) => {
-      if (!firstChunkSent) {
-        firstChunkSent = true;
-        console.log('[Stream] primeiro chunk de áudio enviado, tamanho:', chunk.length);
-      }
-      res.write(chunk);
-    });
-
-    ffmpeg.stdout.on('end', () => {
-      console.log('[Stream] ffmpeg stdout terminou, encerrando resposta');
-      res.end();
-    });
-
-    ffmpeg.stderr.on('data', (chunk) => {
-      stderrBuf += chunk.toString();
-    });
-
-    ffmpeg.on('close', (code) => {
-      if (code !== 0 && code !== null) {
-        console.error('[Stream] ffmpeg saiu com código', code, '| stderr:', stderrBuf.slice(-1000));
-      } else {
-        console.log('[Stream] ffmpeg terminou normalmente para', videoId);
-      }
-      if (!firstChunkSent && !res.headersSent) {
-        console.error('[Stream] ffmpeg nunca enviou dados! stderr:', stderrBuf.slice(-1000));
-      }
-    });
-
-    ffmpeg.on('error', (err) => {
-      console.error('[Stream] ffmpeg erro ao iniciar processo:', err.message);
-      if (!res.headersSent) res.status(500).end();
-    });
-
-    req.on('close', () => {
-      console.log('[Stream] cliente desconectou, matando ffmpeg');
-      ffmpeg.kill('SIGKILL');
-    });
-
-  } catch (err) {
-    console.error('[Stream] Erro:', err.message);
-    if (!res.headersSent) {
-      res.status(err.botDetected ? 503 : 500).json({
-        error: err.botDetected
-          ? 'YouTube bloqueou o servidor (bot detection). Cookies precisam ser atualizados.'
-          : err.message,
-        botDetected: !!err.botDetected,
-      });
-    }
   }
 });
 
