@@ -1,12 +1,16 @@
 // routes/audio.js
 const express = require('express');
 const { spawn, execFile } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 const router = express.Router();
 
-const YT_DLP_BIN = process.env.YT_DLP_PATH || 'yt-dlp';
-const COOKIES_PATH = require('path').join(__dirname, '..', 'cookies.txt');
-const fs = require('fs');
+const ROOT = path.join(__dirname, '..');
+const YT_DLP_BIN = process.env.YT_DLP_PATH || path.join(ROOT, 'yt-dlp');
+const COOKIES_PATH = path.join(ROOT, 'cookies.txt');
 const HAS_COOKIES = fs.existsSync(COOKIES_PATH);
+
+console.log('[Audio] yt-dlp binário em:', YT_DLP_BIN, '| existe:', fs.existsSync(YT_DLP_BIN));
 
 async function fetchJSON(url, timeoutMs = 8000) {
   const ctrl = new AbortController();
@@ -20,7 +24,6 @@ async function fetchJSON(url, timeoutMs = 8000) {
   }
 }
 
-// Usa Deezer para pegar metadados confiáveis: título oficial, artista, duração real
 async function getReferenceMetadata(track, artist) {
   const q = artist ? `${artist} ${track}` : track;
   try {
@@ -38,7 +41,6 @@ async function getReferenceMetadata(track, artist) {
   } catch (err) {
     console.warn('[Audio] Deezer metadata falhou:', err.message);
   }
-  // fallback: iTunes
   try {
     const term = artist ? `${artist} ${track}` : track;
     const data = await fetchJSON(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=1`);
@@ -58,7 +60,6 @@ async function getReferenceMetadata(track, artist) {
   return { title: track, artist: artist || '', durationSeconds: null, album: null, cover: null };
 }
 
-// Roda yt-dlp para pesquisar candidatos no YouTube (flat-playlist = rápido, sem baixar nada)
 function ytSearchCandidates(query, limit = 5) {
   return new Promise((resolve, reject) => {
     const args = [
@@ -69,8 +70,13 @@ function ytSearchCandidates(query, limit = 5) {
     ];
     if (HAS_COOKIES) args.push('--cookies', COOKIES_PATH);
     
-    execFile(YT_DLP_BIN, args, { timeout: 20000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout) => {
-      if (err) return reject(err);
+    console.log('[Audio] rodando yt-dlp search:', YT_DLP_BIN, args.join(' '));
+    
+    execFile(YT_DLP_BIN, args, { timeout: 25000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
+      if (err) {
+        console.error('[Audio] yt-dlp search ERRO:', err.message, '| stderr:', stderr?.slice(0, 500));
+        return reject(err);
+      }
       const lines = stdout.trim().split('\n').filter(Boolean);
       const items = lines.map(line => {
         const [id, title, duration, channel] = line.split('|||');
@@ -81,12 +87,12 @@ function ytSearchCandidates(query, limit = 5) {
           channel,
         };
       });
+      console.log('[Audio] candidatos encontrados:', items.length);
       resolve(items);
     });
   });
 }
 
-// Escolhe o candidato cuja duração mais se aproxima da duração de referência (Deezer/iTunes)
 function pickBestCandidate(candidates, referenceDuration) {
   if (!candidates.length) return null;
   if (!referenceDuration) return candidates[0];
@@ -101,12 +107,9 @@ function pickBestCandidate(candidates, referenceDuration) {
       best = c;
     }
   }
-  // Se a diferença for muito grande (> 25s), ainda assim usa o melhor disponível,
-  // mas prioriza descartar vídeos claramente errados (>90s de diferença) se houver alternativa melhor
   return best;
 }
 
-// Pega a URL direta de áudio de um vídeo específico do YouTube
 function getDirectAudioUrl(videoId) {
   return new Promise((resolve, reject) => {
     const args = [
@@ -117,8 +120,13 @@ function getDirectAudioUrl(videoId) {
     ];
     if (HAS_COOKIES) args.push('--cookies', COOKIES_PATH);
     
-    execFile(YT_DLP_BIN, args, { timeout: 20000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout) => {
-      if (err) return reject(err);
+    console.log('[Audio] extraindo URL direta para videoId:', videoId);
+    
+    execFile(YT_DLP_BIN, args, { timeout: 25000, maxBuffer: 1024 * 1024 * 10 }, (err, stdout, stderr) => {
+      if (err) {
+        console.error('[Audio] yt-dlp get-url ERRO:', err.message, '| stderr:', stderr?.slice(0, 500));
+        return reject(err);
+      }
       const url = stdout.trim().split('\n')[0];
       if (!url) return reject(new Error('yt-dlp não devolveu URL'));
       resolve(url);
@@ -129,6 +137,8 @@ function getDirectAudioUrl(videoId) {
 router.get('/url', async (req, res) => {
   const { track, artist } = req.query;
   if (!track) return res.status(400).json({ error: 'track obrigatório' });
+  
+  console.log(`[Audio] /url chamado: track="${track}" artist="${artist}"`);
   
   try {
     const meta = await getReferenceMetadata(track, artist);
@@ -144,8 +154,9 @@ router.get('/url', async (req, res) => {
       return res.status(404).json({ error: 'Nenhum candidato válido' });
     }
     
+    console.log('[Audio] escolhido:', chosen.id, chosen.title, `(${chosen.duration}s)`);
+    
     return res.json({
-      // rota de streaming proxied — ver /stream/:id abaixo
       url: `${req.protocol}://${req.get('host')}/api/audio/stream/${chosen.id}`,
       sourceTitle: `${meta.title} - ${meta.artist}`.trim(),
       durationSeconds: chosen.duration || meta.durationSeconds,
@@ -158,20 +169,24 @@ router.get('/url', async (req, res) => {
       matchedChannel: chosen.channel,
     });
   } catch (err) {
-    console.error('[Audio] Erro:', err.message);
+    console.error('[Audio] Erro em /url:', err.message);
     return res.status(500).json({ error: err.message });
   }
 });
 
-// Faz streaming do áudio completo do YouTube, convertido para mp3 em tempo real
 router.get('/stream/:videoId', async (req, res) => {
   const { videoId } = req.params;
   if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
   
+  console.log('[Stream] pedido para videoId:', videoId);
+  
   try {
     const audioUrl = await getDirectAudioUrl(videoId);
+    console.log('[Stream] URL direta obtida, iniciando ffmpeg...');
     
     const ffmpegPath = require('ffmpeg-static');
+    console.log('[Stream] ffmpeg-static path:', ffmpegPath, '| existe:', fs.existsSync(ffmpegPath));
+    
     const ffmpegArgs = [
       '-i', audioUrl,
       '-vn',
@@ -183,14 +198,24 @@ router.get('/stream/:videoId', async (req, res) => {
     
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     
     const ffmpeg = spawn(ffmpegPath, ffmpegArgs);
     ffmpeg.stdout.pipe(res);
     
-    ffmpeg.stderr.on('data', () => {}); // silencia logs verbosos do ffmpeg
+    let stderrBuf = '';
+    ffmpeg.stderr.on('data', (chunk) => {
+      stderrBuf += chunk.toString();
+    });
+    
+    ffmpeg.on('close', (code) => {
+      if (code !== 0 && code !== null) {
+        console.error('[Stream] ffmpeg saiu com código', code, '| stderr:', stderrBuf.slice(-800));
+      }
+    });
     
     ffmpeg.on('error', (err) => {
-      console.error('[Stream] ffmpeg erro:', err.message);
+      console.error('[Stream] ffmpeg erro ao iniciar:', err.message);
       if (!res.headersSent) res.status(500).end();
     });
     
