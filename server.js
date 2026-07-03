@@ -7,10 +7,8 @@ const { execFileSync } = require('child_process');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// IMPORTANTE: Render está atrás de um proxy reverso.
-// Sem isto, req.protocol sempre devolve 'http', mesmo em produção HTTPS,
-// o que gera URLs http:// que o browser bloqueia como mixed content
-// dentro de uma página servida em https://.
+// Render está atrás de um proxy reverso. Sem isto, req.protocol pode
+// devolver 'http' mesmo em produção HTTPS, quebrando URLs geradas.
 app.set('trust proxy', true);
 
 if (process.env.YT_COOKIES) {
@@ -26,7 +24,7 @@ if (fs.existsSync(localYtDlp)) {
   console.log('[yt-dlp] arquivo encontrado, tamanho:', stats.size, 'bytes');
   
   if (stats.size < 100000) {
-    console.error('[yt-dlp] ⚠️  ARQUIVO SUSPEITO: só', stats.size, 'bytes. Provavelmente o download falhou.');
+    console.error('[yt-dlp] ⚠️  ARQUIVO SUSPEITO: só', stats.size, 'bytes. Download provavelmente falhou.');
   } else {
     try {
       const version = execFileSync(localYtDlp, ['--version'], { timeout: 10000 }).toString().trim();
