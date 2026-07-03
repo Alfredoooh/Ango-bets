@@ -4,6 +4,7 @@ workflows:
     max_build_duration: 60
     environment:
       java: 17
+      node: 20
     scripts:
       - name: Download gradle-wrapper.jar
         script: |
@@ -19,6 +20,11 @@ workflows:
           else
             echo "✅ gradle-wrapper.jar já presente no repo"
           fi
+
+      - name: Verify Node.js availability
+        script: |
+          node -v
+          npm -v
 
       - name: Generate release keystore
         script: |
@@ -127,6 +133,7 @@ workflows:
     max_build_duration: 30
     environment:
       java: 17
+      node: 20
     scripts:
       - name: Download gradle-wrapper.jar
         script: |
@@ -142,6 +149,11 @@ workflows:
           else
             echo "✅ gradle-wrapper.jar já presente no repo"
           fi
+
+      - name: Verify Node.js availability
+        script: |
+          node -v
+          npm -v
 
       - name: Generate release keystore
         script: |

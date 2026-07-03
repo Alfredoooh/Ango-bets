@@ -56,11 +56,11 @@ assets.srcDirs = ['src/main/assets_bundled', 'src/main/assets']
 
 // ---------------------------------------------------------------------
 // Build automático do Svelte (Vite) como parte do build do APK.
-// Corre "npm ci && npm run build" dentro de src/main/assets (onde está
-// o package.json/vite.config.js originais) e copia o resultado (dist/)
-// para src/main/assets_bundled/www, que é servido depois pelo OkHttp
-// local server no MainActivity. Nada dentro de src/main/assets é
-// alterado — só lido.
+// Corre "npm install && npm run build" dentro de src/main/assets (onde
+// está o package.json/vite.config.js originais) e copia o resultado
+// (dist/) para src/main/assets_bundled/www, servido depois pelo OkHttp/
+// NanoHTTPD local server no MainActivity. Nada dentro de src/main/assets
+// é alterado — só lido.
 // ---------------------------------------------------------------------
 
 def svelteDir = file("src/main/assets")
@@ -71,11 +71,9 @@ def isWindows = org.gradle.internal.os.OperatingSystem.current().isWindows()
 def npmCmd = isWindows ? "npm.cmd" : "npm"
 
 tasks.register("npmInstallSvelte", Exec) {
-onlyIf {
-!file("${svelteDir}/node_modules").exists()
-}
 workingDir svelteDir
-commandLine npmCmd, "ci"
+// "install" em vez de "ci": não exige package-lock.json presente.
+commandLine npmCmd, "install", "--no-audit", "--no-fund"
 doFirst {
 println "→ A instalar dependências npm em ${svelteDir}"
 }
@@ -100,8 +98,6 @@ println "→ A copiar dist/ compilado para ${bundledWww}"
 }
 }
 
-// Garante que o build do Svelte corre sempre antes de qualquer variante
-// de build do Android (debug ou release), tanto local como no Codemagic.
 afterEvaluate {
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
 dependsOn "copySvelteBuild"
