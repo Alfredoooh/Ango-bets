@@ -148,6 +148,7 @@ function getDirectAudioUrl(videoId) {
   });
 }
 
+// Passo 1: pesquisa e devolve o id do vídeo escolhido (sem extrair link direto ainda)
 router.get('/url', async (req, res) => {
   const { track, artist } = req.query;
   if (!track) return res.status(400).json({ error: 'track obrigatório' });
@@ -177,13 +178,9 @@ router.get('/url', async (req, res) => {
 
     console.log('[Audio] escolhido:', chosen.id, chosen.title, `(${chosen.duration}s)`);
 
-    // URL direta do YouTube (sem streaming/proxy via ffmpeg).
-    // Atenção: esta URL costuma ter IP-lock (só funciona a partir do IP
-    // que a pediu) e expira ao fim de algumas horas.
-    const directUrl = await getDirectAudioUrl(chosen.id);
-
     const responseData = {
-      url: directUrl,
+      id: chosen.id,
+      videoId: chosen.id,
       sourceTitle: `${meta.title} - ${meta.artist}`.trim(),
       durationSeconds: chosen.duration || meta.durationSeconds,
       fullDurationSeconds: meta.durationSeconds,
@@ -191,7 +188,6 @@ router.get('/url', async (req, res) => {
       cover: meta.cover,
       type: 'full',
       source: 'youtube',
-      videoId: chosen.id,
       matchedChannel: chosen.channel,
     };
 
@@ -200,6 +196,27 @@ router.get('/url', async (req, res) => {
     return res.json(responseData);
   } catch (err) {
     console.error('[Audio] Erro em /url:', err.message);
+    return res.status(err.botDetected ? 503 : 500).json({
+      error: err.botDetected
+        ? 'YouTube bloqueou o servidor (bot detection). Cookies precisam ser atualizados.'
+        : err.message,
+      botDetected: !!err.botDetected,
+    });
+  }
+});
+
+// Passo 2: recebe o id e extrai o link direto do áudio (googlevideo.com)
+router.get('/direct/:videoId', async (req, res) => {
+  const { videoId } = req.params;
+  if (!videoId) return res.status(400).json({ error: 'videoId obrigatório' });
+
+  console.log('[Audio] /direct chamado para videoId:', videoId);
+
+  try {
+    const directUrl = await getDirectAudioUrl(videoId);
+    return res.json({ videoId, url: directUrl });
+  } catch (err) {
+    console.error('[Audio] Erro em /direct:', err.message);
     return res.status(err.botDetected ? 503 : 500).json({
       error: err.botDetected
         ? 'YouTube bloqueou o servidor (bot detection). Cookies precisam ser atualizados.'
