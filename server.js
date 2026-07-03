@@ -13,6 +13,13 @@ if (process.env.YT_COOKIES) {
   console.log('[Cookies] cookies.txt gerado a partir da env var YT_COOKIES');
 }
 
+// Aponta o audio.js para o yt-dlp baixado no postinstall
+const localYtDlp = path.join(__dirname, 'bin', 'yt-dlp');
+if (fs.existsSync(localYtDlp) && !process.env.YT_DLP_PATH) {
+  process.env.YT_DLP_PATH = localYtDlp;
+  console.log('[yt-dlp] usando binário local:', localYtDlp);
+}
+
 app.use(cors());
 app.use(express.json());
 
