@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#FF0000</color>
-    <color name="dialog_accent">#FF6600</color>
+    <color name="colorPrimary">#2F7BF6</color>
+    <color name="dialog_accent">#2F7BF6</color>
     <color name="splash_background_light">#FFFFFF</color>
-    <color name="splash_background_dark">#181818</color>
+    <color name="splash_background_dark">#0F0F0F</color>
+    <color name="status_bar_light">#FFFFFF</color>
+    <color name="status_bar_dark">#0F0F0F</color>
 </resources>
