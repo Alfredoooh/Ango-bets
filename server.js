@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -7,6 +6,12 @@ const { execFileSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
+
+// IMPORTANTE: Render está atrás de um proxy reverso.
+// Sem isto, req.protocol sempre devolve 'http', mesmo em produção HTTPS,
+// o que gera URLs http:// que o browser bloqueia como mixed content
+// dentro de uma página servida em https://.
+app.set('trust proxy', true);
 
 if (process.env.YT_COOKIES) {
   const cookiesPath = path.join(__dirname, 'cookies.txt');
@@ -21,7 +26,7 @@ if (fs.existsSync(localYtDlp)) {
   console.log('[yt-dlp] arquivo encontrado, tamanho:', stats.size, 'bytes');
   
   if (stats.size < 100000) {
-    console.error('[yt-dlp] ⚠️  ARQUIVO SUSPEITO: só', stats.size, 'bytes. Provavelmente o download falhou (HTML de erro em vez do binário real). Verifica o Build Command no Render.');
+    console.error('[yt-dlp] ⚠️  ARQUIVO SUSPEITO: só', stats.size, 'bytes. Provavelmente o download falhou.');
   } else {
     try {
       const version = execFileSync(localYtDlp, ['--version'], { timeout: 10000 }).toString().trim();
