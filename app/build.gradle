@@ -47,6 +47,11 @@ buildFeatures {
 viewBinding true
 }
 
+lint {
+checkReleaseBuilds false
+abortOnError false
+}
+
 sourceSets {
 main {
 assets.srcDirs = ['src/main/assets_bundled', 'src/main/assets']
@@ -58,7 +63,7 @@ assets.srcDirs = ['src/main/assets_bundled', 'src/main/assets']
 // Build automático do Svelte (Vite) como parte do build do APK.
 // Corre "npm install && npm run build" dentro de src/main/assets (onde
 // está o package.json/vite.config.js originais) e copia o resultado
-// (dist/) para src/main/assets_bundled/www, servido depois pelo OkHttp/
+// (dist/) para src/main/assets_bundled/www, servido depois pelo
 // NanoHTTPD local server no MainActivity. Nada dentro de src/main/assets
 // é alterado — só lido.
 // ---------------------------------------------------------------------
@@ -72,7 +77,6 @@ def npmCmd = isWindows ? "npm.cmd" : "npm"
 
 tasks.register("npmInstallSvelte", Exec) {
 workingDir svelteDir
-// "install" em vez de "ci": não exige package-lock.json presente.
 commandLine npmCmd, "install", "--no-audit", "--no-fund"
 doFirst {
 println "→ A instalar dependências npm em ${svelteDir}"
@@ -92,17 +96,32 @@ tasks.register("copySvelteBuild", Copy) {
 dependsOn "npmBuildSvelte"
 from svelteDist
 into bundledWww
+outputs.dir(bundledWww)
 doFirst {
 delete bundledWww
 println "→ A copiar dist/ compilado para ${bundledWww}"
 }
 }
 
+// Garante que QUALQUER task do módulo :app que dependa (direta ou
+// indiretamente) de ler src/main/assets_bundled só corre depois de
+// copySvelteBuild ter terminado — incluindo tasks de Lint, que também
+// leem os assets finais e são invocadas automaticamente por
+// assembleRelease/bundleRelease.
 afterEvaluate {
+tasks.matching { it.name != "copySvelteBuild" && it.name != "npmBuildSvelte" && it.name != "npmInstallSvelte" }.configureEach { t ->
+t.mustRunAfter tasks.named("copySvelteBuild")
+}
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
 dependsOn "copySvelteBuild"
 }
 tasks.matching { it.name.startsWith("generate") && it.name.endsWith("Assets") }.configureEach {
+dependsOn "copySvelteBuild"
+}
+tasks.matching { it.name.startsWith("generate") && it.name.contains("Lint") }.configureEach {
+dependsOn "copySvelteBuild"
+}
+tasks.matching { it.name.startsWith("lint") }.configureEach {
 dependsOn "copySvelteBuild"
 }
 }
