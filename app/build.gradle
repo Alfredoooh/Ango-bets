@@ -1,6 +1,8 @@
-apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-apply plugin: 'com.facebook.react'
+plugins {
+id 'com.android.application'
+id 'kotlin-android'
+id 'com.facebook.react'
+}
 
 react {
 root = file("${rootDir}/coinbox")
