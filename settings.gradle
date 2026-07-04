@@ -12,7 +12,17 @@ id("com.facebook.react.settings")
 }
 
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
-ex.autolinkLibrariesFromCommand(workingDirectory: file("${rootDir}/coinbox"))
+ex.autolinkLibrariesFromCommand(
+["npx", "@react-native-community/cli", "config"],
+file("${rootDir}/coinbox"),
+files(
+"${rootDir}/coinbox/package.json",
+"${rootDir}/coinbox/yarn.lock",
+"${rootDir}/coinbox/package-lock.json",
+"${rootDir}/coinbox/pnpm-lock.yaml",
+"${rootDir}/coinbox/react-native.config.js"
+)
+)
 }
 
 dependencyResolutionManagement {
@@ -26,4 +36,4 @@ maven { url "${rootDir}/coinbox/node_modules/jsc-android/dist" }
 }
 
 rootProject.name = "nexa"
-include ':app'
+include(":app")
