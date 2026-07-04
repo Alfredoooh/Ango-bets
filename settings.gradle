@@ -12,17 +12,7 @@ id("com.facebook.react.settings")
 }
 
 extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
-ex.autolinkLibrariesFromCommand(
-["npx", "@react-native-community/cli", "config"],
-file("${rootDir}/coinbox"),
-files(
-"${rootDir}/coinbox/package.json",
-"${rootDir}/coinbox/yarn.lock",
-"${rootDir}/coinbox/package-lock.json",
-"${rootDir}/coinbox/pnpm-lock.yaml",
-"${rootDir}/coinbox/react-native.config.js"
-)
-)
+ex.autolinkLibrariesFromCommand()
 }
 
 dependencyResolutionManagement {
