@@ -18,10 +18,13 @@ class MainActivity : AppCompatActivity() {
 
     private val serverPort = 8080
 
-    // Deve refletir sempre lightColors.primary / darkColors.primary de src/shared/theme.js
     private val nexaPrimary = Color.parseColor("#2F7BF6")
     private val bgLight = Color.parseColor("#FFFFFF")
     private val bgDark = Color.parseColor("#0F0F0F")
+
+    // Reflete se a sub-tela atual dentro da app Svelte carregada (ex: Settings)
+    // está aberta. Atualizado pelo próprio Svelte via NativeNav.reportSubScreen().
+    private var isOnSubScreen = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -36,21 +39,9 @@ class MainActivity : AppCompatActivity() {
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    // Lê o tema que o próprio Svelte já decidiu (localStorage.nexa_theme
-                    // ou prefers-color-scheme, ver src/shared/theme.js) e aplica na
-                    // status bar nativa para ficar visualmente unificado.
-                    evaluateJavascript(
-                        """
-                        (function() {
-                            var saved = localStorage.getItem('nexa_theme');
-                            if (saved === 'dark' || saved === 'light') return saved;
-                            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-                        })();
-                        """.trimIndent()
-                    ) { result ->
-                        val theme = result?.replace("\"", "")
-                        applyNativeTheme(theme == "dark")
-                    }
+                    isOnSubScreen = false
+                    syncThemeFromPage(view)
+                    injectSubScreenWatcher(view)
                 }
             }
             webChromeClient = WebChromeClient()
@@ -70,12 +61,80 @@ class MainActivity : AppCompatActivity() {
             }
 
             addJavascriptInterface(ThemeBridge(this@MainActivity), "AndroidTheme")
+            addJavascriptInterface(NavBridge(this@MainActivity), "NativeNav")
 
             loadUrl("http://127.0.0.1:$serverPort/home/")
         }
     }
 
-    /** Aplica na status bar/nav nativa a mesma cor que o Svelte está a usar. */
+    private fun syncThemeFromPage(view: WebView?) {
+        view?.evaluateJavascript(
+            """
+            (function() {
+                var saved = localStorage.getItem('nexa_theme');
+                if (saved === 'dark' || saved === 'light') return saved;
+                return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+            })();
+            """.trimIndent()
+        ) { result ->
+            val theme = result?.replace("\"", "")
+            applyNativeTheme(theme == "dark")
+        }
+    }
+
+    /**
+     * Injeta um MutationObserver que deteta quando uma sub-tela do tipo
+     * "Settings" (ou similar) está aberta dentro da app Svelte atual,
+     * observando a presença do botão ".back-btn" que já existe em todas
+     * as SettingsPage.svelte do projeto. Não edita nenhum ficheiro .svelte
+     * — apenas observa o DOM já renderizado, de fora.
+     *
+     * Quando o utilizador prime o botão físico "voltar" do Android, o
+     * Kotlin (ver onBackPressedDispatcher) simula um clique real nesse
+     * mesmo botão em vez de sair da Activity ou da app inteira, fazendo
+     * a sub-tela fechar corretamente para a tela principal.
+     */
+    private fun injectSubScreenWatcher(view: WebView?) {
+        view?.evaluateJavascript(
+            """
+            (function() {
+                function report() {
+                    var backBtn = document.querySelector('.back-btn');
+                    var onSub = !!backBtn;
+                    if (window.NativeNav) {
+                        window.NativeNav.reportSubScreen(onSub);
+                    }
+                }
+                report();
+                if (window.__nexaNavObserver) {
+                    window.__nexaNavObserver.disconnect();
+                }
+                var observer = new MutationObserver(report);
+                observer.observe(document.body, { childList: true, subtree: true });
+                window.__nexaNavObserver = observer;
+            })();
+            """.trimIndent(), null
+        )
+    }
+
+    /** Simula um clique real no botão .back-btn da sub-tela atual, se existir. */
+    private fun clickBackButtonInPage(onHandled: (Boolean) -> Unit) {
+        binding.webView.evaluateJavascript(
+            """
+            (function() {
+                var backBtn = document.querySelector('.back-btn');
+                if (backBtn) {
+                    backBtn.click();
+                    return true;
+                }
+                return false;
+            })();
+            """.trimIndent()
+        ) { result ->
+            onHandled(result == "true")
+        }
+    }
+
     private fun applyNativeTheme(isDark: Boolean) {
         window.statusBarColor = if (isDark) bgDark else bgLight
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -87,7 +146,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Permite ao Svelte (ex: ao alternar tema em Settings) notificar o Kotlin imediatamente. */
     inner class ThemeBridge(private val activity: MainActivity) {
         @JavascriptInterface
         fun onThemeChanged(theme: String) {
@@ -97,7 +155,35 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    inner class NavBridge(private val activity: MainActivity) {
+        @JavascriptInterface
+        fun reportSubScreen(onSubScreen: Boolean) {
+            runOnUiThread {
+                activity.isOnSubScreen = onSubScreen
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        when {
+            isOnSubScreen -> {
+                // Está numa sub-tela (ex: Settings) dentro da app Svelte atual:
+                // fecha essa sub-tela em vez de sair da app ou trocar de URL.
+                clickBackButtonInPage { handled ->
+                    if (!handled) {
+                        fallbackBack()
+                    }
+                }
+            }
+            binding.webView.canGoBack() -> {
+                binding.webView.goBack()
+            }
+            else -> super.onBackPressed()
+        }
+    }
+
+    private fun fallbackBack() {
         if (binding.webView.canGoBack()) {
             binding.webView.goBack()
         } else {
