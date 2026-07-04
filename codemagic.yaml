@@ -107,6 +107,16 @@ workflows:
           print("Icones processados com sucesso!")
           PYEOF
 
+      - name: Install coinbox dependencies
+        script: |
+          cd "${CM_BUILD_DIR}/coinbox"
+          npm install --no-audit --no-fund
+
+      - name: Expo prebuild (generate native android project for coinbox)
+        script: |
+          cd "${CM_BUILD_DIR}/coinbox"
+          npx expo prebuild --platform android --clean
+
       - name: Set executable permission on gradlew
         script: chmod +x "${CM_BUILD_DIR}/gradlew"
 
@@ -235,6 +245,16 @@ workflows:
 
           print("Icones processados com sucesso!")
           PYEOF
+
+      - name: Install coinbox dependencies
+        script: |
+          cd "${CM_BUILD_DIR}/coinbox"
+          npm install --no-audit --no-fund
+
+      - name: Expo prebuild (generate native android project for coinbox)
+        script: |
+          cd "${CM_BUILD_DIR}/coinbox"
+          npx expo prebuild --platform android --clean
 
       - name: Set executable permission on gradlew
         script: chmod +x "${CM_BUILD_DIR}/gradlew"
