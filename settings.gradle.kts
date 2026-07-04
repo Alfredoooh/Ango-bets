@@ -1,5 +1,5 @@
 pluginManagement {
-    includeBuild("coinbox/node_modules/@react-native/gradle-plugin")
+    includeBuild("${rootDir}/coinbox/node_modules/@react-native/gradle-plugin")
     repositories {
         google()
         mavenCentral()
@@ -11,13 +11,8 @@ plugins {
     id("com.facebook.react.settings")
 }
 
-configure<com.facebook.react.ReactSettingsExtension> {
-    autolinkLibrariesFromCommand(
-        workingDirectory = file("coinbox"),
-        lockFiles = files(
-            "coinbox/package-lock.json"
-        )
-    )
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+    ex.autolinkLibrariesFromCommand()
 }
 
 dependencyResolutionManagement {
@@ -25,8 +20,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("coinbox/node_modules/react-native/android") }
-        maven { url = uri("coinbox/node_modules/jsc-android/dist") }
+        maven { url "${rootDir}/coinbox/node_modules/react-native/android" }
+        maven { url "${rootDir}/coinbox/node_modules/jsc-android/dist" }
     }
 }
 
