@@ -12,6 +12,7 @@ bundleAssetName = "index.android.bundle"
 bundleInDebug = false
 bundleInRelease = true
 devDisabledInRelease = true
+autolinkLibrariesWithApp()
 }
 
 android {
