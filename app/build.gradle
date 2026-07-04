@@ -3,11 +3,11 @@ apply plugin: 'kotlin-android'
 apply plugin: 'com.facebook.react'
 
 react {
-root = file("../coinbox")
-reactNativeDir = file("../coinbox/node_modules/react-native")
-hermesCommand = "../coinbox/node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc"
-codegenDir = file("../coinbox/node_modules/react-native-codegen")
-entryFile = file("../coinbox/index.ts")
+root = file("${rootDir}/coinbox")
+reactNativeDir = file("${rootDir}/coinbox/node_modules/react-native")
+hermesCommand = "${rootDir}/coinbox/node_modules/react-native/sdks/hermesc/%OS-BIN%/hermesc"
+codegenDir = file("${rootDir}/coinbox/node_modules/react-native-codegen")
+entryFile = file("${rootDir}/coinbox/index.ts")
 bundleAssetName = "index.android.bundle"
 bundleInDebug = false
 bundleInRelease = true

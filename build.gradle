@@ -5,8 +5,8 @@ kotlinVersion = '1.9.25'
 repositories {
 google()
 mavenCentral()
-maven { url "$rootDir/../coinbox/node_modules/react-native/android" }
-maven { url "$rootDir/../coinbox/node_modules/jsc-android/dist" }
+maven { url "${rootDir}/coinbox/node_modules/react-native/android" }
+maven { url "${rootDir}/coinbox/node_modules/jsc-android/dist" }
 }
 dependencies {
 classpath 'com.android.tools.build:gradle:8.7.0'
