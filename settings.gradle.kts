@@ -11,8 +11,8 @@ plugins {
     id("com.facebook.react.settings")
 }
 
-extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
-    ex.autolinkLibrariesFromCommand()
+extensions.configure<com.facebook.react.ReactSettingsExtension> {
+    autolinkLibrariesFromCommand()
 }
 
 dependencyResolutionManagement {
@@ -20,8 +20,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url "${rootDir}/coinbox/node_modules/react-native/android" }
-        maven { url "${rootDir}/coinbox/node_modules/jsc-android/dist" }
+        maven { url = uri("${rootDir}/coinbox/node_modules/react-native/android") }
+        maven { url = uri("${rootDir}/coinbox/node_modules/jsc-android/dist") }
     }
 }
 
