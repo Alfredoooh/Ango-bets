@@ -21,6 +21,11 @@ import kotlinx.coroutines.launch
 
 class DownloaderActivity : AppCompatActivity() {
 
+    companion object {
+        const val EXTRA_URL = "extra_url"
+        const val EXTRA_FILE_NAME = "extra_file_name"
+    }
+
     private lateinit var root: CoordinatorLayout
     private lateinit var urlEditText: TextInputEditText
     private lateinit var fileNameEditText: TextInputEditText
@@ -55,6 +60,9 @@ class DownloaderActivity : AppCompatActivity() {
         downloadButton = findViewById(R.id.downloadButton)
 
         downloadButton.setOnClickListener { onDownloadClicked() }
+
+        intent.getStringExtra(EXTRA_URL)?.let { urlEditText.setText(it) }
+        intent.getStringExtra(EXTRA_FILE_NAME)?.let { fileNameEditText.setText(it) }
     }
 
     private fun onDownloadClicked() {
