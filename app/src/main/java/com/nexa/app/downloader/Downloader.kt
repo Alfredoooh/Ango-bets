@@ -1,9 +1,14 @@
 package com.nexa.app.downloader
 
 import android.Manifest
+import android.content.ContentValues
+import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.MediaStore
 import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -17,7 +22,173 @@ import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.textfield.TextInputEditText
 import com.nexa.app.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
+import java.net.HttpURLConnection
+import java.net.URL
+
+enum class MediaKind {
+    Audio,
+    Video,
+    Image
+}
+
+sealed class DownloadResult {
+    data class Success(val fileName: String, val bytesWritten: Long) : DownloadResult()
+    data class Failure(val message: String) : DownloadResult()
+}
+
+class Downloader(private val context: Context) {
+
+    suspend fun download(
+        url: String,
+        fileName: String,
+        kind: MediaKind,
+        onProgress: (bytesRead: Long, bytesTotal: Long) -> Unit
+    ): DownloadResult = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 15000
+            connection.readTimeout = 15000
+            connection.connect()
+
+            if (connection.responseCode !in 200..299) {
+                return@withContext DownloadResult.Failure("HTTP ${connection.responseCode}")
+            }
+
+            val totalBytes = connection.contentLengthLong
+            val mimeType = mimeTypeFor(kind, fileName)
+
+            val outputStream: OutputStream
+            var tempFile: File? = null
+            var resolvedUri: Uri? = null
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val (uri, stream) = openMediaStoreOutputStream(kind, fileName, mimeType)
+                    ?: return@withContext DownloadResult.Failure("Não foi possível criar o ficheiro de destino")
+                resolvedUri = uri
+                outputStream = stream
+            } else {
+                val dir = legacyPublicDir(kind)
+                if (!dir.exists()) dir.mkdirs()
+                tempFile = File(dir, fileName)
+                outputStream = FileOutputStream(tempFile)
+            }
+
+            var bytesWritten = 0L
+            outputStream.use { out ->
+                connection.inputStream.use { input ->
+                    val buffer = ByteArray(8192)
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        out.write(buffer, 0, read)
+                        bytesWritten += read
+                        onProgress(bytesWritten, totalBytes)
+                    }
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && resolvedUri != null) {
+                finalizeMediaStoreEntry(kind, resolvedUri)
+            } else {
+                tempFile?.let { file ->
+                    @Suppress("DEPRECATION")
+                    context.sendBroadcast(
+                        android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).apply {
+                            data = Uri.fromFile(file)
+                        }
+                    )
+                }
+            }
+
+            DownloadResult.Success(fileName, bytesWritten)
+        } catch (e: Exception) {
+            DownloadResult.Failure(e.message ?: "Erro desconhecido")
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun openMediaStoreOutputStream(
+        kind: MediaKind,
+        fileName: String,
+        mimeType: String
+    ): Pair<Uri, OutputStream>? {
+        val collection: Uri
+        val relativePath: String
+
+        when (kind) {
+            MediaKind.Audio -> {
+                collection = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                relativePath = Environment.DIRECTORY_MUSIC + "/Nexa"
+            }
+            MediaKind.Video -> {
+                collection = MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                relativePath = Environment.DIRECTORY_MOVIES + "/Nexa"
+            }
+            MediaKind.Image -> {
+                collection = MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                relativePath = Environment.DIRECTORY_PICTURES + "/Nexa"
+            }
+        }
+
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+
+        val uri = context.contentResolver.insert(collection, values) ?: return null
+        val stream = context.contentResolver.openOutputStream(uri) ?: return null
+        return uri to stream
+    }
+
+    private fun finalizeMediaStoreEntry(kind: MediaKind, uri: Uri) {
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.IS_PENDING, 0)
+        }
+        context.contentResolver.update(uri, values, null, null)
+    }
+
+    private fun legacyPublicDir(kind: MediaKind): File {
+        val baseDir = when (kind) {
+            MediaKind.Audio -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+            MediaKind.Video -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+            MediaKind.Image -> Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+        }
+        return File(baseDir, "Nexa")
+    }
+
+    private fun mimeTypeFor(kind: MediaKind, fileName: String): String {
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        return when (kind) {
+            MediaKind.Audio -> when (extension) {
+                "wav" -> "audio/wav"
+                "ogg" -> "audio/ogg"
+                "m4a" -> "audio/mp4"
+                else -> "audio/mpeg"
+            }
+            MediaKind.Video -> when (extension) {
+                "mkv" -> "video/x-matroska"
+                "webm" -> "video/webm"
+                else -> "video/mp4"
+            }
+            MediaKind.Image -> when (extension) {
+                "png" -> "image/png"
+                "webp" -> "image/webp"
+                "gif" -> "image/gif"
+                else -> "image/jpeg"
+            }
+        }
+    }
+}
 
 class DownloaderActivity : AppCompatActivity() {
 
