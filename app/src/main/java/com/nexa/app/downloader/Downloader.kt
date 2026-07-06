@@ -1,107 +1,129 @@
 package com.nexa.app.downloader
 
-import android.content.ContentValues
-import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.IOException
-import java.util.concurrent.TimeUnit
+import android.os.Bundle
+import android.view.View
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.TextInputEditText
+import com.nexa.app.R
+import kotlinx.coroutines.launch
 
-sealed class DownloadResult {
-    data class Success(val fileName: String, val bytesWritten: Long) : DownloadResult()
-    data class Failure(val message: String, val cause: Throwable? = null) : DownloadResult()
-}
+class DownloaderActivity : AppCompatActivity() {
 
-sealed class MediaKind(val mimeType: String, val collection: (Boolean) -> android.net.Uri) {
-    object Audio : MediaKind(
-        "audio/mpeg",
-        { useLegacy -> if (useLegacy) MediaStore.Audio.Media.EXTERNAL_CONTENT_URI else MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) }
-    )
-    object Video : MediaKind(
-        "video/mp4",
-        { useLegacy -> if (useLegacy) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) }
-    )
-    object Image : MediaKind(
-        "image/jpeg",
-        { useLegacy -> if (useLegacy) MediaStore.Images.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY) }
-    )
-}
+    private lateinit var root: CoordinatorLayout
+    private lateinit var urlEditText: TextInputEditText
+    private lateinit var fileNameEditText: TextInputEditText
+    private lateinit var chipGroup: ChipGroup
+    private lateinit var progress: LinearProgressIndicator
+    private lateinit var progressLabel: android.widget.TextView
+    private lateinit var downloadButton: MaterialButton
 
-class Downloader(private val context: Context) {
+    private var pendingDownload: (() -> Unit)? = null
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.SECONDS)
-        .build()
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            pendingDownload?.invoke()
+        } else {
+            Snackbar.make(root, "Permissão de armazenamento negada", Snackbar.LENGTH_LONG).show()
+        }
+        pendingDownload = null
+    }
 
-    suspend fun download(
-        url: String,
-        fileName: String,
-        kind: MediaKind,
-        onProgress: ((bytesRead: Long, bytesTotal: Long) -> Unit)? = null
-    ): DownloadResult = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder().url(url).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext DownloadResult.Failure("HTTP ${response.code} ao descarregar $url")
-                }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_downloader)
 
-                val body = response.body ?: return@withContext DownloadResult.Failure("Corpo da resposta vazio")
-                val totalBytes = body.contentLength()
+        root = findViewById(R.id.downloaderRoot)
+        urlEditText = findViewById(R.id.urlEditText)
+        fileNameEditText = findViewById(R.id.fileNameEditText)
+        chipGroup = findViewById(R.id.mediaKindChipGroup)
+        progress = findViewById(R.id.downloadProgress)
+        progressLabel = findViewById(R.id.progressLabel)
+        downloadButton = findViewById(R.id.downloadButton)
 
-                val useLegacy = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
-                val collectionUri = kind.collection(useLegacy)
+        downloadButton.setOnClickListener { onDownloadClicked() }
+    }
 
-                val values = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, kind.mimeType)
-                    if (!useLegacy) {
-                        val relativePath = when (kind) {
-                            is MediaKind.Audio -> Environment.DIRECTORY_MUSIC
-                            is MediaKind.Video -> Environment.DIRECTORY_MOVIES
-                            is MediaKind.Image -> Environment.DIRECTORY_PICTURES
-                        }
-                        put(MediaStore.MediaColumns.RELATIVE_PATH, "$relativePath/Nexa")
-                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+    private fun onDownloadClicked() {
+        val url = urlEditText.text?.toString()?.trim().orEmpty()
+        val fileName = fileNameEditText.text?.toString()?.trim().orEmpty()
+
+        if (url.isEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            Snackbar.make(root, "URL inválido", Snackbar.LENGTH_SHORT).show()
+            return
+        }
+        if (fileName.isEmpty()) {
+            Snackbar.make(root, "Indica o nome do ficheiro", Snackbar.LENGTH_SHORT).show()
+            return
+        }
+
+        val kind = when (chipGroup.checkedChipId) {
+            R.id.chipVideo -> MediaKind.Video
+            R.id.chipImage -> MediaKind.Image
+            else -> MediaKind.Audio
+        }
+
+        val startDownload = { startDownload(url, fileName, kind) }
+
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingDownload = startDownload
+            permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+
+        startDownload()
+    }
+
+    private fun startDownload(url: String, fileName: String, kind: MediaKind) {
+        downloadButton.isEnabled = false
+        progress.visibility = View.VISIBLE
+        progressLabel.visibility = View.VISIBLE
+        progress.progress = 0
+        progressLabel.text = "A descarregar..."
+
+        lifecycleScope.launch {
+            val downloader = Downloader(applicationContext)
+            val result = downloader.download(url, fileName, kind) { bytesRead, bytesTotal ->
+                runOnUiThread {
+                    if (bytesTotal > 0) {
+                        val percent = ((bytesRead * 100) / bytesTotal).toInt()
+                        progress.isIndeterminate = false
+                        progress.progress = percent
+                        progressLabel.text = "$percent% ($bytesRead / $bytesTotal bytes)"
+                    } else {
+                        progress.isIndeterminate = true
+                        progressLabel.text = "${bytesRead} bytes"
                     }
                 }
-
-                val resolver = context.contentResolver
-                val itemUri = resolver.insert(collectionUri, values)
-                    ?: return@withContext DownloadResult.Failure("Não foi possível criar a entrada no MediaStore")
-
-                var bytesWritten = 0L
-                resolver.openOutputStream(itemUri)?.use { output ->
-                    body.byteStream().use { input ->
-                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            output.write(buffer, 0, read)
-                            bytesWritten += read
-                            onProgress?.invoke(bytesWritten, totalBytes)
-                        }
-                    }
-                } ?: return@withContext DownloadResult.Failure("Não foi possível abrir stream de escrita")
-
-                if (!useLegacy) {
-                    values.clear()
-                    values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(itemUri, values, null, null)
-                }
-
-                DownloadResult.Success(fileName, bytesWritten)
             }
-        } catch (e: IOException) {
-            DownloadResult.Failure("Erro de rede: ${e.message}", e)
-        } catch (e: Exception) {
-            DownloadResult.Failure("Erro inesperado: ${e.message}", e)
+
+            downloadButton.isEnabled = true
+            when (result) {
+                is DownloadResult.Success -> {
+                    progressLabel.text = "Concluído: ${result.fileName} (${result.bytesWritten} bytes)"
+                    Snackbar.make(root, "Download concluído: ${result.fileName}", Snackbar.LENGTH_LONG).show()
+                }
+                is DownloadResult.Failure -> {
+                    progressLabel.text = "Falhou: ${result.message}"
+                    Snackbar.make(root, "Erro: ${result.message}", Snackbar.LENGTH_LONG).show()
+                }
+            }
         }
     }
 }
