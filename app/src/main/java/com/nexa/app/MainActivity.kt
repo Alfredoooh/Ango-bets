@@ -16,7 +16,7 @@ import androidx.webkit.WebViewFeature
 class MainActivity : AppCompatActivity() {
 
     // TODO: substituir pelo URL real do Nexa
-    private val nexaWebUrl = "https://your-nexa-url.onrender.com"
+    private val nexaWebUrl = "https://nexabase.onrender.com"
 
     private lateinit var webView: WebView
 
