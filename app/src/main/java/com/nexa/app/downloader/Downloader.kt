@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -16,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.progressindicator.LinearProgressIndicator
@@ -25,11 +27,21 @@ import com.nexa.app.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.NewPipe
+import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.downloader.Downloader as NewPipeDownloaderBase
+import org.schabi.newpipe.extractor.downloader.Request as NewPipeRequest
+import org.schabi.newpipe.extractor.downloader.Response as NewPipeResponse
+import org.schabi.newpipe.extractor.stream.AudioStream
+import org.schabi.newpipe.extractor.stream.VideoStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.TimeUnit
+import okhttp3.OkHttpClient
+import okhttp3.Request as OkRequest
 
 enum class MediaKind {
     Audio,
@@ -40,6 +52,299 @@ enum class MediaKind {
 sealed class DownloadResult {
     data class Success(val fileName: String, val bytesWritten: Long) : DownloadResult()
     data class Failure(val message: String) : DownloadResult()
+}
+
+data class StreamOption(
+    val label: String,
+    val url: String,
+    val extension: String,
+    val approxSizeBytes: Long,
+    val isAudioOnly: Boolean
+)
+
+data class LinkInfo(
+    val title: String,
+    val thumbnailUrl: String?,
+    val durationSeconds: Long,
+    val uploader: String?,
+    val streams: List<StreamOption>,
+    val isDirectFile: Boolean
+)
+
+object NewPipeInit {
+    @Volatile private var initialized = false
+
+    fun ensureInit() {
+        if (initialized) return
+        synchronized(this) {
+            if (initialized) return
+            NewPipe.init(OkHttpNewPipeDownloader())
+            initialized = true
+        }
+    }
+}
+
+private class OkHttpNewPipeDownloader : NewPipeDownloaderBase() {
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
+
+    override fun execute(request: NewPipeRequest): NewPipeResponse {
+        val builder = OkRequest.Builder().url(request.url())
+
+        val headers = request.headers()
+        for ((key, values) in headers) {
+            for (value in values) {
+                builder.addHeader(key, value)
+            }
+        }
+        if (headers["User-Agent"].isNullOrEmpty()) {
+            builder.addHeader(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+
+        val dataToSend = request.dataToSend()
+        when (request.httpMethod()) {
+            "POST" -> builder.post(
+                okhttp3.RequestBody.create(null, dataToSend ?: ByteArray(0))
+            )
+            "PUT" -> builder.put(
+                okhttp3.RequestBody.create(null, dataToSend ?: ByteArray(0))
+            )
+            else -> builder.get()
+        }
+
+        client.newCall(builder.build()).execute().use { resp ->
+            val body = resp.body?.string() ?: ""
+            val respHeaders = mutableMapOf<String, List<String>>()
+            for (name in resp.headers.names()) {
+                respHeaders[name] = resp.headers.values(name)
+            }
+            return NewPipeResponse(
+                resp.code,
+                resp.message,
+                respHeaders,
+                body,
+                resp.request.url.toString()
+            )
+        }
+    }
+}
+
+class LinkAnalyzer {
+
+    suspend fun analyze(url: String): Result<LinkInfo> = withContext(Dispatchers.IO) {
+        try {
+            if (isYoutubeUrl(url)) {
+                analyzeYoutube(url)
+            } else {
+                analyzeDirectFile(url)
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun isYoutubeUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        return lower.contains("youtube.com") || lower.contains("youtu.be")
+    }
+
+    private fun analyzeYoutube(url: String): Result<LinkInfo> {
+        NewPipeInit.ensureInit()
+        val service = ServiceList.YouTube
+        val extractor = service.getStreamExtractor(url)
+        extractor.fetchPage()
+
+        val title = extractor.name ?: "Sem título"
+        val thumbnail = extractor.thumbnails?.lastOrNull()?.url
+        val duration = extractor.length
+        val uploader = extractor.uploaderName
+
+        val streams = mutableListOf<StreamOption>()
+
+        val videoStreams: List<VideoStream> = extractor.videoStreams ?: emptyList()
+        for (v in videoStreams) {
+            val ext = v.format?.suffix ?: "mp4"
+            val approxSize = estimateSize(v.bitrate, duration)
+            streams.add(
+                StreamOption(
+                    label = "${v.resolution ?: "?"} (${ext.uppercase()})",
+                    url = v.content,
+                    extension = ext,
+                    approxSizeBytes = approxSize,
+                    isAudioOnly = false
+                )
+            )
+        }
+
+        val audioStreams: List<AudioStream> = extractor.audioStreams ?: emptyList()
+        for (a in audioStreams) {
+            val ext = a.format?.suffix ?: "m4a"
+            val approxSize = estimateSize(a.averageBitrate, duration)
+            streams.add(
+                StreamOption(
+                    label = "Áudio ${a.averageBitrate}kbps (${ext.uppercase()})",
+                    url = a.content,
+                    extension = ext,
+                    approxSizeBytes = approxSize,
+                    isAudioOnly = true
+                )
+            )
+        }
+
+        if (streams.isEmpty()) {
+            return Result.failure(Exception("Nenhum stream encontrado para este vídeo"))
+        }
+
+        return Result.success(
+            LinkInfo(
+                title = title,
+                thumbnailUrl = thumbnail,
+                durationSeconds = duration,
+                uploader = uploader,
+                streams = streams,
+                isDirectFile = false
+            )
+        )
+    }
+
+    private fun estimateSize(bitrateKbps: Int, durationSeconds: Long): Long {
+        if (bitrateKbps <= 0 || durationSeconds <= 0) return -1L
+        return (bitrateKbps.toLong() * 1000L / 8L) * durationSeconds
+    }
+
+    private fun analyzeDirectFile(url: String): Result<LinkInfo> {
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            connection.connect()
+
+            val contentType = connection.contentType ?: ""
+
+            if (contentType.startsWith("text/html")) {
+                val html = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                return extractFromHtml(html, url)
+            }
+
+            val size = connection.contentLengthLong
+            val fileName = url.substringAfterLast('/').substringBefore('?')
+
+            val stream = StreamOption(
+                label = if (contentType.isNotEmpty()) contentType else "Ficheiro direto",
+                url = url,
+                extension = fileName.substringAfterLast('.', "bin"),
+                approxSizeBytes = size,
+                isAudioOnly = contentType.startsWith("audio")
+            )
+
+            Result.success(
+                LinkInfo(
+                    title = fileName.ifEmpty { "Ficheiro" },
+                    thumbnailUrl = null,
+                    durationSeconds = 0L,
+                    uploader = null,
+                    streams = listOf(stream),
+                    isDirectFile = true
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun extractFromHtml(html: String, pageUrl: String): Result<LinkInfo> {
+        val title = Regex("<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+            .find(html)?.groupValues?.get(1)
+            ?: Regex("<title[^>]*>([^<]+)</title>", RegexOption.IGNORE_CASE)
+                .find(html)?.groupValues?.get(1)
+            ?: pageUrl
+
+        val thumbnail = Regex("<meta[^>]+property=[\"']og:image[\"'][^>]+content=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+            .find(html)?.groupValues?.get(1)
+
+        val streams = mutableListOf<StreamOption>()
+
+        val ogVideo = Regex("<meta[^>]+property=[\"']og:video(?::secure_url)?[\"'][^>]+content=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+            .findAll(html).map { it.groupValues[1] }.toList()
+
+        val videoTagSrcs = Regex("<video[^>]+src=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+            .findAll(html).map { it.groupValues[1] }.toList()
+
+        val sourceTagSrcs = Regex("<source[^>]+src=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+            .findAll(html).map { it.groupValues[1] }.toList()
+
+        val allVideoUrls = (ogVideo + videoTagSrcs + sourceTagSrcs).distinct()
+
+        for (rawUrl in allVideoUrls) {
+            val resolved = resolveUrl(rawUrl, pageUrl)
+            val ext = resolved.substringAfterLast('.', "mp4").substringBefore('?').take(4)
+            streams.add(
+                StreamOption(
+                    label = "Vídeo (${ext.uppercase()})",
+                    url = resolved,
+                    extension = if (ext.isEmpty()) "mp4" else ext,
+                    approxSizeBytes = -1L,
+                    isAudioOnly = false
+                )
+            )
+        }
+
+        if (streams.isEmpty() && thumbnail != null) {
+            val resolvedThumb = resolveUrl(thumbnail, pageUrl)
+            val ext = resolvedThumb.substringAfterLast('.', "jpg").substringBefore('?').take(4)
+            streams.add(
+                StreamOption(
+                    label = "Imagem (${ext.uppercase()})",
+                    url = resolvedThumb,
+                    extension = if (ext.isEmpty()) "jpg" else ext,
+                    approxSizeBytes = -1L,
+                    isAudioOnly = false
+                )
+            )
+        }
+
+        if (streams.isEmpty()) {
+            return Result.failure(Exception("Não foi possível encontrar ficheiro de media na página"))
+        }
+
+        return Result.success(
+            LinkInfo(
+                title = title,
+                thumbnailUrl = thumbnail?.let { resolveUrl(it, pageUrl) },
+                durationSeconds = 0L,
+                uploader = null,
+                streams = streams,
+                isDirectFile = false
+            )
+        )
+    }
+
+    private fun resolveUrl(candidate: String, pageUrl: String): String {
+        return try {
+            if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
+                candidate
+            } else {
+                URL(URL(pageUrl), candidate).toString()
+            }
+        } catch (e: Exception) {
+            candidate
+        }
+    }
 }
 
 class Downloader(private val context: Context) {
@@ -204,8 +509,17 @@ class DownloaderActivity : AppCompatActivity() {
     private lateinit var progress: LinearProgressIndicator
     private lateinit var progressLabel: android.widget.TextView
     private lateinit var downloadButton: MaterialButton
+    private lateinit var analyzeButton: MaterialButton
+    private lateinit var analyzeProgress: LinearProgressIndicator
+    private lateinit var videoInfoCard: MaterialCardView
+    private lateinit var videoThumbnail: android.widget.ImageView
+    private lateinit var videoTitle: android.widget.TextView
+    private lateinit var videoMeta: android.widget.TextView
+    private lateinit var streamChipGroup: ChipGroup
 
     private var pendingDownload: (() -> Unit)? = null
+    private var currentStreams: List<StreamOption> = emptyList()
+    private var selectedStream: StreamOption? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -229,11 +543,145 @@ class DownloaderActivity : AppCompatActivity() {
         progress = findViewById(R.id.downloadProgress)
         progressLabel = findViewById(R.id.progressLabel)
         downloadButton = findViewById(R.id.downloadButton)
+        analyzeButton = findViewById(R.id.analyzeButton)
+        analyzeProgress = findViewById(R.id.analyzeProgress)
+        videoInfoCard = findViewById(R.id.videoInfoCard)
+        videoThumbnail = findViewById(R.id.videoThumbnail)
+        videoTitle = findViewById(R.id.videoTitle)
+        videoMeta = findViewById(R.id.videoMeta)
+        streamChipGroup = findViewById(R.id.streamChipGroup)
 
         downloadButton.setOnClickListener { onDownloadClicked() }
+        analyzeButton.setOnClickListener { onAnalyzeClicked() }
 
         intent.getStringExtra(EXTRA_URL)?.let { urlEditText.setText(it) }
         intent.getStringExtra(EXTRA_FILE_NAME)?.let { fileNameEditText.setText(it) }
+    }
+
+    private fun onAnalyzeClicked() {
+        val url = urlEditText.text?.toString()?.trim().orEmpty()
+        if (url.isEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+            Snackbar.make(root, "URL inválido", Snackbar.LENGTH_SHORT).show()
+            return
+        }
+
+        videoInfoCard.visibility = View.GONE
+        streamChipGroup.removeAllViews()
+        currentStreams = emptyList()
+        selectedStream = null
+        analyzeButton.isEnabled = false
+        analyzeProgress.visibility = View.VISIBLE
+
+        lifecycleScope.launch {
+            val analyzer = LinkAnalyzer()
+            val result = analyzer.analyze(url)
+
+            analyzeProgress.visibility = View.INVISIBLE
+            analyzeButton.isEnabled = true
+
+            result.onSuccess { info ->
+                showInfo(info)
+            }.onFailure { e ->
+                Snackbar.make(root, "Erro ao analisar: ${e.message}", Snackbar.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun showInfo(info: LinkInfo) {
+        videoInfoCard.visibility = View.VISIBLE
+        videoTitle.text = info.title
+
+        val durationText = if (info.durationSeconds > 0) {
+            val m = info.durationSeconds / 60
+            val s = info.durationSeconds % 60
+            String.format("%d:%02d", m, s)
+        } else null
+
+        val metaParts = mutableListOf<String>()
+        durationText?.let { metaParts.add("Duração: $it") }
+        info.uploader?.let { metaParts.add(it) }
+        videoMeta.text = metaParts.joinToString(" • ")
+
+        if (info.thumbnailUrl != null) {
+            loadThumbnail(info.thumbnailUrl)
+        } else {
+            videoThumbnail.setImageDrawable(null)
+        }
+
+        currentStreams = info.streams
+        streamChipGroup.removeAllViews()
+
+        for ((index, stream) in info.streams.withIndex()) {
+            val chip = Chip(this)
+            chip.id = View.generateViewId()
+            val sizeLabel = if (stream.approxSizeBytes > 0) {
+                " ~${formatSize(stream.approxSizeBytes)}"
+            } else ""
+            chip.text = "${stream.label}$sizeLabel"
+            chip.isCheckable = true
+            chip.setChipBackgroundColorResource(android.R.color.transparent)
+            streamChipGroup.addView(chip)
+            if (index == 0) {
+                chip.isChecked = true
+                selectedStream = stream
+                applySelectedStreamDefaults(stream)
+            }
+        }
+
+        streamChipGroup.setOnCheckedStateChangeListener { group, checkedIds ->
+            val checkedId = checkedIds.firstOrNull() ?: return@setOnCheckedStateChangeListener
+            val checkedIndex = (0 until group.childCount).firstOrNull { group.getChildAt(it).id == checkedId }
+            if (checkedIndex != null && checkedIndex < currentStreams.size) {
+                selectedStream = currentStreams[checkedIndex]
+                applySelectedStreamDefaults(currentStreams[checkedIndex])
+            }
+        }
+    }
+
+    private fun applySelectedStreamDefaults(stream: StreamOption) {
+        chipGroup.check(if (stream.isAudioOnly) R.id.chipAudio else R.id.chipVideo)
+
+        val currentName = fileNameEditText.text?.toString()?.trim().orEmpty()
+        val baseName = if (currentName.isEmpty() || !currentName.contains('.')) {
+            videoTitle.text?.toString()?.take(50)?.ifEmpty { "download" } ?: "download"
+        } else {
+            currentName.substringBeforeLast('.')
+        }
+        val sanitized = baseName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        fileNameEditText.setText("$sanitized.${stream.extension}")
+
+        urlEditText.setText(stream.url)
+    }
+
+    private fun loadThumbnail(thumbUrl: String) {
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                try {
+                    val conn = URL(thumbUrl).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    conn.connect()
+                    conn.inputStream.use { BitmapFactory.decodeStream(it) }
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (bitmap != null) {
+                videoThumbnail.setImageBitmap(bitmap)
+            }
+        }
+    }
+
+    private fun formatSize(bytes: Long): String {
+        if (bytes <= 0) return "?"
+        val kb = bytes / 1024.0
+        val mb = kb / 1024.0
+        val gb = mb / 1024.0
+        return when {
+            gb >= 1 -> String.format("%.2f GB", gb)
+            mb >= 1 -> String.format("%.1f MB", mb)
+            else -> String.format("%.0f KB", kb)
+        }
     }
 
     private fun onDownloadClicked() {
