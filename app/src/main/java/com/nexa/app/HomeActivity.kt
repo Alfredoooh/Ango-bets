@@ -1,24 +1,37 @@
+// app/src/main/java/com/nexa/app/HomeActivity.kt
 package com.nexa.app
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.PathInterpolator
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.webview.PermissionManager
 import com.nexa.app.webview.WebViewPool
 import com.nexa.app.widgets.GradientRingLoader
+import java.io.File
 
 class HomeActivity : AppCompatActivity() {
 
@@ -26,6 +39,9 @@ class HomeActivity : AppCompatActivity() {
         const val EXTRA_INITIAL_ROUTE = "extra_initial_route"
         private const val KEY_CURRENT_ROUTE = "key_current_route"
         private const val KEY_ROUTE_STACK = "key_route_stack"
+
+        private const val PUSH_DIM_ALPHA = 0.06f
+        private const val BACK_PARALLAX_FACTOR = 0.30f
     }
 
     private lateinit var rootLayout: FrameLayout
@@ -40,6 +56,16 @@ class HomeActivity : AppCompatActivity() {
     private var runningAnimators: MutableList<ValueAnimator> = mutableListOf()
 
     private val iosEaseOut = PathInterpolator(0.25f, 0.1f, 0.25f, 1f)
+
+    // --- Ponte de permissões runtime para o WebView (getUserMedia) ---
+    private var pendingPermissionRequest: PermissionRequest? = null
+    private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
+
+    // --- Ponte do seletor de ficheiros para o WebView (<input type=file>) ---
+    private var pendingFilePathCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingCameraCaptureUri: Uri? = null
+    private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
+    private lateinit name: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +86,9 @@ class HomeActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
+
+        setupPermissionLauncher()
+        setupFileChooserLauncher()
 
         restoreNavigationState(savedInstanceState)
 
@@ -86,6 +115,149 @@ class HomeActivity : AppCompatActivity() {
             showRoute(initialRouteFromIntent(), pushToStack = false, isBack = false, animate = false)
         } else {
             showRoute(currentRoute, pushToStack = false, isBack = false, animate = false)
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Permissões runtime (câmera/microfone) pedidas pelo getUserMedia()
+    // dentro da página web, via WebChromeClient.onPermissionRequest.
+    // ------------------------------------------------------------------
+    private fun setupPermissionLauncher() {
+        runtimePermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { results ->
+            val request = pendingPermissionRequest
+            pendingPermissionRequest = null
+            if (request == null) return@registerForActivityResult
+
+            val allGranted = results.values.all { it }
+            if (allGranted) {
+                request.grant(request.resources)
+            } else {
+                request.deny()
+                Toast.makeText(
+                    this,
+                    getString(R.string.permission_camera_mic_denied),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun handleWebPermissionRequest(request: PermissionRequest) {
+        runOnUiThread {
+            val needsCamera = request.resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+            val needsAudio = request.resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+
+            val alreadyGranted = (!needsCamera || PermissionManager.hasCameraPermission(this)) &&
+                (!needsAudio || PermissionManager.hasAudioPermission(this))
+
+            if (alreadyGranted) {
+                request.grant(request.resources)
+                return@runOnUiThread
+            }
+
+            pendingPermissionRequest = request
+            val toRequest = mutableListOf<String>()
+            if (needsCamera) toRequest.add(android.Manifest.permission.CAMERA)
+            if (needsAudio) toRequest.add(android.Manifest.permission.RECORD_AUDIO)
+            runtimePermissionLauncher.launch(toRequest.toTypedArray())
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Seletor de ficheiros (galeria/câmera/documentos) pedido por
+    // <input type="file"> dentro da página web, via
+    // WebChromeClient.onShowFileChooser.
+    // ------------------------------------------------------------------
+    private fun setupFileChooserLauncher() {
+        fileChooserLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            val callback = pendingFilePathCallback
+            pendingFilePathCallback = null
+
+            if (callback == null) return@registerForActivityResult
+
+            val resultUris: Array<Uri>? = when {
+                result.resultCode != RESULT_OK -> null
+                result.data?.dataString != null -> arrayOf(Uri.parse(result.data!!.dataString))
+                result.data?.clipData != null -> {
+                    val clip = result.data!!.clipData!!
+                    Array(clip.itemCount) { i -> clip.getItemAt(i).uri }
+                }
+                pendingCameraCaptureUri != null -> arrayOf(pendingCameraCaptureUri!!)
+                else -> null
+            }
+
+            callback.onReceiveValue(resultUris)
+            pendingCameraCaptureUri = null
+        }
+    }
+
+    private fun handleShowFileChooser(
+        filePathCallback: ValueCallback<Array<Uri>>,
+        params: WebChromeClient.FileChooserParams
+    ): Boolean {
+        // Cancela qualquer seleção pendente anterior antes de abrir uma nova.
+        pendingFilePathCallback?.onReceiveValue(null)
+        pendingFilePathCallback = filePathCallback
+
+        val hasMediaPermission = PermissionManager.hasMediaPermission(this)
+        if (!hasMediaPermission) {
+            // Pede a permissão de galeria/mídia primeiro; o próprio
+            // getUserMedia/onShowFileChooser será re-acionado pela página
+            // quando o utilizador tocar de novo no input, já com a
+            // permissão concedida.
+            runtimePermissionLauncher.launch(PermissionManager.mediaPermissionsToRequest())
+        }
+
+        val captureUri = createCameraCaptureUri()
+        pendingCameraCaptureUri = captureUri
+
+        val cameraIntent = if (captureUri != null && PermissionManager.hasCameraPermission(this)) {
+            Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(android.provider.MediaStore.EXTRA_OUTPUT, captureUri)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }
+        } else {
+            null
+        }
+
+        val contentIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE)
+            val mimeTypes = params.acceptTypes?.filter { it.isNotBlank() }
+            if (!mimeTypes.isNullOrEmpty()) {
+                putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+            }
+        }
+
+        val chooserIntent = Intent(Intent.ACTION_CHOOSER).apply {
+            putExtra(Intent.EXTRA_INTENT, contentIntent)
+            putExtra(Intent.EXTRA_TITLE, getString(R.string.file_chooser_title))
+            if (cameraIntent != null) {
+                putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(cameraIntent))
+            }
+        }
+
+        return try {
+            fileChooserLauncher.launch(chooserIntent)
+            true
+        } catch (e: Exception) {
+            pendingFilePathCallback = null
+            false
+        }
+    }
+
+    private fun createCameraCaptureUri(): Uri? {
+        return try {
+            val cacheDir = File(externalCacheDir, "camera").apply { mkdirs() }
+            val file = File(cacheDir, "capture_${System.currentTimeMillis()}.jpg")
+            FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -117,6 +289,9 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelRunningAnimations()
+        pendingFilePathCallback?.onReceiveValue(null)
+        pendingFilePathCallback = null
+        pendingPermissionRequest = null
         super.onDestroy()
     }
 
@@ -156,7 +331,9 @@ class HomeActivity : AppCompatActivity() {
                     loadingOverlay.visibility = View.GONE
                 }
             }
-        }
+        },
+        onPermissionRequest = { request -> handleWebPermissionRequest(request) },
+        onShowFileChooser = { callback, params -> handleShowFileChooser(callback, params) }
     )
 
     private fun navigateTo(route: String) {
@@ -194,6 +371,7 @@ class HomeActivity : AppCompatActivity() {
         webView.animate().cancel()
         webView.translationX = 0f
         webView.alpha = 1f
+        webView.isClickable = true
 
         val previousView = container.children().firstOrNull { it !== webView }
         previousView?.animate()?.cancel()
@@ -209,38 +387,40 @@ class HomeActivity : AppCompatActivity() {
             return
         }
 
-        val width = container.width.toFloat().takeIf { it > 0 } ?: resources.displayMetrics.widthPixels.toFloat()
-        val parallaxDistance = width * 0.28f
-        val overlayAlpha = 0.06f
+        previousView.isClickable = false
 
-        // O dim entra ENTRE a página antiga (por baixo) e a página nova (por cima),
-        // para escurecer só quem está a sair — nunca a página que está a assumir a tela.
-        (webView.parent as? ViewGroup)?.removeView(webView)
-        (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
-        val previousIndex = container.indexOfChild(previousView)
-        container.addView(dimOverlay, previousIndex + 1)
-        container.addView(webView)
-        dimOverlay.visibility = View.VISIBLE
-        dimOverlay.alpha = 0f
+        val width = container.width.toFloat().takeIf { it > 0 } ?: resources.displayMetrics.widthPixels.toFloat()
 
         if (isBack) {
+            val parallaxDistance = width * BACK_PARALLAX_FACTOR
+
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            container.addView(webView)
             webView.translationX = -parallaxDistance
-            dimOverlay.alpha = overlayAlpha
+            webView.alpha = 1f
 
             animateFloat(webView, "translationX", -parallaxDistance, 0f)
             animateFloat(previousView, "translationX", 0f, width) {
+                previousView.isClickable = true
                 (previousView.parent as? ViewGroup)?.removeView(previousView)
             }
-            animateFloat(dimOverlay, "alpha", overlayAlpha, 0f) {
-                dimOverlay.visibility = View.GONE
-                dimOverlay.alpha = 0f
-                (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
-            }
         } else {
+            val parallaxDistance = width * 0.28f
+            val overlayAlpha = PUSH_DIM_ALPHA
+
+            (webView.parent as? ViewGroup)?.removeView(webView)
+            (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
+            val previousIndex = container.indexOfChild(previousView)
+            container.addView(dimOverlay, previousIndex + 1)
+            container.addView(webView)
+            dimOverlay.visibility = View.VISIBLE
+            dimOverlay.alpha = 0f
             webView.translationX = width
 
             animateFloat(webView, "translationX", width, 0f)
-            animateFloat(previousView, "translationX", 0f, -parallaxDistance)
+            animateFloat(previousView, "translationX", 0f, -parallaxDistance) {
+                previousView.isClickable = true
+            }
             animateFloat(dimOverlay, "alpha", 0f, overlayAlpha) {
                 dimOverlay.visibility = View.GONE
                 dimOverlay.alpha = 0f

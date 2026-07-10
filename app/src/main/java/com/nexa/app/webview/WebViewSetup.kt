@@ -1,10 +1,14 @@
+// app/src/main/java/com/nexa/app/webview/WebViewSetup.kt
 package com.nexa.app.webview
 
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.http.SslError
 import android.webkit.CookieManager
+import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -23,6 +27,11 @@ import com.nexa.app.session.SessionManager
  * onFirstPageFinished é chamado uma única vez, na primeira vez que esta
  * instância de WebView termina de carregar — sinal para o WebViewPool
  * marcar a rota como já carregada e esconder o loader nativo.
+ *
+ * onPermissionRequest e onShowFileChooser são repassados para fora
+ * (HomeActivity) porque pedir permissão runtime e abrir o seletor de
+ * ficheiros do sistema exige uma Activity — o WebView em si não tem
+ * acesso a ActivityResultLauncher.
  */
 @SuppressLint("SetJavaScriptEnabled")
 fun WebView.setupNexaWebView(
@@ -31,7 +40,9 @@ fun WebView.setupNexaWebView(
     onThemeChanged: (isDark: Boolean) -> Unit,
     onExternalRoute: (route: String, url: String) -> Unit,
     onOpenAccountDrawer: (() -> Unit)? = null,
-    onFirstPageFinished: (() -> Unit)? = null
+    onFirstPageFinished: (() -> Unit)? = null,
+    onPermissionRequest: ((PermissionRequest) -> Unit)? = null,
+    onShowFileChooser: ((ValueCallback<Array<android.net.Uri>>, android.webkit.WebChromeClient.FileChooserParams) -> Boolean)? = null
 ) {
     val settings = this.settings
     settings.javaScriptEnabled = true
@@ -109,6 +120,38 @@ fun WebView.setupNexaWebView(
             error: SslError
         ) {
             handler.cancel()
+        }
+    }
+
+    webChromeClient = object : WebChromeClient() {
+
+        // Disparado quando a página chama getUserMedia() (câmera/microfone
+        // via JS, ex: gravação de áudio do App.svelte). Sem isto, o
+        // WebView nega automaticamente qualquer pedido, e o getUserMedia
+        // falha em silêncio no lado do JS.
+        override fun onPermissionRequest(request: PermissionRequest) {
+            if (onPermissionRequest != null) {
+                onPermissionRequest(request)
+            } else {
+                request.deny()
+            }
+        }
+
+        // Disparado quando a página abre um <input type="file">, incluindo
+        // capture="camera" ou capture="user" para foto direta. Sem isto,
+        // clicar no input não abre nada — é o mesmo tipo de silêncio que
+        // afetava o pedido de câmera acima.
+        override fun onShowFileChooser(
+            webView: WebView,
+            filePathCallback: ValueCallback<Array<android.net.Uri>>,
+            fileChooserParams: FileChooserParams
+        ): Boolean {
+            val handler = onShowFileChooser
+            return if (handler != null) {
+                handler(filePathCallback, fileChooserParams)
+            } else {
+                false
+            }
         }
     }
 }

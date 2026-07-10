@@ -1,3 +1,4 @@
+// app/src/main/java/com/nexa/app/AccountDrawerSheet.kt
 package com.nexa.app
 
 import android.app.Dialog
@@ -27,18 +28,38 @@ import com.nexa.app.session.ThemePreference
  * que o painel se desenhe fisicamente por cima de toda a tela — incluindo
  * a status bar — sem depender de pintar a status bar da Activity por
  * baixo (essa nunca é tocada).
+ *
+ * O dim por trás do painel é 100% controlado pela própria View `scrimView`
+ * (alpha animado manualmente). O dimAmount nativo da Window é forçado a 0
+ * e a flag FLAG_DIM_BEHIND é explicitamente removida, porque alguns temas
+ * base do sistema aplicam um dim residual próprio por trás de Dialogs
+ * mesmo com dimAmount=0f.
  */
 class AccountDrawerSheet(
     private val context: Context,
     private val isDark: Boolean,
+    private val onOpenProfile: () -> Unit,
     private val onThemeSelected: (theme: String) -> Unit,
     private val onLogoutConfirmed: () -> Unit
 ) {
+
+    companion object {
+        // Guard global: impede que dois toques rápidos (duplo-clique físico,
+        // ou a bridge JS a disparar openAccountDrawer() duas vezes no mesmo
+        // toque) criem dois Dialogs empilhados. Era exatamente isso que
+        // causava o "aparece, desaparece rápido, aparece de novo": o
+        // segundo Dialog nascia por cima do primeiro ainda a animar,
+        // ambos a disputar o mesmo scrim/translationX.
+        @Volatile
+        private var isAnyDrawerOpen = false
+    }
 
     private var currentTheme: String = if (isDark) "dark" else "light"
     private var dialog: Dialog? = null
     private var panelView: View? = null
     private var scrimView: View? = null
+    private var hasClaimedGuard = false
+    private var isClosing = false
 
     private var panelWidthPx = 0f
     private var downX = 0f
@@ -51,8 +72,15 @@ class AccountDrawerSheet(
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     fun show() {
+        // Já existe um drawer aberto ou a abrir em qualquer instância —
+        // ignora este show() silenciosamente em vez de empilhar outro.
+        if (isAnyDrawerOpen) return
+
         val activity = context as? android.app.Activity
         if (activity == null || activity.isFinishing || activity.isDestroyed) return
+
+        isAnyDrawerOpen = true
+        hasClaimedGuard = true
 
         val dlg = Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar)
         val root = FrameLayout(activity)
@@ -63,14 +91,20 @@ class AccountDrawerSheet(
             setGravity(Gravity.END)
             setBackgroundDrawableResource(android.R.color.transparent)
             addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             attributes = attributes?.apply {
                 dimAmount = 0f
-                flags = flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
             }
             WindowCompat.setDecorFitsSystemWindows(this, false)
             statusBarColor = android.graphics.Color.TRANSPARENT
             navigationBarColor = android.graphics.Color.TRANSPARENT
             WindowCompat.getInsetsController(this, decorView).isAppearanceLightStatusBars = !isDark
+        }
+
+        // Liberta o guard também se o utilizador fechar o Dialog por fora
+        // (botão físico de voltar do sistema aciona onDismiss aqui).
+        dlg.setOnDismissListener {
+            releaseGuard()
         }
 
         val scrim = View(activity).apply {
@@ -96,13 +130,14 @@ class AccountDrawerSheet(
         panelView = panel
 
         try {
-            bindHeader(panel)
+            bindHeader(panel, dlg)
             bindThemeAccordion(panel)
             bindStaticItems(panel)
             bindLogout(panel, dlg)
             bindDragToClose(panel)
         } catch (e: Exception) {
             Toast.makeText(activity, "Erro ao abrir o menu", Toast.LENGTH_SHORT).show()
+            releaseGuard()
             return
         }
 
@@ -115,6 +150,14 @@ class AccountDrawerSheet(
             }
         } catch (e: WindowManager.BadTokenException) {
             // Diálogo não pôde ser mostrado (activity finalizando); nada a reverter.
+            releaseGuard()
+        }
+    }
+
+    private fun releaseGuard() {
+        if (hasClaimedGuard) {
+            hasClaimedGuard = false
+            isAnyDrawerOpen = false
         }
     }
 
@@ -131,8 +174,13 @@ class AccountDrawerSheet(
     }
 
     private fun animateClose() {
-        val panel = panelView ?: return
-        val scrim = scrimView ?: return
+        // Evita reentrância: se já estiver a fechar (ex: scrim tocado
+        // duas vezes seguidas), não reinicia a animação de saída.
+        if (isClosing) return
+        isClosing = true
+
+        val panel = panelView ?: run { dialog?.dismiss(); return }
+        val scrim = scrimView ?: run { dialog?.dismiss(); return }
         panel.animate()
             .translationX(panelWidthPx)
             .setDuration(220)
@@ -200,12 +248,24 @@ class AccountDrawerSheet(
         }
     }
 
-    private fun bindHeader(view: View) {
+    private fun bindHeader(view: View, dlg: Dialog) {
+        val headerBlock = view.findViewById<LinearLayout>(R.id.drawerHeaderBlock)
         val nameView = view.findViewById<TextView>(R.id.drawerUserName)
         val initialView = view.findViewById<TextView>(R.id.drawerAvatarInitial)
         val name = SessionManager.getName(context) ?: "Utilizador"
         nameView.text = name
         initialView.text = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "U"
+
+        // Mesmo comportamento do web: tocar no avatar/nome fecha o drawer
+        // e navega para o perfil (goProfile() em AppDrawer.svelte).
+        headerBlock.setOnClickListener {
+            dlg.dismiss()
+            try {
+                onOpenProfile()
+            } catch (e: Exception) {
+                // Nunca deixar a navegação para perfil crashar o drawer.
+            }
+        }
     }
 
     private fun bindThemeAccordion(view: View) {

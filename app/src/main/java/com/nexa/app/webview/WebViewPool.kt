@@ -1,7 +1,10 @@
+// app/src/main/java/com/nexa/app/webview/WebViewPool.kt
 package com.nexa.app.webview
 
 import android.content.Context
 import android.view.ViewGroup
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.WebView
 import com.nexa.app.nav.RouteMap
 
@@ -31,7 +34,9 @@ object WebViewPool {
         onThemeChanged: (isDark: Boolean) -> Unit,
         onExternalRoute: (route: String, url: String) -> Unit,
         onOpenAccountDrawer: (() -> Unit)?,
-        onFirstLoadFinished: () -> Unit
+        onFirstLoadFinished: () -> Unit,
+        onPermissionRequest: ((PermissionRequest) -> Unit)? = null,
+        onShowFileChooser: ((ValueCallback<Array<android.net.Uri>>, android.webkit.WebChromeClient.FileChooserParams) -> Boolean)? = null
     ): WebView {
         val existing = webViews[route]
         if (existing != null) {
@@ -55,7 +60,9 @@ object WebViewPool {
                 if (loadedRoutes.add(route)) {
                     onFirstLoadFinished()
                 }
-            }
+            },
+            onPermissionRequest = onPermissionRequest,
+            onShowFileChooser = onShowFileChooser
         )
 
         webViews[route] = webView
