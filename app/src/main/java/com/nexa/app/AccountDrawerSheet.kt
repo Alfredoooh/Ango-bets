@@ -3,6 +3,7 @@ package com.nexa.app
 import android.content.Context
 import android.view.LayoutInflater
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
@@ -10,8 +11,9 @@ import com.nexa.app.session.SessionManager
 
 /**
  * Drawer de conta nativo, espelhando exatamente o conteúdo de
- * AppDrawer.svelte: avatar, nome, tema (dark/light/system), instalar,
- * definições, ajuda, terminar sessão.
+ * AppDrawer.svelte: avatar, nome, tema (dark/light/system), definições,
+ * ajuda, terminar sessão. Visual próprio (sem NavigationView do Material),
+ * consistente com o resto da app.
  *
  * Aberto via ponte JS (AccountDrawerBridge) quando o utilizador toca no
  * profile-btn do AppHeader.svelte na Home.
@@ -31,7 +33,7 @@ class AccountDrawerSheet(
 
         bindHeader(view)
         bindThemeAccordion(view)
-        bindMenuItems(view, dialog)
+        bindStaticItems(view)
         bindLogout(view, dialog)
 
         dialog.show()
@@ -46,8 +48,9 @@ class AccountDrawerSheet(
     }
 
     private fun bindThemeAccordion(view: android.view.View) {
-        val nav = view.findViewById<com.google.android.material.navigation.NavigationView>(R.id.accountNavigationView)
-        val themeContainer = view.findViewById<android.widget.LinearLayout>(R.id.themeOptionsContainer)
+        val itemTheme = view.findViewById<LinearLayout>(R.id.itemTheme)
+        val chevron = view.findViewById<ImageView>(R.id.themeChevron)
+        val themeContainer = view.findViewById<LinearLayout>(R.id.themeOptionsContainer)
         val optionDark = view.findViewById<TextView>(R.id.themeOptionDark)
         val optionLight = view.findViewById<TextView>(R.id.themeOptionLight)
         val optionSystem = view.findViewById<TextView>(R.id.themeOptionSystem)
@@ -60,38 +63,15 @@ class AccountDrawerSheet(
 
         highlightSelected(optionDark, optionLight, optionSystem, currentTheme)
 
+        itemTheme.setOnClickListener {
+            val expanding = themeContainer.visibility != android.view.View.VISIBLE
+            themeContainer.visibility = if (expanding) android.view.View.VISIBLE else android.view.View.GONE
+            chevron.animate().rotation(if (expanding) 180f else 0f).setDuration(180).start()
+        }
+
         optionDark.setOnClickListener { selectTheme("dark") }
         optionLight.setOnClickListener { selectTheme("light") }
         optionSystem.setOnClickListener { selectTheme("system") }
-
-        nav.setNavigationItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_theme -> {
-                    themeContainer.visibility =
-                        if (themeContainer.visibility == android.view.View.VISIBLE) {
-                            android.view.View.GONE
-                        } else {
-                            android.view.View.VISIBLE
-                        }
-                    true
-                }
-                R.id.nav_install -> {
-                    // A instalação de PWA é tratada pelo próprio browser/WebView;
-                    // aqui apenas fechamos o item, sem ação adicional necessária
-                    // porque a app nativa já está instalada por definição.
-                    true
-                }
-                R.id.nav_settings -> {
-                    android.widget.Toast.makeText(context, R.string.drawer_settings, android.widget.Toast.LENGTH_SHORT).show()
-                    true
-                }
-                R.id.nav_help -> {
-                    android.widget.Toast.makeText(context, R.string.drawer_help, android.widget.Toast.LENGTH_SHORT).show()
-                    true
-                }
-                else -> false
-            }
-        }
     }
 
     private fun highlightSelected(dark: TextView, light: TextView, system: TextView, selected: String) {
@@ -102,9 +82,13 @@ class AccountDrawerSheet(
         system.setTypeface(system.typeface, if (selected == "system") bold else normal)
     }
 
-    private fun bindMenuItems(view: android.view.View, dialog: BottomSheetDialog) {
-        // Os cliques em Definições/Ajuda já são tratados em bindThemeAccordion
-        // via setNavigationItemSelectedListener; nada adicional aqui.
+    private fun bindStaticItems(view: android.view.View) {
+        view.findViewById<LinearLayout>(R.id.itemSettings).setOnClickListener {
+            android.widget.Toast.makeText(context, R.string.drawer_settings, android.widget.Toast.LENGTH_SHORT).show()
+        }
+        view.findViewById<LinearLayout>(R.id.itemHelp).setOnClickListener {
+            android.widget.Toast.makeText(context, R.string.drawer_help, android.widget.Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun bindLogout(view: android.view.View, dialog: BottomSheetDialog) {
