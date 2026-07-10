@@ -1,25 +1,27 @@
 package com.nexa.app
 
 import android.content.Context
+import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.google.android.material.bottomsheet.BottomSheetDialog
-import com.google.android.material.button.MaterialButton
 import com.nexa.app.session.SessionManager
 
 /**
  * Drawer de conta nativo, espelhando exatamente o conteúdo de
  * AppDrawer.svelte: avatar, nome, tema (dark/light/system), definições,
- * ajuda, terminar sessão. Visual próprio (sem NavigationView do Material),
- * consistente com o resto da app.
+ * ajuda, terminar sessão. Visual 100% próprio, sem Material Components
+ * (Dialog simples com fundo transparente + View com cantos arredondados
+ * no topo, ancorado em baixo), consistente com o resto da app.
  *
  * Aberto via ponte JS (AccountDrawerBridge) quando o utilizador toca no
  * profile-btn do AppHeader.svelte na Home.
  */
 class AccountDrawerSheet(
     private val context: Context,
+    private val isDark: Boolean,
     private val onThemeSelected: (theme: String) -> Unit,
     private val onLogoutConfirmed: () -> Unit
 ) {
@@ -27,9 +29,15 @@ class AccountDrawerSheet(
     private var currentTheme: String = "system"
 
     fun show() {
-        val dialog = BottomSheetDialog(context)
+        val dialog = android.app.Dialog(context, android.R.style.Theme_Translucent_NoTitleBar)
         val view = LayoutInflater.from(context).inflate(R.layout.dialog_account_drawer, null)
         dialog.setContentView(view)
+
+        dialog.window?.apply {
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.BOTTOM)
+            setBackgroundDrawableResource(android.R.color.transparent)
+        }
 
         bindHeader(view)
         bindThemeAccordion(view)
@@ -91,8 +99,8 @@ class AccountDrawerSheet(
         }
     }
 
-    private fun bindLogout(view: android.view.View, dialog: BottomSheetDialog) {
-        val logoutButton = view.findViewById<MaterialButton>(R.id.drawerLogoutButton)
+    private fun bindLogout(view: android.view.View, dialog: android.app.Dialog) {
+        val logoutButton = view.findViewById<TextView>(R.id.drawerLogoutButton)
         logoutButton.setOnClickListener {
             androidx.appcompat.app.AlertDialog.Builder(context)
                 .setMessage(R.string.drawer_logout_confirm)

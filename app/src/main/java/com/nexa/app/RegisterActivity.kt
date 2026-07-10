@@ -5,33 +5,29 @@ import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.progressindicator.CircularProgressIndicator
-import com.google.android.material.snackbar.Snackbar
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import com.nexa.app.api.ApiClient
 import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
+import com.nexa.app.widgets.GradientRingLoader
 import kotlinx.coroutines.launch
 
 /**
- * Ecrã de registo 100% nativo. Espelha exatamente os campos do formulário
- * web (src/auth/RegisterPage.svelte): Nome, Email, Password — nada mais,
- * os campos de perfil (idade, país...) são opcionais no Worker e não
- * fazem parte do formulário atual, por isso não entram aqui.
+ * Ecrã de registo 100% nativo, sem Material Components. Espelha exatamente
+ * os campos do formulário web (src/auth/RegisterPage.svelte): Nome, Email,
+ * Password — nada mais, os campos de perfil (idade, país...) são opcionais
+ * no Worker e não fazem parte do formulário atual, por isso não entram aqui.
  */
 class RegisterActivity : AppCompatActivity() {
 
-    private lateinit var nameLayout: TextInputLayout
-    private lateinit var emailLayout: TextInputLayout
-    private lateinit var passwordLayout: TextInputLayout
-    private lateinit var nameInput: TextInputEditText
-    private lateinit var emailInput: TextInputEditText
-    private lateinit var passwordInput: TextInputEditText
-    private lateinit var registerButton: MaterialButton
-    private lateinit var progress: CircularProgressIndicator
+    private lateinit var nameInput: android.widget.EditText
+    private lateinit var emailInput: android.widget.EditText
+    private lateinit var passwordInput: android.widget.EditText
+    private lateinit var nameError: android.widget.TextView
+    private lateinit var emailError: android.widget.TextView
+    private lateinit var passwordError: android.widget.TextView
+    private lateinit var registerButton: android.widget.Button
+    private lateinit var progress: GradientRingLoader
     private lateinit var loginLink: android.widget.TextView
     private lateinit var root: View
 
@@ -40,12 +36,12 @@ class RegisterActivity : AppCompatActivity() {
         setContentView(R.layout.activity_register)
 
         root = findViewById(R.id.registerRoot)
-        nameLayout = findViewById(R.id.nameInputLayout)
-        emailLayout = findViewById(R.id.emailInputLayout)
-        passwordLayout = findViewById(R.id.passwordInputLayout)
         nameInput = findViewById(R.id.nameEditText)
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
+        nameError = findViewById(R.id.nameError)
+        emailError = findViewById(R.id.emailError)
+        passwordError = findViewById(R.id.passwordError)
         registerButton = findViewById(R.id.registerButton)
         progress = findViewById(R.id.registerProgress)
         loginLink = findViewById(R.id.loginLink)
@@ -61,9 +57,9 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun attemptRegister() {
-        nameLayout.error = null
-        emailLayout.error = null
-        passwordLayout.error = null
+        nameError.visibility = View.GONE
+        emailError.visibility = View.GONE
+        passwordError.visibility = View.GONE
 
         val name = nameInput.text?.toString()?.trim().orEmpty()
         val email = emailInput.text?.toString()?.trim().orEmpty()
@@ -71,15 +67,18 @@ class RegisterActivity : AppCompatActivity() {
 
         var hasError = false
         if (name.isEmpty()) {
-            nameLayout.error = "Nome obrigatório"
+            nameError.text = "Nome obrigatório"
+            nameError.visibility = View.VISIBLE
             hasError = true
         }
         if (email.isEmpty() || !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            emailLayout.error = "Email inválido"
+            emailError.text = "Email inválido"
+            emailError.visibility = View.VISIBLE
             hasError = true
         }
         if (password.length < 6) {
-            passwordLayout.error = "Password deve ter pelo menos 6 caracteres"
+            passwordError.text = "Password deve ter pelo menos 6 caracteres"
+            passwordError.visibility = View.VISIBLE
             hasError = true
         }
         if (hasError) return
@@ -131,6 +130,6 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun showError(message: String) {
-        Snackbar.make(root, message, Snackbar.LENGTH_LONG).show()
+        android.widget.Toast.makeText(root.context, message, android.widget.Toast.LENGTH_LONG).show()
     }
 }

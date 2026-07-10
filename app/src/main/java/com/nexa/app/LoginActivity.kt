@@ -5,30 +5,27 @@ import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.progressindicator.CircularProgressIndicator
-import com.google.android.material.snackbar.Snackbar
-import com.google.android.material.textfield.TextInputEditText
-import com.google.android.material.textfield.TextInputLayout
 import com.nexa.app.api.ApiClient
 import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.LoginRequest
 import com.nexa.app.session.SessionManager
+import com.nexa.app.widgets.GradientRingLoader
 import kotlinx.coroutines.launch
 
 /**
- * Ecrã de login 100% nativo. Fala diretamente com POST /auth/login no Worker
- * (mesma API que a versão web usa), guarda o token via SessionManager, e
- * segue para a HomeActivity — que injeta esse token no WebView.
+ * Ecrã de login 100% nativo, sem Material Components. Fala diretamente com
+ * POST /auth/login no Worker (mesma API que a versão web usa), guarda o
+ * token via SessionManager, e segue para a HomeActivity — que injeta esse
+ * token no WebView.
  */
 class LoginActivity : AppCompatActivity() {
 
-    private lateinit var emailLayout: TextInputLayout
-    private lateinit var passwordLayout: TextInputLayout
-    private lateinit var emailInput: TextInputEditText
-    private lateinit var passwordInput: TextInputEditText
-    private lateinit var loginButton: MaterialButton
-    private lateinit var progress: CircularProgressIndicator
+    private lateinit var emailInput: android.widget.EditText
+    private lateinit var passwordInput: android.widget.EditText
+    private lateinit var emailError: android.widget.TextView
+    private lateinit var passwordError: android.widget.TextView
+    private lateinit var loginButton: android.widget.Button
+    private lateinit var progress: GradientRingLoader
     private lateinit var registerLink: android.widget.TextView
     private lateinit var root: View
 
@@ -37,10 +34,10 @@ class LoginActivity : AppCompatActivity() {
         setContentView(R.layout.activity_login)
 
         root = findViewById(R.id.loginRoot)
-        emailLayout = findViewById(R.id.emailInputLayout)
-        passwordLayout = findViewById(R.id.passwordInputLayout)
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
+        emailError = findViewById(R.id.emailError)
+        passwordError = findViewById(R.id.passwordError)
         loginButton = findViewById(R.id.loginButton)
         progress = findViewById(R.id.loginProgress)
         registerLink = findViewById(R.id.registerLink)
@@ -56,19 +53,21 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun attemptLogin() {
-        emailLayout.error = null
-        passwordLayout.error = null
+        emailError.visibility = View.GONE
+        passwordError.visibility = View.GONE
 
         val email = emailInput.text?.toString()?.trim().orEmpty()
         val password = passwordInput.text?.toString().orEmpty()
 
         var hasError = false
         if (email.isEmpty() || !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            emailLayout.error = "Email inválido"
+            emailError.text = "Email inválido"
+            emailError.visibility = View.VISIBLE
             hasError = true
         }
         if (password.isEmpty()) {
-            passwordLayout.error = "Password obrigatória"
+            passwordError.text = "Password obrigatória"
+            passwordError.visibility = View.VISIBLE
             hasError = true
         }
         if (hasError) return
@@ -120,6 +119,6 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun showError(message: String) {
-        Snackbar.make(root, message, Snackbar.LENGTH_LONG).show()
+        android.widget.Toast.makeText(root.context, message, android.widget.Toast.LENGTH_LONG).show()
     }
 }
