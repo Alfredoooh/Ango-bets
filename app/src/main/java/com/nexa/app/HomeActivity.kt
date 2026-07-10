@@ -3,30 +3,30 @@ package com.nexa.app
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.PathInterpolator
+import android.webkit.WebView
 import android.widget.FrameLayout
-import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 import com.nexa.app.webview.WebViewPool
 import com.nexa.app.widgets.GradientRingLoader
 
-/**
- * Navegação por WebView em pool, com transição estilo UINavigationController
- * da Apple: a página nova desliza 100% da largura, a página antiga faz
- * parallax (28%) e escurece com um véu preto (dimOverlay).
- *
- * IMPORTANTE: dimOverlay vive SEMPRE no FrameLayout raiz (rootLayout),
- * nunca dentro de "container" — container só pode conter WebViews. Misturar
- * o dimOverlay dentro de container fazia container.getChildAt(0) apanhar
- * às vezes o dimOverlay em vez do WebView anterior, corrompendo a lógica
- * de remover/animar e crashando a navegação.
- */
 class HomeActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_INITIAL_ROUTE = "extra_initial_route"
+        private const val KEY_CURRENT_ROUTE = "key_current_route"
+        private const val KEY_ROUTE_STACK = "key_route_stack"
+    }
 
     private lateinit var rootLayout: FrameLayout
     private lateinit var container: FrameLayout
@@ -34,13 +34,12 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var loadingRing: GradientRingLoader
     private lateinit var dimOverlay: View
 
-    private val routeStack = mutableListOf("home")
+    private val routeStack = mutableListOf<String>()
     private var currentRoute: String = "home"
     private var isDarkTheme: Boolean = false
+    private var runningAnimators: MutableList<ValueAnimator> = mutableListOf()
 
     private val iosEaseOut = PathInterpolator(0.25f, 0.1f, 0.25f, 1f)
-
-    private var runningAnimators: MutableList<ValueAnimator> = mutableListOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,47 +54,104 @@ class HomeActivity : AppCompatActivity() {
             setBackgroundColor(Color.BLACK)
             alpha = 0f
             visibility = View.GONE
+            isClickable = false
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        // dimOverlay é inserido logo A SEGUIR ao container no root, e nunca
-        // mais é movido de lá — fica sempre por cima do container (WebViews)
-        // e por baixo do loadingOverlay, na mesma hierarquia fixa.
         val containerIndex = rootLayout.indexOfChild(container)
         rootLayout.addView(dimOverlay, containerIndex + 1)
 
-        val isDark = (resources.configuration.uiMode and
-            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        applyNativeStatusBar(isDark)
+        restoreNavigationState(savedInstanceState)
+
+        applyNativeStatusBar(ThemePreference.resolveIsDark(this))
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                val webView = getOrCreateWebView(currentRoute)
-                if (webView.canGoBack()) {
+                val webView = currentWebView()
+                if (webView?.canGoBack() == true) {
                     webView.goBack()
-                } else if (routeStack.size > 1) {
+                    return
+                }
+
+                if (routeStack.size > 1) {
                     routeStack.removeAt(routeStack.lastIndex)
                     showRoute(routeStack.last(), pushToStack = false, isBack = true)
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                    finish()
                 }
             }
         })
 
         if (savedInstanceState == null) {
-            showRoute("home", pushToStack = false, isBack = false, animate = false)
+            showRoute(initialRouteFromIntent(), pushToStack = false, isBack = false, animate = false)
+        } else {
+            showRoute(currentRoute, pushToStack = false, isBack = false, animate = false)
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val route = intent.getStringExtra(EXTRA_INITIAL_ROUTE)?.trim().orEmpty()
+        if (route.isNotEmpty() && route != currentRoute) {
+            showRoute(route, pushToStack = true, isBack = false)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        currentWebView()?.onResume()
+        applyNativeStatusBar(ThemePreference.resolveIsDark(this))
+    }
+
+    override fun onPause() {
+        currentWebView()?.onPause()
+        super.onPause()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString(KEY_CURRENT_ROUTE, currentRoute)
+        outState.putStringArrayList(KEY_ROUTE_STACK, ArrayList(routeStack))
+    }
+
+    override fun onDestroy() {
+        cancelRunningAnimations()
+        WebViewPool.clearAll()
+        super.onDestroy()
+    }
+
+    private fun initialRouteFromIntent(): String {
+        return intent.getStringExtra(EXTRA_INITIAL_ROUTE)?.trim().orEmpty().ifEmpty { "home" }
+    }
+
+    private fun restoreNavigationState(savedInstanceState: Bundle?) {
+        routeStack.clear()
+        if (savedInstanceState == null) {
+            currentRoute = initialRouteFromIntent()
+            routeStack.add(currentRoute)
+            return
+        }
+
+        currentRoute = savedInstanceState.getString(KEY_CURRENT_ROUTE) ?: initialRouteFromIntent()
+        val restoredStack = savedInstanceState.getStringArrayList(KEY_ROUTE_STACK)
+        if (!restoredStack.isNullOrEmpty()) {
+            routeStack.addAll(restoredStack)
+            currentRoute = routeStack.last()
+        } else {
+            routeStack.add(currentRoute)
+        }
+    }
+
+    private fun currentWebView(): WebView? = container.getChildAt(0) as? WebView
 
     private fun getOrCreateWebView(route: String) = WebViewPool.get(
         context = this,
         route = route,
         onThemeChanged = { runOnUiThread { applyNativeStatusBar(it) } },
-        onExternalRoute = { r, u -> navigateTo(r, u) },
+        onExternalRoute = { r, _ -> navigateTo(r) },
         onOpenAccountDrawer = { showAccountDrawer() },
         onFirstLoadFinished = {
             runOnUiThread {
@@ -106,7 +162,7 @@ class HomeActivity : AppCompatActivity() {
         }
     )
 
-    private fun navigateTo(route: String, @Suppress("UNUSED_PARAMETER") url: String) {
+    private fun navigateTo(route: String) {
         runOnUiThread {
             showRoute(route, pushToStack = true, isBack = false)
         }
@@ -125,16 +181,16 @@ class HomeActivity : AppCompatActivity() {
     ) {
         cancelRunningAnimations()
 
-        currentRoute = route
-        if (pushToStack && routeStack.last() != route) {
-            routeStack.add(route)
+        val safeRoute = route.trim().ifEmpty { "home" }
+        currentRoute = safeRoute
+        if (pushToStack && routeStack.lastOrNull() != safeRoute) {
+            routeStack.add(safeRoute)
         }
 
-        val showLoader = !WebViewPool.isAlreadyLoaded(route)
-
+        val showLoader = !WebViewPool.isAlreadyLoaded(safeRoute)
         val webView = try {
-            getOrCreateWebView(route)
-        } catch (e: Exception) {
+            getOrCreateWebView(safeRoute)
+        } catch (_: Exception) {
             return
         }
 
@@ -142,9 +198,6 @@ class HomeActivity : AppCompatActivity() {
         webView.translationX = 0f
         webView.alpha = 1f
 
-        // previousView só pode vir de dentro de "container" — dimOverlay
-        // nunca está aqui dentro, por isso getChildAt(0) é sempre ou um
-        // WebView, ou null (primeira rota).
         val previousView = container.getChildAt(0)?.takeIf { it !== webView }
         previousView?.animate()?.cancel()
 
@@ -160,43 +213,41 @@ class HomeActivity : AppCompatActivity() {
 
         val width = container.width.toFloat().takeIf { it > 0 } ?: resources.displayMetrics.widthPixels.toFloat()
         val parallaxDistance = width * 0.28f
+        val overlayAlpha = 0.16f
 
         (webView.parent as? ViewGroup)?.removeView(webView)
         container.addView(webView)
-
         dimOverlay.visibility = View.VISIBLE
+        dimOverlay.alpha = 0f
 
         if (isBack) {
             webView.translationX = -parallaxDistance
-            webView.alpha = 1f
-            dimOverlay.alpha = 0.35f
-
-            container.removeView(previousView)
-            container.addView(previousView, 0)
-            previousView.translationX = 0f
+            dimOverlay.alpha = overlayAlpha
 
             animateFloat(webView, "translationX", -parallaxDistance, 0f)
-            animateFloat(dimOverlay, "alpha", 0.35f, 0f) {
-                dimOverlay.visibility = View.GONE
-            }
             animateFloat(previousView, "translationX", 0f, width) {
                 (previousView.parent as? ViewGroup)?.removeView(previousView)
             }
+            animateFloat(dimOverlay, "alpha", overlayAlpha, 0f) {
+                dimOverlay.visibility = View.GONE
+                dimOverlay.alpha = 0f
+            }
         } else {
             webView.translationX = width
-            dimOverlay.alpha = 0f
 
             animateFloat(webView, "translationX", width, 0f)
             animateFloat(previousView, "translationX", 0f, -parallaxDistance)
-            animateFloat(dimOverlay, "alpha", 0f, 0.35f)
+            animateFloat(dimOverlay, "alpha", 0f, overlayAlpha) {
+                dimOverlay.visibility = View.GONE
+                dimOverlay.alpha = 0f
+            }
         }
 
-        val loaderDelay = 300L
         webView.postDelayed({
-            if (currentRoute == route) {
+            if (currentRoute == safeRoute) {
                 loadingOverlay.visibility = if (showLoader) View.VISIBLE else View.GONE
             }
-        }, loaderDelay)
+        }, 250L)
     }
 
     private fun animateFloat(
@@ -221,6 +272,7 @@ class HomeActivity : AppCompatActivity() {
                     runningAnimators.remove(animation as ValueAnimator)
                     onEnd?.invoke()
                 }
+
                 override fun onAnimationCancel(animation: Animator) {
                     runningAnimators.remove(animation as ValueAnimator)
                 }
@@ -245,7 +297,7 @@ class HomeActivity : AppCompatActivity() {
         runOnUiThread {
             val webView = try {
                 getOrCreateWebView(currentRoute)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 return@runOnUiThread
             }
             webView.evaluateJavascript(
@@ -258,8 +310,8 @@ class HomeActivity : AppCompatActivity() {
     private fun performLogout() {
         SessionManager.clear(this)
         WebViewPool.clearAll()
-        val intent = android.content.Intent(this, LoginActivity::class.java).apply {
-            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+        val intent = Intent(this, LoginActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         startActivity(intent)
         finish()
@@ -270,18 +322,13 @@ class HomeActivity : AppCompatActivity() {
         runOnUiThread {
             val bg = if (isDark) Color.parseColor("#0F0F0F") else Color.parseColor("#FFFFFF")
             window.statusBarColor = bg
-            val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
-            controller.isAppearanceLightStatusBars = !isDark
+            WindowCompat.setDecorFitsSystemWindows(window, true)
+            WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDark
 
             val ringColor = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#2F7BF6")
             if (::loadingRing.isInitialized) {
                 loadingRing.ringColor = ringColor
             }
         }
-    }
-
-    override fun onDestroy() {
-        cancelRunningAnimations()
-        super.onDestroy()
     }
 }

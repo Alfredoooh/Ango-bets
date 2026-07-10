@@ -68,16 +68,18 @@ class AccountDrawerSheet(
                 dimAmount = 0f
                 flags = flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
             }
-            // Edge-to-edge: o conteúdo do Dialog desenha por trás da status
-            // bar, em vez de ser limitado por ela.
             WindowCompat.setDecorFitsSystemWindows(this, false)
         }
 
-        // Torna a status bar da Activity de fundo transparente enquanto o
-        // drawer está aberto, para o painel (que já é edge-to-edge) ficar
-        // visível por trás dela, e não cortado por uma barra opaca em cima.
         originalStatusBarColor = activity.window.statusBarColor
-        activity.window.statusBarColor = android.graphics.Color.TRANSPARENT
+        val drawerStatusBarColor = if (isDark) {
+            android.graphics.Color.parseColor("#121212")
+        } else {
+            android.graphics.Color.WHITE
+        }
+        activity.window.statusBarColor = drawerStatusBarColor
+        dlg.window?.statusBarColor = drawerStatusBarColor
+        WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars = !isDark
 
         val scrim = View(activity).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
@@ -132,6 +134,7 @@ class AccountDrawerSheet(
     private fun restoreStatusBar(activity: android.app.Activity) {
         if (!activity.isFinishing && !activity.isDestroyed) {
             activity.window.statusBarColor = originalStatusBarColor
+            WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars = !isDark
         }
     }
 
