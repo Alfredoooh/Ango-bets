@@ -47,4 +47,7 @@
     <string name="theme_light">Claro</string>
     <string name="theme_system">Predefinição do sistema</string>
     <string name="action_cancel">Cancelar</string>
+    
+    <string name="permission_camera_mic_denied">Permissão de câmara/microfone negada</string>
+    <string name="file_chooser_title">Escolher ficheiro</string>
 </resources>

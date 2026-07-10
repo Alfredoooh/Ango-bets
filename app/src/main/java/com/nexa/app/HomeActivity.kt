@@ -65,7 +65,7 @@ class HomeActivity : AppCompatActivity() {
     private var pendingFilePathCallback: ValueCallback<Array<Uri>>? = null
     private var pendingCameraCaptureUri: Uri? = null
     private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
-    private lateinit name: String
+    private lateinit var name: String
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
