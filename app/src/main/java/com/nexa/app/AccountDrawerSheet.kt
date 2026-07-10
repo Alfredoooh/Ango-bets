@@ -16,16 +16,17 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.view.WindowCompat
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
 
 /**
  * Drawer de conta nativo LATERAL, ancorado à direita, com gesto de
- * "arrastar para fechar": o utilizador pode arrastar o painel com o dedo
- * (segue o toque em tempo real) e soltar para fechar — tanto se arrastar
- * mais de 40% da largura do painel, como se soltar com velocidade alta
- * mesmo tendo arrastado pouco (igual ao comportamento do BottomSheet/
- * drawer nativo do Android e do iOS).
+ * "arrastar para fechar". A janela do Dialog é configurada para desenhar
+ * por trás da status bar (edge-to-edge) e a status bar fica transparente
+ * enquanto o drawer está aberto — assim o drawer se estende visualmente
+ * por trás da status bar (como pedido), em vez da barra ficar por cima
+ * cortando o topo do painel.
  */
 class AccountDrawerSheet(
     private val context: Context,
@@ -49,6 +50,8 @@ class AccountDrawerSheet(
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
+    private var originalStatusBarColor: Int = 0
+
     fun show() {
         val activity = context as? android.app.Activity
         if (activity == null || activity.isFinishing || activity.isDestroyed) return
@@ -65,7 +68,16 @@ class AccountDrawerSheet(
                 dimAmount = 0f
                 flags = flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
             }
+            // Edge-to-edge: o conteúdo do Dialog desenha por trás da status
+            // bar, em vez de ser limitado por ela.
+            WindowCompat.setDecorFitsSystemWindows(this, false)
         }
+
+        // Torna a status bar da Activity de fundo transparente enquanto o
+        // drawer está aberto, para o painel (que já é edge-to-edge) ficar
+        // visível por trás dela, e não cortado por uma barra opaca em cima.
+        originalStatusBarColor = activity.window.statusBarColor
+        activity.window.statusBarColor = android.graphics.Color.TRANSPARENT
 
         val scrim = View(activity).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
@@ -97,7 +109,12 @@ class AccountDrawerSheet(
             bindDragToClose(panel)
         } catch (e: Exception) {
             Toast.makeText(activity, "Erro ao abrir o menu", Toast.LENGTH_SHORT).show()
+            restoreStatusBar(activity)
             return
+        }
+
+        dlg.setOnDismissListener {
+            restoreStatusBar(activity)
         }
 
         dialog = dlg
@@ -108,7 +125,13 @@ class AccountDrawerSheet(
                 animateOpen()
             }
         } catch (e: WindowManager.BadTokenException) {
-            // Activity morreu entre o check acima e o show() -> ignora.
+            restoreStatusBar(activity)
+        }
+    }
+
+    private fun restoreStatusBar(activity: android.app.Activity) {
+        if (!activity.isFinishing && !activity.isDestroyed) {
+            activity.window.statusBarColor = originalStatusBarColor
         }
     }
 
@@ -136,12 +159,6 @@ class AccountDrawerSheet(
         scrim.animate().alpha(0f).setDuration(220).start()
     }
 
-    /**
-     * Gesto de arrastar para fechar: intercepta o toque no painel inteiro,
-     * segue o dedo em tempo real via translationX, e ao soltar decide
-     * fechar (se arrastou mais de 40% da largura OU soltou com velocidade
-     * alta para a direita) ou volta à posição aberta com animação.
-     */
     private fun bindDragToClose(panel: View) {
         panel.setOnTouchListener { view, event ->
             when (event.actionMasked) {

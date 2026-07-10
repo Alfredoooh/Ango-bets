@@ -17,17 +17,18 @@ import com.nexa.app.widgets.GradientRingLoader
 
 /**
  * Navegação por WebView em pool, com transição estilo UINavigationController
- * da Apple: a página nova desliza 100% da largura (direita->esquerda ao
- * avançar), a página antiga faz parallax (só 28% do deslocamento) e escurece
- * com um véu preto até 35% de opacidade (efeito de profundidade). Ao voltar,
- * o sentido inverte e o véu desaparece.
+ * da Apple: a página nova desliza 100% da largura, a página antiga faz
+ * parallax (28%) e escurece com um véu preto (dimOverlay).
  *
- * Usa ViewPropertyAnimator (acelerado por hardware) em vez de Animation XML
- * legacy — permite .cancel() seguro a qualquer momento, o que é essencial
- * para não crashar quando o utilizador navega rápido várias vezes seguidas.
+ * IMPORTANTE: dimOverlay vive SEMPRE no FrameLayout raiz (rootLayout),
+ * nunca dentro de "container" — container só pode conter WebViews. Misturar
+ * o dimOverlay dentro de container fazia container.getChildAt(0) apanhar
+ * às vezes o dimOverlay em vez do WebView anterior, corrompendo a lógica
+ * de remover/animar e crashando a navegação.
  */
 class HomeActivity : AppCompatActivity() {
 
+    private lateinit var rootLayout: FrameLayout
     private lateinit var container: FrameLayout
     private lateinit var loadingOverlay: FrameLayout
     private lateinit var loadingRing: GradientRingLoader
@@ -37,17 +38,15 @@ class HomeActivity : AppCompatActivity() {
     private var currentRoute: String = "home"
     private var isDarkTheme: Boolean = false
 
-    // Curva de easing igual à da Apple para push/pop de navegação
-    // (aprox. UINavigationController: easeOut na entrada, easeIn na saída).
     private val iosEaseOut = PathInterpolator(0.25f, 0.1f, 0.25f, 1f)
 
     private var runningAnimators: MutableList<ValueAnimator> = mutableListOf()
-    private var pendingRoute: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_home)
 
+        rootLayout = findViewById(R.id.homeRoot)
         container = findViewById(R.id.webViewContainer)
         loadingOverlay = findViewById(R.id.loadingOverlay)
         loadingRing = findViewById(R.id.loadingRing)
@@ -61,7 +60,11 @@ class HomeActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        (container.parent as ViewGroup).addView(dimOverlay, container.indexOfChild(container) + 1)
+        // dimOverlay é inserido logo A SEGUIR ao container no root, e nunca
+        // mais é movido de lá — fica sempre por cima do container (WebViews)
+        // e por baixo do loadingOverlay, na mesma hierarquia fixa.
+        val containerIndex = rootLayout.indexOfChild(container)
+        rootLayout.addView(dimOverlay, containerIndex + 1)
 
         val isDark = (resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
@@ -109,12 +112,6 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Cancela de forma segura todas as animações em curso. Chamado sempre
-     * antes de iniciar uma navegação nova — é isto que impede o crash de
-     * "already has a parent" / listeners a disparar fora de ordem quando
-     * o utilizador toca várias vezes seguidas rapidamente.
-     */
     private fun cancelRunningAnimations() {
         runningAnimators.forEach { it.cancel() }
         runningAnimators.clear()
@@ -141,13 +138,13 @@ class HomeActivity : AppCompatActivity() {
             return
         }
 
-        // Limpa qualquer estado residual de transformação de uma animação
-        // anterior cancelada a meio (translationX/alpha podem ter ficado
-        // num valor intermédio).
         webView.animate().cancel()
         webView.translationX = 0f
         webView.alpha = 1f
 
+        // previousView só pode vir de dentro de "container" — dimOverlay
+        // nunca está aqui dentro, por isso getChildAt(0) é sempre ou um
+        // WebView, ou null (primeira rota).
         val previousView = container.getChildAt(0)?.takeIf { it !== webView }
         previousView?.animate()?.cancel()
 
@@ -165,43 +162,28 @@ class HomeActivity : AppCompatActivity() {
         val parallaxDistance = width * 0.28f
 
         (webView.parent as? ViewGroup)?.removeView(webView)
-        // A view nova entra por cima (última a ser adicionada = topo do z-order).
         container.addView(webView)
 
+        dimOverlay.visibility = View.VISIBLE
+
         if (isBack) {
-            // Voltar: a view atual (que estava em "parallax" atrás) volta a
-            // deslizar totalmente para a direita e desaparece; a página de
-            // baixo (previousView, na verdade a rota-alvo) volta da posição
-            // de parallax para 0 com o véu a desvanecer.
             webView.translationX = -parallaxDistance
             webView.alpha = 1f
-            dimOverlay.visibility = View.VISIBLE
             dimOverlay.alpha = 0.35f
+
             container.removeView(previousView)
             container.addView(previousView, 0)
+            previousView.translationX = 0f
 
             animateFloat(webView, "translationX", -parallaxDistance, 0f)
             animateFloat(dimOverlay, "alpha", 0.35f, 0f) {
                 dimOverlay.visibility = View.GONE
             }
-            previousView.translationX = 0f
             animateFloat(previousView, "translationX", 0f, width) {
                 (previousView.parent as? ViewGroup)?.removeView(previousView)
             }
         } else {
-            // Avançar: a view nova entra de fora do ecrã (direita) para 0;
-            // a que estava visível recua para -28% da largura (parallax) e
-            // escurece com o véu, ficando "atrás" visualmente.
             webView.translationX = width
-            container.addView(dimOverlay.also {
-                (it.parent as? ViewGroup)?.removeView(it)
-            })
-            container.addView(previousView.also {
-                (it.parent as? ViewGroup)?.removeView(it)
-            }, 0)
-            container.addView(webView)
-
-            dimOverlay.visibility = View.VISIBLE
             dimOverlay.alpha = 0f
 
             animateFloat(webView, "translationX", width, 0f)
@@ -217,11 +199,6 @@ class HomeActivity : AppCompatActivity() {
         }, loaderDelay)
     }
 
-    /**
-     * Helper genérico para animar translationX ou alpha com a curva de
-     * easing da Apple, guardando o ValueAnimator para poder ser cancelado
-     * em segurança se uma navegação nova começar a meio.
-     */
     private fun animateFloat(
         view: View,
         property: String,
