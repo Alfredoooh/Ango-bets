@@ -1,11 +1,9 @@
 package com.nexa.app
 
 import android.os.Bundle
-import android.view.View
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
 import com.nexa.app.webview.setupNexaWebView
@@ -22,7 +20,6 @@ import com.nexa.app.webview.setupNexaWebView
 class HomeActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-    private lateinit var progressBar: LinearProgressIndicator
 
     private val currentRoute = "home"
 
@@ -31,7 +28,11 @@ class HomeActivity : AppCompatActivity() {
         setContentView(R.layout.activity_home)
 
         webView = findViewById(R.id.webView)
-        progressBar = findViewById(R.id.progressBar)
+
+        val isDark = (resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        applyNativeStatusBar(isDark)
 
         setupWebView()
 
@@ -55,7 +56,6 @@ class HomeActivity : AppCompatActivity() {
         webView.setupNexaWebView(
             context = this,
             currentRoute = currentRoute,
-            progressBar = progressBar,
             onThemeChanged = { isDark -> applyNativeStatusBar(isDark) },
             onExternalRoute = { route, _ ->
                 RouteMap.openRoute(this, route)
@@ -72,10 +72,6 @@ class HomeActivity : AppCompatActivity() {
         ).show()
     }
 
-    /**
-     * Aplica a escolha de tema feita no drawer nativo de volta ao WebView,
-     * chamando a mesma função setTheme() que o AppDrawer.svelte usaria.
-     */
     private fun applyThemeSelection(theme: String) {
         webView.evaluateJavascript(
             "window.__nexaSetTheme && window.__nexaSetTheme('$theme');",

@@ -10,14 +10,4 @@
         android:scrollbarStyle="insideOverlay"
         android:overScrollMode="never" />
 
-    <com.google.android.material.progressindicator.LinearProgressIndicator
-        android:id="@+id/progressBar"
-        style="@style/Widget.Material3.LinearProgressIndicator"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:indeterminate="false"
-        android:max="100"
-        android:visibility="gone" />
-
 </FrameLayout>

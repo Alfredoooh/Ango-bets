@@ -4,20 +4,18 @@ import android.os.Bundle
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.webview.setupNexaWebView
 
 /**
  * WebView puro, sem chrome nativo nenhum (sem appbar, sem drawer) — usado
- * pelas 17 sub-apps (chat, docs, sheets, calendar...), que já têm o próprio
+ * pelas sub-apps (chat, docs, sheets, calendar...), que já têm o próprio
  * drawer desenhado em Svelte dentro da página. O botão voltar do Android
  * fecha esta Activity e volta à anterior na stack normal.
  */
 class WebPageActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-    private lateinit var progressBar: LinearProgressIndicator
     private lateinit var currentRoute: String
 
     companion object {
@@ -30,7 +28,6 @@ class WebPageActivity : AppCompatActivity() {
         setContentView(R.layout.activity_web_page)
 
         webView = findViewById(R.id.webView)
-        progressBar = findViewById(R.id.progressBar)
 
         val url = intent.getStringExtra(EXTRA_URL) ?: RouteMap.pageUrl("home")
         currentRoute = intent.getStringExtra(EXTRA_ROUTE) ?: RouteMap.routeSegment(
@@ -40,7 +37,6 @@ class WebPageActivity : AppCompatActivity() {
         webView.setupNexaWebView(
             context = this,
             currentRoute = currentRoute,
-            progressBar = progressBar,
             onThemeChanged = { /* não há chrome nativo aqui para recolorir */ },
             onExternalRoute = { route, _ ->
                 RouteMap.openRoute(this, route)

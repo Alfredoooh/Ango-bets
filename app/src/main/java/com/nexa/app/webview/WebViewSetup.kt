@@ -2,24 +2,27 @@ package com.nexa.app.webview
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Bitmap
 import android.net.http.SslError
-import android.view.View
 import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
-import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
 
 /**
  * Configuração partilhada do WebView usada tanto por HomeActivity como por
- * WebPageActivity, para não duplicar a lógica de JS, cookies, progress bar,
- * injeção de token e interceção de navegação entre rotas.
+ * WebPageActivity, para não duplicar a lógica de JS, cookies, injeção de
+ * sessão e interceção de navegação entre rotas.
+ *
+ * O site (src/shared/auth-guard.js) verifica sessão via
+ * localStorage.getItem('nexa_user'), não via cookie — por isso a sessão
+ * nativa é injetada como localStorage, com o mesmo shape que
+ * AuthApiService.login()/register() gravam no browser (token, id, name,
+ * email, credits). Sem isto o site pede sempre login, mesmo já autenticado
+ * nativamente.
  *
  * onExternalRoute é chamado sempre que o WebView tentar navegar para uma
  * rota do site (ex.: /chat/) diferente da rota atual — quem chama decide
@@ -33,7 +36,6 @@ import com.nexa.app.session.SessionManager
 fun WebView.setupNexaWebView(
     context: Context,
     currentRoute: String,
-    progressBar: LinearProgressIndicator?,
     onThemeChanged: (isDark: Boolean) -> Unit,
     onExternalRoute: (route: String, url: String) -> Unit,
     onOpenAccountDrawer: (() -> Unit)? = null
@@ -53,15 +55,6 @@ fun WebView.setupNexaWebView(
     CookieManager.getInstance().setAcceptCookie(true)
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
-    // Injeta o token de sessão como cookie para o Svelte (src/shared/api.js)
-    // conseguir autenticar pedidos feitos a partir da própria página, se aplicável.
-    SessionManager.getToken(context)?.let { token ->
-        CookieManager.getInstance().setCookie(
-            "https://${RouteMap.HOST}",
-            "nexa_token=$token; Path=/; Secure"
-        )
-    }
-
     addJavascriptInterface(ThemeBridge(onThemeChanged), "AndroidTheme")
 
     if (onOpenAccountDrawer != null) {
@@ -78,8 +71,6 @@ fun WebView.setupNexaWebView(
             val url = uri.toString()
 
             if (uri.host != RouteMap.HOST) {
-                // Link para fora do site (ex.: termos de serviço externos) -> deixa o
-                // sistema tratar, não abre Activity nativa nenhuma para isto.
                 return false
             }
 
@@ -89,19 +80,17 @@ fun WebView.setupNexaWebView(
                 return true
             }
 
-            // Mesma rota (ex.: navegação interna dentro do Chat para uma conversa
-            // específica) continua dentro do mesmo WebView.
             return false
         }
 
-        override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+        override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
             super.onPageStarted(view, url, favicon)
-            progressBar?.visibility = View.VISIBLE
+            injectSession(view, context)
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
-            progressBar?.visibility = View.GONE
+            injectSession(view, context)
         }
 
         override fun onReceivedError(
@@ -110,7 +99,6 @@ fun WebView.setupNexaWebView(
             error: WebResourceError
         ) {
             super.onReceivedError(view, request, error)
-            progressBar?.visibility = View.GONE
         }
 
         override fun onReceivedSslError(
@@ -121,12 +109,32 @@ fun WebView.setupNexaWebView(
             handler.cancel()
         }
     }
+}
 
-    webChromeClient = object : WebChromeClient() {
-        override fun onProgressChanged(view: WebView, newProgress: Int) {
-            super.onProgressChanged(view, newProgress)
-            progressBar?.progress = newProgress
-            progressBar?.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
-        }
-    }
+/**
+ * Escreve o utilizador autenticado nativamente no localStorage do WebView,
+ * com o mesmo shape que LoginPage.svelte/RegisterPage.svelte gravam
+ * (JSON.stringify do AuthResponse), para src/shared/auth-guard.js
+ * reconhecer a sessão e não pedir login de novo.
+ */
+private fun injectSession(view: WebView, context: Context) {
+    val token = SessionManager.getToken(context) ?: return
+    val userId = SessionManager.getUserId(context) ?: return
+    val name = SessionManager.getName(context) ?: ""
+    val email = SessionManager.getEmail(context) ?: ""
+    val credits = SessionManager.getCredits(context)
+
+    val json = org.json.JSONObject().apply {
+        put("token", token)
+        put("id", userId)
+        put("name", name)
+        put("email", email)
+        put("credits", credits)
+    }.toString()
+
+    val escaped = json.replace("\\", "\\\\").replace("'", "\\'")
+    view.evaluateJavascript(
+        "localStorage.setItem('nexa_user', '$escaped');",
+        null
+    )
 }

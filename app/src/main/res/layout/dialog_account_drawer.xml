@@ -59,57 +59,147 @@
         android:background="@color/divider"
         android:layout_marginHorizontal="14dp" />
 
-    <com.google.android.material.navigation.NavigationView
-        android:id="@+id/accountNavigationView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        app:menu="@menu/account_drawer_menu"
-        app:itemIconTint="@color/icon_tint_secondary"
-        app:itemTextColor="@color/drawer_text"
-        app:itemShapeInsetStart="6dp"
-        app:itemShapeInsetEnd="6dp" />
-
     <LinearLayout
-        android:id="@+id/themeOptionsContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:visibility="gone"
-        android:paddingStart="52dp"
-        android:paddingEnd="14dp">
+        android:paddingVertical="6dp">
 
-        <TextView
-            android:id="@+id/themeOptionDark"
+        <LinearLayout
+            android:id="@+id/itemTheme"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="11dp"
-            android:text="@string/theme_dark"
-            android:textColor="@color/drawer_text"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="14dp"
             android:background="?attr/selectableItemBackground"
             android:clickable="true"
-            android:focusable="true" />
+            android:focusable="true">
 
-        <TextView
-            android:id="@+id/themeOptionLight"
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_appearance"
+                app:tint="@color/icon_tint_secondary"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="18dp"
+                android:text="@string/drawer_theme"
+                android:textColor="@color/drawer_text" />
+
+            <ImageView
+                android:id="@+id/themeChevron"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_chevron_down"
+                app:tint="@color/icon_tint_secondary"
+                android:contentDescription="@null" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/themeOptionsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="11dp"
-            android:text="@string/theme_light"
-            android:textColor="@color/drawer_text"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true" />
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:paddingStart="52dp"
+            android:paddingEnd="14dp">
 
-        <TextView
-            android:id="@+id/themeOptionSystem"
+            <TextView
+                android:id="@+id/themeOptionDark"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="11dp"
+                android:text="@string/theme_dark"
+                android:textColor="@color/drawer_text"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/themeOptionLight"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="11dp"
+                android:text="@string/theme_light"
+                android:textColor="@color/drawer_text"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true" />
+
+            <TextView
+                android:id="@+id/themeOptionSystem"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="11dp"
+                android:text="@string/theme_system"
+                android:textColor="@color/drawer_text"
+                android:background="?attr/selectableItemBackground"
+                android:clickable="true"
+                android:focusable="true" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/itemSettings"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:padding="11dp"
-            android:text="@string/theme_system"
-            android:textColor="@color/drawer_text"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="14dp"
             android:background="?attr/selectableItemBackground"
             android:clickable="true"
-            android:focusable="true" />
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_settings"
+                app:tint="@color/icon_tint_secondary"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="18dp"
+                android:text="@string/drawer_settings"
+                android:textColor="@color/drawer_text" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/itemHelp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="14dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@drawable/ic_help"
+                app:tint="@color/icon_tint_secondary"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="18dp"
+                android:text="@string/drawer_help"
+                android:textColor="@color/drawer_text" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
