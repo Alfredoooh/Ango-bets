@@ -36,4 +36,15 @@
     <string name="nav_whiteboard">Quadro branco</string>
     <string name="nav_analytics">Análises</string>
     <string name="nav_profile">Perfil</string>
+    <string name="drawer_avatar">Avatar</string>
+    <string name="drawer_theme">Tema</string>
+    <string name="drawer_install">Instalar app</string>
+    <string name="drawer_settings">Definições</string>
+    <string name="drawer_help">Ajuda</string>
+    <string name="drawer_logout">Terminar sessão</string>
+    <string name="drawer_logout_confirm">Tem a certeza que deseja terminar sessão?</string>
+    <string name="theme_dark">Escuro</string>
+    <string name="theme_light">Claro</string>
+    <string name="theme_system">Predefinição do sistema</string>
+    <string name="action_cancel">Cancelar</string>
 </resources>

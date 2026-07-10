@@ -24,6 +24,10 @@ import com.nexa.app.session.SessionManager
  * onExternalRoute é chamado sempre que o WebView tentar navegar para uma
  * rota do site (ex.: /chat/) diferente da rota atual — quem chama decide
  * se abre uma nova Activity nativa (via RouteMap.openRoute) ou ignora.
+ *
+ * onOpenAccountDrawer é chamado quando o AppHeader.svelte da Home invoca
+ * window.AndroidDrawer.openAccountDrawer() — só faz sentido passar isto
+ * em HomeActivity; em WebPageActivity pode ser omitido (lambda vazia).
  */
 @SuppressLint("SetJavaScriptEnabled")
 fun WebView.setupNexaWebView(
@@ -31,7 +35,8 @@ fun WebView.setupNexaWebView(
     currentRoute: String,
     progressBar: LinearProgressIndicator?,
     onThemeChanged: (isDark: Boolean) -> Unit,
-    onExternalRoute: (route: String, url: String) -> Unit
+    onExternalRoute: (route: String, url: String) -> Unit,
+    onOpenAccountDrawer: (() -> Unit)? = null
 ) {
     val settings = this.settings
     settings.javaScriptEnabled = true
@@ -58,6 +63,10 @@ fun WebView.setupNexaWebView(
     }
 
     addJavascriptInterface(ThemeBridge(onThemeChanged), "AndroidTheme")
+
+    if (onOpenAccountDrawer != null) {
+        addJavascriptInterface(AccountDrawerBridge(onOpenAccountDrawer), "AndroidDrawer")
+    }
 
     webViewClient = object : WebViewClient() {
 

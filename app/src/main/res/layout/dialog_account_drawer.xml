@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/drawer_background"
+    android:paddingBottom="12dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="20dp">
+
+        <FrameLayout
+            android:layout_width="84dp"
+            android:layout_height="84dp">
+
+            <ImageView
+                android:id="@+id/drawerAvatarImage"
+                android:layout_width="84dp"
+                android:layout_height="84dp"
+                android:scaleType="centerCrop"
+                android:background="@drawable/circle_mask"
+                android:visibility="gone"
+                android:contentDescription="@string/drawer_avatar" />
+
+            <TextView
+                android:id="@+id/drawerAvatarInitial"
+                android:layout_width="84dp"
+                android:layout_height="84dp"
+                android:gravity="center"
+                android:textSize="32sp"
+                android:textStyle="bold"
+                android:textColor="@color/white"
+                android:background="@drawable/circle_solid"
+                android:backgroundTint="@color/primary" />
+
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/drawerUserName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:textAppearance="?attr/textAppearanceTitleMedium"
+            android:textColor="@color/drawer_text"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/divider"
+        android:layout_marginHorizontal="14dp" />
+
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/accountNavigationView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:menu="@menu/account_drawer_menu"
+        app:itemIconTint="@color/icon_tint_secondary"
+        app:itemTextColor="@color/drawer_text"
+        app:itemShapeInsetStart="6dp"
+        app:itemShapeInsetEnd="6dp" />
+
+    <LinearLayout
+        android:id="@+id/themeOptionsContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:paddingStart="52dp"
+        android:paddingEnd="14dp">
+
+        <TextView
+            android:id="@+id/themeOptionDark"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="11dp"
+            android:text="@string/theme_dark"
+            android:textColor="@color/drawer_text"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
+            android:id="@+id/themeOptionLight"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="11dp"
+            android:text="@string/theme_light"
+            android:textColor="@color/drawer_text"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <TextView
+            android:id="@+id/themeOptionSystem"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="11dp"
+            android:text="@string/theme_system"
+            android:textColor="@color/drawer_text"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true" />
+
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/drawerLogoutButton"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:layout_marginHorizontal="14dp"
+        android:text="@string/drawer_logout"
+        android:textColor="@color/error_red"
+        app:icon="@drawable/ic_logout"
+        app:iconTint="@color/error_red" />
+
+</LinearLayout>
