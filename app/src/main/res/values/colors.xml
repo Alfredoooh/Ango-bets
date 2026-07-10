@@ -20,4 +20,5 @@
     
     <color name="drawer_background">#FFFFFFFF</color>
     <color name="drawer_text">#FF10151C</color>
+    <color name="transparent">#00000000</color>
 </resources>
