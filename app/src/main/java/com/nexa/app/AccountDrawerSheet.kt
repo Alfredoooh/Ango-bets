@@ -20,6 +20,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.view.WindowCompat
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Drawer de conta nativo LATERAL, ancorado à direita, com gesto de
@@ -37,11 +38,20 @@ import com.nexa.app.session.ThemePreference
  *
  * Troca de tema: ao escolher dark/light/system aqui dentro, o callback
  * onThemeSelected() é responsável por aplicar ThemePreference.save() +
- * recriar a status bar nativa no HomeActivity (ver applyThemeSelection()
+ * repintar a status bar nativa no HomeActivity (ver applyThemeSelection()
  * lá). Este ficheiro só cuida da UI local — realce da opção selecionada
- * e emissão do evento — nunca mais fica "preso" no tema com que o drawer
- * foi aberto porque o isDark de entrada só define o ícone inicial da
- * status bar do Dialog, e currentTheme já vem do ThemePreference real.
+ * e emissão do evento.
+ *
+ * Guard anti-double-open: tryClaim()/release() são o ÚNICO ponto de
+ * verdade sobre se há um drawer aberto/a abrir em qualquer instância.
+ * O CALLER (HomeActivity.showAccountDrawer) tem de chamar tryClaim()
+ * ANTES de sequer agendar o runOnUiThread — é isso que fecha a race
+ * condition. Antes, o guard só era marcado dentro de show(), ou seja,
+ * já dentro do Runnable da UI thread; se a bridge JS disparasse
+ * openAccountDrawer() duas vezes seguidas (toque físico duplo, ou
+ * touchstart+click no botão), os dois Runnables ficavam enfileirados
+ * ANTES de qualquer marcação existir, e nasciam dois Dialogs empilhados
+ * — o "aparece, desaparece rápido, aparece de novo".
  */
 class AccountDrawerSheet(
     private val context: Context,
@@ -52,18 +62,30 @@ class AccountDrawerSheet(
 ) {
 
     companion object {
-        // Guard global: impede que dois toques rápidos (duplo-clique físico,
-        // ou a bridge JS a disparar openAccountDrawer() duas vezes no mesmo
-        // toque) criem dois Dialogs empilhados. Era exatamente isso que
-        // causava o "aparece, desaparece rápido, aparece de novo": o
-        // segundo Dialog nascia por cima do primeiro ainda a animar,
-        // ambos a disputar o mesmo scrim/translationX.
-        @Volatile
-        private var isAnyDrawerOpen = false
+        // AtomicBoolean em vez de @Volatile Boolean: compareAndSet é uma
+        // operação atómica única (test-and-set), sem janela entre o "ler"
+        // e o "escrever" onde uma segunda chamada possa colar-se no meio.
+        private val isAnyDrawerOpen = AtomicBoolean(false)
 
         private const val OPEN_DURATION = 280L
         private const val CLOSE_DURATION = 220L
         private const val SCRIM_ALPHA = 0.4f
+
+        /**
+         * Tenta reclamar o direito de abrir um drawer. Devolve true apenas
+         * para a PRIMEIRA chamada enquanto nenhum drawer estiver aberto;
+         * qualquer chamada seguinte, antes de release(), devolve false.
+         * Deve ser chamado pelo caller ANTES de agendar runOnUiThread.
+         */
+        fun tryClaim(): Boolean = isAnyDrawerOpen.compareAndSet(false, true)
+
+        /**
+         * Liberta o guard. Chamado sempre que o drawer fecha, por qualquer
+         * via (dismiss, back físico, erro ao construir a UI, BadTokenException).
+         */
+        fun release() {
+            isAnyDrawerOpen.set(false)
+        }
     }
 
     // Lido sempre do disco, nunca do parâmetro isDark isolado — garante que
@@ -75,7 +97,7 @@ class AccountDrawerSheet(
     private var dialog: Dialog? = null
     private var panelView: View? = null
     private var scrimView: View? = null
-    private var hasClaimedGuard = false
+    private var hasReleased = false
     private var isClosing = false
 
     private var panelWidthPx = 0f
@@ -90,16 +112,19 @@ class AccountDrawerSheet(
     private val easeOut = android.view.animation.PathInterpolator(0.22f, 0.61f, 0.36f, 1f)
     private val easeIn = android.view.animation.PathInterpolator(0.5f, 0f, 0.75f, 0.35f)
 
+    /**
+     * NOTA: esta função já NÃO faz nenhuma verificação/marcação de guard —
+     * isso é responsabilidade exclusiva do caller via tryClaim() antes de
+     * sequer construir este objeto. show() assume que, se foi chamado, o
+     * direito já foi reclamado, e a sua única responsabilidade é libertar
+     * esse direito (release()) em todos os caminhos de saída possíveis.
+     */
     fun show() {
-        // Já existe um drawer aberto ou a abrir em qualquer instância —
-        // ignora este show() silenciosamente em vez de empilhar outro.
-        if (isAnyDrawerOpen) return
-
         val activity = context as? android.app.Activity
-        if (activity == null || activity.isFinishing || activity.isDestroyed) return
-
-        isAnyDrawerOpen = true
-        hasClaimedGuard = true
+        if (activity == null || activity.isFinishing || activity.isDestroyed) {
+            releaseGuard()
+            return
+        }
 
         val dlg = Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar)
         val root = FrameLayout(activity)
@@ -174,9 +199,9 @@ class AccountDrawerSheet(
     }
 
     private fun releaseGuard() {
-        if (hasClaimedGuard) {
-            hasClaimedGuard = false
-            isAnyDrawerOpen = false
+        if (!hasReleased) {
+            hasReleased = true
+            release()
         }
     }
 
@@ -193,7 +218,6 @@ class AccountDrawerSheet(
         panel.translationX = panelWidthPx
         panel.alpha = 0.85f
         panel.scaleX = 0.96f
-        panel.scaleY = 1f
         panel.pivotX = panelWidthPx
 
         panel.animate()
@@ -339,8 +363,8 @@ class AccountDrawerSheet(
             try {
                 // onThemeSelected é o único ponto de verdade: grava a
                 // preferência E repinta a status bar/loader nativos no
-                // HomeActivity, na MESMA chamada — é o que faltava antes,
-                // e é o motivo de a troca nunca "acontecer junto".
+                // HomeActivity, na MESMA chamada — sem recriar a Activity
+                // nem o WebView, apenas repintando o que já existe.
                 onThemeSelected(theme)
             } catch (e: Exception) {
                 // Nunca deixar a escolha de tema crashar o drawer.

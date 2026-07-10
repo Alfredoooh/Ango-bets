@@ -545,7 +545,21 @@ class HomeActivity : AppCompatActivity() {
         animator.start()
     }
 
+    /**
+     * Guard anti-double-open reclamado AQUI, ANTES de sequer agendar o
+     * runOnUiThread. Isto fecha a race condition que causava o drawer
+     * "piscar" (abre/fecha/abre): a bridge JS (AccountDrawerBridge) corre
+     * numa thread do WebView e apenas agenda este runOnUiThread — se o JS
+     * disparasse openAccountDrawer() duas vezes seguidas antes da primeira
+     * chamada sequer começar a executar na UI thread, as duas ficavam na
+     * fila e nenhuma via o guard marcado a tempo. Agora tryClaim() é
+     * síncrono e atómico, e corre já na thread que chama showAccountDrawer
+     * (a mesma thread da bridge JS) — a segunda chamada é descartada
+     * imediatamente, sem sequer chegar a agendar nada na UI thread.
+     */
     private fun showAccountDrawer() {
+        if (!AccountDrawerSheet.tryClaim()) return
+
         runOnUiThread {
             AccountDrawerSheet(
                 context = this,
@@ -557,14 +571,17 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Troca de tema SEM recriar a Activity e SEM recriar o WebView: apenas
+     * grava a preferência, repinta a status bar/loader nativos (cores já
+     * existentes, não uma nova Activity) e avisa o WebView já vivo via JS
+     * para ele próprio trocar o tema visualmente (window.__nexaSetTheme).
+     * ThemePreference.save() já não chama AppCompatDelegate.setDefaultNightMode
+     * — essa era a causa de "trocar tema muda tudo": o night mode global
+     * força o Android a destruir e recriar a Activity inteira sozinho.
+     */
     private fun applyThemeSelection(theme: String) {
         runOnUiThread {
-            // Antes disto só se avisava o WebView via JS — a status bar
-            // nativa, o loader e o próprio drawer (se reaberto) ficavam
-            // presos no tema antigo até a Activity ser recriada, porque
-            // ThemePreference nunca era gravado nem applyNativeStatusBar()
-            // era chamado aqui. Agora os três lados (SharedPreferences +
-            // status bar nativa + WebView) mudam juntos, na mesma chamada.
             ThemePreference.save(this, theme)
 
             val resolvedIsDark = ThemePreference.resolveIsDark(this)
