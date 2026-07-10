@@ -5,7 +5,9 @@ import android.content.Context
 import android.graphics.Typeface
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.ImageView
@@ -16,14 +18,12 @@ import androidx.appcompat.app.AlertDialog
 import com.nexa.app.session.SessionManager
 
 /**
- * Drawer de conta nativo LATERAL (não bottom sheet), espelhando
- * AppDrawer.svelte: avatar, nome, tema (dark/light/system), definições,
- * ajuda, terminar sessão. Ancorado à direita, largura fixa, altura total.
- *
- * Todas as callbacks (onThemeSelected, onLogoutConfirmed) são invocadas de
- * dentro de listeners de clique, portanto já correm na UI thread — mas
- * protegemos mesmo assim com try/catch para nunca crashar a app por causa
- * do drawer, mesmo que o lado que consome a callback tenha um bug.
+ * Drawer de conta nativo LATERAL, ancorado à direita, com gesto de
+ * "arrastar para fechar": o utilizador pode arrastar o painel com o dedo
+ * (segue o toque em tempo real) e soltar para fechar — tanto se arrastar
+ * mais de 40% da largura do painel, como se soltar com velocidade alta
+ * mesmo tendo arrastado pouco (igual ao comportamento do BottomSheet/
+ * drawer nativo do Android e do iOS).
  */
 class AccountDrawerSheet(
     private val context: Context,
@@ -34,36 +34,66 @@ class AccountDrawerSheet(
 
     private var currentTheme: String = if (isDark) "dark" else "light"
     private var dialog: Dialog? = null
+    private var panelView: View? = null
+    private var scrimView: View? = null
+
+    private var panelWidthPx = 0f
+    private var downX = 0f
+    private var downTranslationX = 0f
+    private var isDragging = false
+    private var lastMoveX = 0f
+    private var lastMoveTime = 0L
+    private var velocityPxPerMs = 0f
+
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     fun show() {
         val activity = context as? android.app.Activity
-        if (activity == null || activity.isFinishing || activity.isDestroyed) {
-            // Contexto inválido para mostrar um Dialog -> não faz nada em
-            // vez de crashar com WindowManager.BadTokenException.
-            return
-        }
+        if (activity == null || activity.isFinishing || activity.isDestroyed) return
 
         val dlg = Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar)
-        val view = LayoutInflater.from(activity).inflate(R.layout.dialog_account_drawer, null)
-        dlg.setContentView(view)
+        val root = FrameLayoutRoot(activity)
+        dlg.setContentView(root)
 
         dlg.window?.apply {
-            setLayout(WindowManager.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setGravity(Gravity.END)
             setBackgroundDrawableResource(android.R.color.transparent)
             attributes = attributes?.apply {
-                windowAnimations = android.R.style.Animation_Translucent
+                dimAmount = 0f
+                flags = flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
             }
         }
 
+        val scrim = View(activity).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            alpha = 0f
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setOnClickListener { animateClose() }
+        }
+        root.addView(scrim)
+        scrimView = scrim
+
+        val panel = LayoutInflater.from(activity).inflate(R.layout.dialog_account_drawer, root, false)
+        panel.layoutParams = FrameLayout.LayoutParams(
+            (300 * activity.resources.displayMetrics.density).toInt(),
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ).apply {
+            gravity = Gravity.END
+        }
+        root.addView(panel)
+        panelView = panel
+
         try {
-            bindHeader(view)
-            bindThemeAccordion(view)
-            bindStaticItems(view)
-            bindLogout(view, dlg)
+            bindHeader(panel)
+            bindThemeAccordion(panel)
+            bindStaticItems(panel)
+            bindLogout(panel, dlg)
+            bindDragToClose(panel)
         } catch (e: Exception) {
-            // Nunca deixar o drawer crashar a app inteira por causa de um
-            // findViewById em falta ou id trocado no XML.
             Toast.makeText(activity, "Erro ao abrir o menu", Toast.LENGTH_SHORT).show()
             return
         }
@@ -71,8 +101,105 @@ class AccountDrawerSheet(
         dialog = dlg
         try {
             dlg.show()
+            panel.post {
+                panelWidthPx = panel.width.toFloat()
+                animateOpen()
+            }
         } catch (e: WindowManager.BadTokenException) {
             // Activity morreu entre o check acima e o show() -> ignora.
+        }
+    }
+
+    /** FrameLayout simples só para servir de raiz do Dialog. */
+    private class FrameLayoutRoot(context: Context) : android.widget.FrameLayout(context)
+
+    private fun animateOpen() {
+        val panel = panelView ?: return
+        val scrim = scrimView ?: return
+        panel.translationX = panelWidthPx
+        panel.animate()
+            .translationX(0f)
+            .setDuration(260)
+            .setInterpolator(android.view.animation.PathInterpolator(0.25f, 0.1f, 0.25f, 1f))
+            .start()
+        scrim.animate().alpha(0.4f).setDuration(260).start()
+    }
+
+    private fun animateClose() {
+        val panel = panelView ?: return
+        val scrim = scrimView ?: return
+        panel.animate()
+            .translationX(panelWidthPx)
+            .setDuration(220)
+            .setInterpolator(android.view.animation.PathInterpolator(0.25f, 0.1f, 0.25f, 1f))
+            .withEndAction { dialog?.dismiss() }
+            .start()
+        scrim.animate().alpha(0f).setDuration(220).start()
+    }
+
+    /**
+     * Gesto de arrastar para fechar: intercepta o toque no painel inteiro,
+     * segue o dedo em tempo real via translationX, e ao soltar decide
+     * fechar (se arrastou mais de 40% da largura OU soltou com velocidade
+     * alta para a direita) ou volta à posição aberta com animação.
+     */
+    private fun bindDragToClose(panel: View) {
+        panel.setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downX = event.rawX
+                    downTranslationX = view.translationX
+                    lastMoveX = event.rawX
+                    lastMoveTime = event.eventTime
+                    velocityPxPerMs = 0f
+                    isDragging = false
+                    // Não consome ainda: deixa cliques em botões internos
+                    // funcionarem normalmente se não houver arrasto real.
+                    false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaX = event.rawX - downX
+                    if (!isDragging && deltaX > touchSlop) {
+                        isDragging = true
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                    if (isDragging) {
+                        val newTranslation = (downTranslationX + deltaX).coerceAtLeast(0f)
+                        view.translationX = newTranslation
+                        val progress = (newTranslation / panelWidthPx).coerceIn(0f, 1f)
+                        scrimView?.alpha = 0.4f * (1f - progress)
+
+                        val dt = (event.eventTime - lastMoveTime).coerceAtLeast(1L)
+                        velocityPxPerMs = (event.rawX - lastMoveX) / dt
+                        lastMoveX = event.rawX
+                        lastMoveTime = event.eventTime
+                        true
+                    } else {
+                        false
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (isDragging) {
+                        isDragging = false
+                        val progress = (view.translationX / panelWidthPx).coerceIn(0f, 1f)
+                        val fastFlingRight = velocityPxPerMs > 1.2f
+                        if (progress > 0.4f || fastFlingRight) {
+                            animateClose()
+                        } else {
+                            view.animate()
+                                .translationX(0f)
+                                .setDuration(200)
+                                .setInterpolator(android.view.animation.PathInterpolator(0.25f, 0.1f, 0.25f, 1f))
+                                .start()
+                            scrimView?.animate()?.alpha(0.4f)?.setDuration(200)?.start()
+                        }
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> false
+            }
         }
     }
 
@@ -96,10 +223,10 @@ class AccountDrawerSheet(
             currentTheme = theme
             highlightSelected(optionDark, optionLight, optionSystem, theme)
             try {
+                com.nexa.app.session.ThemePreference.save(context, theme)
                 onThemeSelected(theme)
             } catch (e: Exception) {
-                // Se a HomeActivity falhar a aplicar o tema, o drawer não
-                // pode crashar por causa disso.
+                // Nunca deixar a escolha de tema crashar o drawer.
             }
         }
 
@@ -145,7 +272,7 @@ class AccountDrawerSheet(
                     try {
                         onLogoutConfirmed()
                     } catch (e: Exception) {
-                        // idem: não deixar o logout crashar por erro fora daqui
+                        // idem
                     }
                 }
                 .show()

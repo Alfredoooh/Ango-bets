@@ -9,6 +9,7 @@ import com.nexa.app.api.ApiClient
 import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.LoginRequest
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 import com.nexa.app.widgets.GradientRingLoader
 import kotlinx.coroutines.launch
 
@@ -30,6 +31,7 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var root: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemePreference.applyStoredTheme(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_login)
 
@@ -46,8 +48,8 @@ class LoginActivity : AppCompatActivity() {
         registerLink.setOnClickListener {
             startActivity(Intent(this, RegisterActivity::class.java))
             overridePendingTransition(
-                com.nexa.app.R.anim.slide_in_left,
-                com.nexa.app.R.anim.slide_out_right
+                com.nexa.app.R.anim.slide_in_right,
+                com.nexa.app.R.anim.slide_out_left
             )
         }
     }

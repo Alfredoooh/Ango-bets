@@ -9,14 +9,14 @@ import com.nexa.app.api.ApiClient
 import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 import com.nexa.app.widgets.GradientRingLoader
 import kotlinx.coroutines.launch
 
 /**
  * Ecrã de registo 100% nativo, sem Material Components. Espelha exatamente
  * os campos do formulário web (src/auth/RegisterPage.svelte): Nome, Email,
- * Password — nada mais, os campos de perfil (idade, país...) são opcionais
- * no Worker e não fazem parte do formulário atual, por isso não entram aqui.
+ * Password.
  */
 class RegisterActivity : AppCompatActivity() {
 
@@ -32,6 +32,7 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var root: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        ThemePreference.applyStoredTheme(this)
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_register)
 
