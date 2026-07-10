@@ -13,24 +13,16 @@ import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
 
 /**
- * Configuração partilhada do WebView usada tanto por HomeActivity como por
- * WebPageActivity, para não duplicar a lógica de JS, cookies, injeção de
- * sessão e interceção de navegação entre rotas.
- *
- * O site (src/shared/auth-guard.js) verifica sessão via
+ * Configuração partilhada do WebView, usada pelo WebViewPool para cada
+ * rota. O site (src/shared/auth-guard.js) verifica sessão via
  * localStorage.getItem('nexa_user'), não via cookie — por isso a sessão
  * nativa é injetada como localStorage, com o mesmo shape que
  * AuthApiService.login()/register() gravam no browser (token, id, name,
- * email, credits). Sem isto o site pede sempre login, mesmo já autenticado
- * nativamente.
+ * email, credits).
  *
- * onExternalRoute é chamado sempre que o WebView tentar navegar para uma
- * rota do site (ex.: /chat/) diferente da rota atual — quem chama decide
- * se abre uma nova Activity nativa (via RouteMap.openRoute) ou ignora.
- *
- * onOpenAccountDrawer é chamado quando o AppHeader.svelte da Home invoca
- * window.AndroidDrawer.openAccountDrawer() — só faz sentido passar isto
- * em HomeActivity; em WebPageActivity pode ser omitido (lambda vazia).
+ * onFirstPageFinished é chamado uma única vez, na primeira vez que esta
+ * instância de WebView termina de carregar — sinal para o WebViewPool
+ * marcar a rota como já carregada e esconder o loader nativo.
  */
 @SuppressLint("SetJavaScriptEnabled")
 fun WebView.setupNexaWebView(
@@ -38,7 +30,8 @@ fun WebView.setupNexaWebView(
     currentRoute: String,
     onThemeChanged: (isDark: Boolean) -> Unit,
     onExternalRoute: (route: String, url: String) -> Unit,
-    onOpenAccountDrawer: (() -> Unit)? = null
+    onOpenAccountDrawer: (() -> Unit)? = null,
+    onFirstPageFinished: (() -> Unit)? = null
 ) {
     val settings = this.settings
     settings.javaScriptEnabled = true
@@ -61,6 +54,8 @@ fun WebView.setupNexaWebView(
         addJavascriptInterface(AccountDrawerBridge(onOpenAccountDrawer), "AndroidDrawer")
     }
 
+    var firstFinishReported = false
+
     webViewClient = object : WebViewClient() {
 
         override fun shouldOverrideUrlLoading(
@@ -68,7 +63,6 @@ fun WebView.setupNexaWebView(
             request: WebResourceRequest
         ): Boolean {
             val uri = request.url
-            val url = uri.toString()
 
             if (uri.host != RouteMap.HOST) {
                 return false
@@ -76,7 +70,7 @@ fun WebView.setupNexaWebView(
 
             val route = RouteMap.routeSegment(uri.path ?: "/")
             if (route != currentRoute) {
-                onExternalRoute(route, url)
+                onExternalRoute(route, uri.toString())
                 return true
             }
 
@@ -91,6 +85,10 @@ fun WebView.setupNexaWebView(
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
             injectSession(view, context)
+            if (!firstFinishReported) {
+                firstFinishReported = true
+                onFirstPageFinished?.invoke()
+            }
         }
 
         override fun onReceivedError(
@@ -99,6 +97,10 @@ fun WebView.setupNexaWebView(
             error: WebResourceError
         ) {
             super.onReceivedError(view, request, error)
+            if (!firstFinishReported) {
+                firstFinishReported = true
+                onFirstPageFinished?.invoke()
+            }
         }
 
         override fun onReceivedSslError(
