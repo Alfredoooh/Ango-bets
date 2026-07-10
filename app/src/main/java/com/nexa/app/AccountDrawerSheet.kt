@@ -10,12 +10,14 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 
 /**
  * Drawer de conta nativo LATERAL, ancorado à direita, com gesto de
@@ -52,7 +54,7 @@ class AccountDrawerSheet(
         if (activity == null || activity.isFinishing || activity.isDestroyed) return
 
         val dlg = Dialog(activity, android.R.style.Theme_Translucent_NoTitleBar)
-        val root = FrameLayoutRoot(activity)
+        val root = FrameLayout(activity)
         dlg.setContentView(root)
 
         dlg.window?.apply {
@@ -110,9 +112,6 @@ class AccountDrawerSheet(
         }
     }
 
-    /** FrameLayout simples só para servir de raiz do Dialog. */
-    private class FrameLayoutRoot(context: Context) : android.widget.FrameLayout(context)
-
     private fun animateOpen() {
         val panel = panelView ?: return
         val scrim = scrimView ?: return
@@ -153,8 +152,6 @@ class AccountDrawerSheet(
                     lastMoveTime = event.eventTime
                     velocityPxPerMs = 0f
                     isDragging = false
-                    // Não consome ainda: deixa cliques em botões internos
-                    // funcionarem normalmente se não houver arrasto real.
                     false
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -223,7 +220,7 @@ class AccountDrawerSheet(
             currentTheme = theme
             highlightSelected(optionDark, optionLight, optionSystem, theme)
             try {
-                com.nexa.app.session.ThemePreference.save(context, theme)
+                ThemePreference.save(context, theme)
                 onThemeSelected(theme)
             } catch (e: Exception) {
                 // Nunca deixar a escolha de tema crashar o drawer.
