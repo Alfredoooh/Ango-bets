@@ -3,29 +3,41 @@ package com.nexa.app.widgets
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.graphics.SweepGradient
 import android.util.AttributeSet
 import android.view.View
 import android.view.animation.LinearInterpolator
 
 /**
- * Anel gradiente giratório (espelha o loader 14 do protótipo HTML:
- * conic-gradient(from 0deg, transparent, #fff) com máscara circular).
- * Desenhado inteiramente em Canvas, sem Material Components e sem
- * dependências externas. Cor do anel configurável (ringColor), para
- * poder usar branco sobre fundo escuro ou o azul da marca sobre claro.
+ * Anel gradiente giratório — réplica 1:1 do protótipo HTML:
  *
- * O arco NÃO é fechado em 360°: fica com uma pequena folga (SWEEP_ANGLE)
- * para que exista uma ponta real onde o strokeCap ROUND se aplica. Com
- * sweepAngle = 360f o Canvas desenha um círculo contínuo sem ponta —
- * o "corte" do gradiente transparente->sólido aparecia reto porque não
- * havia ali uma ponta de traço, só a costura do shader. Com a folga, o
- * lado mais escuro (fundo do gradiente, perto da transparência) termina
- * numa ponta arredondada de verdade, exatamente como o lado da cor cheia.
+ *   background: conic-gradient(from 0deg, transparent, var(--ring-color));
+ *   mask-image: radial-gradient(farthest-side,
+ *       transparent calc(100% - stroke - 1px),
+ *       #000 calc(100% - stroke));
+ *
+ * A abordagem anterior (drawArc com SweepGradient) desenhava um ARCO, não
+ * um DISCO mascarado — por isso o resultado nunca batia com o CSS: o CSS
+ * pinta o círculo INTEIRO com o conic-gradient e depois recorta um anel
+ * com a máscara radial (que também suaviza a borda interna em ~1px).
+ * Aqui replicamos exatamente esse pipeline:
+ *
+ *   1. Desenha um disco cheio com SweepGradient (equivalente ao conic-gradient).
+ *   2. Aplica uma máscara radial com PorterDuff.DST_IN para abrir o buraco
+ *      central, com a mesma zona de transição suave de ~1px do CSS.
+ *   3. O bitmap resultante (já um anel com ponta arredondada, gerado pelo
+ *      próprio gradiente, sem stroke cap extra) é rotacionado por frame.
+ *
+ * Cor do anel configurável via ringColor (branco sobre fundo escuro,
+ * ou o azul/cinza da marca sobre fundo claro).
  */
 class GradientRingLoader @JvmOverloads constructor(
     context: Context,
@@ -35,24 +47,18 @@ class GradientRingLoader @JvmOverloads constructor(
     var ringColor: Int = Color.WHITE
         set(value) {
             field = value
+            ringBitmap = null
             invalidate()
         }
 
-    companion object {
-        // Folga em graus deixada em aberto no anel para dar espaço à ponta
-        // arredondada. Pequena o suficiente para não parecer um "gap"
-        // visível, grande o suficiente para o cap ROUND ter onde desenhar.
-        private const val SWEEP_ANGLE = 328f
-        private const val START_ANGLE = -90f
-    }
-
+    // --ring-size: 28px / --stroke-width: 6px no protótipo original.
     private val strokeWidthPx = dp(6f)
-    private val rect = RectF()
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
+
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        isFilterBitmap = true
     }
 
+    private var ringBitmap: Bitmap? = null
     private var rotationDegrees = 0f
 
     private val animator = ValueAnimator.ofFloat(0f, 360f).apply {
@@ -69,41 +75,75 @@ class GradientRingLoader @JvmOverloads constructor(
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        val inset = strokeWidthPx / 2f
-        rect.set(inset, inset, w - inset, h - inset)
-        updateShader()
+        ringBitmap = null
     }
 
-    private fun updateShader() {
-        if (width == 0 || height == 0) return
-        val cx = width / 2f
-        val cy = height / 2f
-        // Gradiente cónico: transparente -> cor sólida, igual ao CSS
-        // conic-gradient(from 0deg, transparent, #fff). A ponta
-        // transparente coincide com o início da folga deixada no arco.
+    /**
+     * Gera o bitmap do anel uma única vez por tamanho/cor: conic-gradient
+     * completo mascarado por um radial-gradient, exatamente como o CSS.
+     */
+    private fun buildRingBitmap(): Bitmap? {
+        val size = width.coerceAtMost(height)
+        if (size <= 0) return null
+
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val cx = size / 2f
+        val cy = size / 2f
+        val radius = size / 2f
+
+        // 1) conic-gradient(from 0deg, transparent, ring-color) — disco cheio.
         val transparentRing = Color.argb(0, Color.red(ringColor), Color.green(ringColor), Color.blue(ringColor))
-        val shader = SweepGradient(cx, cy, intArrayOf(transparentRing, ringColor), floatArrayOf(0f, 1f))
-        paint.shader = shader
-        paint.strokeWidth = strokeWidthPx
+        val conicPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = SweepGradient(cx, cy, intArrayOf(transparentRing, ringColor), floatArrayOf(0f, 1f))
+        }
+        canvas.drawCircle(cx, cy, radius, conicPaint)
+
+        // 2) mask-image: radial-gradient(farthest-side,
+        //      transparent calc(100% - stroke - 1px),
+        //      #000 calc(100% - stroke))
+        // farthest-side => o raio da máscara é o próprio raio do círculo.
+        // Reproduzido aqui com DST_IN: preto = mantém pixel, transparente = apaga.
+        val innerRadius = (radius - strokeWidthPx - dp(1f)).coerceAtLeast(0f)
+        val outerRadius = (radius - strokeWidthPx).coerceAtLeast(innerRadius + 0.01f)
+        val innerStop = (innerRadius / radius).coerceIn(0f, 1f)
+        val outerStop = (outerRadius / radius).coerceIn(innerStop, 1f)
+
+        val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+            shader = RadialGradient(
+                cx, cy, radius,
+                intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, Color.BLACK),
+                floatArrayOf(0f, innerStop, outerStop),
+                Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawCircle(cx, cy, radius, maskPaint)
+
+        return bitmap
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (paint.shader == null) updateShader()
+        val bmp = ringBitmap ?: buildRingBitmap()?.also { ringBitmap = it } ?: return
+
         canvas.save()
         canvas.rotate(rotationDegrees, width / 2f, height / 2f)
-        canvas.drawArc(rect, START_ANGLE, SWEEP_ANGLE, false, paint)
+        val left = (width - bmp.width) / 2f
+        val top = (height - bmp.height) / 2f
+        canvas.drawBitmap(bmp, left, top, bitmapPaint)
         canvas.restore()
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        updateShader()
         animator.start()
     }
 
     override fun onDetachedFromWindow() {
         animator.cancel()
+        ringBitmap?.recycle()
+        ringBitmap = null
         super.onDetachedFromWindow()
     }
 }

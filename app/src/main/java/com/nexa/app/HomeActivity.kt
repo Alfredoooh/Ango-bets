@@ -55,6 +55,11 @@ class HomeActivity : AppCompatActivity() {
     private var isDarkTheme: Boolean = false
     private var runningAnimators: MutableList<ValueAnimator> = mutableListOf()
 
+    // Guarda a rota para a qual uma primeira-carga está pendente. Enquanto
+    // isto não for null, showRoute sabe que ainda não pode animar o slide
+    // de entrada — a tela nativa (loadingOverlay) é que está no comando.
+    private var pendingFirstLoadRoute: String? = null
+
     private val iosEaseOut = PathInterpolator(0.25f, 0.1f, 0.25f, 1f)
 
     // --- Ponte de permissões runtime para o WebView (getUserMedia) ---
@@ -92,6 +97,9 @@ class HomeActivity : AppCompatActivity() {
 
         restoreNavigationState(savedInstanceState)
 
+        // Aplica a cor de fundo nativa e a status bar ANTES de qualquer
+        // WebView existir — é o que garante que loadingOverlay já nasce
+        // com a cor certa, sem nenhum frame branco de "cor por defeito".
         applyNativeStatusBar(ThemePreference.resolveIsDark(this))
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -322,19 +330,28 @@ class HomeActivity : AppCompatActivity() {
     private fun getOrCreateWebView(route: String) = WebViewPool.get(
         context = this,
         route = route,
+        isDark = isDarkTheme,
         onThemeChanged = { runOnUiThread { applyNativeStatusBar(it) } },
         onExternalRoute = { r, _ -> navigateTo(r) },
         onOpenAccountDrawer = { showAccountDrawer() },
-        onFirstLoadFinished = {
-            runOnUiThread {
-                if (currentRoute == route) {
-                    loadingOverlay.visibility = View.GONE
-                }
-            }
-        },
+        onFirstLoadFinished = { finishedRoute -> runOnUiThread { handleFirstLoadFinished(finishedRoute) } },
         onPermissionRequest = { request -> handleWebPermissionRequest(request) },
         onShowFileChooser = { callback, params -> handleShowFileChooser(callback, params) }
     )
+
+    /**
+     * Verdade sobre "esta rota precisa de loader nativo" para ESTE processo
+     * vivo — nunca confiar apenas em savedInstanceState/routeStack, porque
+     * esses sobrevivem à morte do processo (o Android guarda o Bundle) mas
+     * o WebViewPool (um object comum, preso ao processo) não sobrevive.
+     * Sem esta distinção, voltar ao app depois do sistema o ter matado em
+     * background reabria a Activity já "a pensar" que currentRoute estava
+     * carregada, e o showRoute() antigo confiava nisso — resultado: ou
+     * ficava preso a meio (WebView inexistente tentando ser mostrado sem
+     * recriar) ou o overlay nativo entrava sem necessidade a esconder uma
+     * página que na cabeça do utilizador já devia só continuar a aparecer.
+     */
+    private fun routeNeedsNativeLoader(route: String): Boolean = !WebViewPool.hasWebView(route)
 
     private fun navigateTo(route: String) {
         runOnUiThread {
@@ -347,6 +364,14 @@ class HomeActivity : AppCompatActivity() {
         runningAnimators.clear()
     }
 
+    /**
+     * Navegação com o comportamento pedido: uma rota NUNCA carregada ainda
+     * entra por trás da tela nativa de loading — o WebView fica a carregar
+     * escondido, e só quando onFirstLoadFinished disparar é que a tela
+     * nativa sai e a página aparece, já pronta, com uma transição suave e
+     * rápida. Uma rota JÁ carregada (WebView real e vivo, neste processo)
+     * não tem nada para esperar, então desliza direto, sem loader nenhum.
+     */
     private fun showRoute(
         route: String,
         pushToStack: Boolean,
@@ -356,12 +381,13 @@ class HomeActivity : AppCompatActivity() {
         cancelRunningAnimations()
 
         val safeRoute = route.trim().ifEmpty { "home" }
+        val previousRoute = currentRoute
         currentRoute = safeRoute
         if (pushToStack && routeStack.lastOrNull() != safeRoute) {
             routeStack.add(safeRoute)
         }
 
-        val showLoader = !WebViewPool.isAlreadyLoaded(safeRoute)
+        val needsNativeLoader = routeNeedsNativeLoader(safeRoute)
         val webView = try {
             getOrCreateWebView(safeRoute)
         } catch (_: Exception) {
@@ -369,9 +395,36 @@ class HomeActivity : AppCompatActivity() {
         }
 
         webView.animate().cancel()
+        webView.isClickable = true
+
+        if (needsNativeLoader) {
+            // Primeira visita a esta rota: a tela nativa assume o comando.
+            // O WebView entra por baixo, sem slide, invisível ao utilizador
+            // até estar pronto — não há "branco antes de escuro" possível
+            // porque o loadingOverlay já está por cima de tudo desde já,
+            // com a cor certa (ver applyNativeStatusBar), e o WebView em si
+            // já nasce com setBackgroundColor certo (ver WebViewPool).
+            pendingFirstLoadRoute = safeRoute
+
+            container.removeAllViews()
+            webView.translationX = 0f
+            webView.alpha = 1f
+            container.addView(webView)
+
+            (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
+            dimOverlay.visibility = View.GONE
+            dimOverlay.alpha = 0f
+
+            loadingOverlay.animate().cancel()
+            loadingOverlay.alpha = 1f
+            loadingOverlay.visibility = View.VISIBLE
+            loadingOverlay.bringToFront()
+            return
+        }
+
+        pendingFirstLoadRoute = null
         webView.translationX = 0f
         webView.alpha = 1f
-        webView.isClickable = true
 
         val previousView = container.children().firstOrNull { it !== webView }
         previousView?.animate()?.cancel()
@@ -383,10 +436,11 @@ class HomeActivity : AppCompatActivity() {
             dimOverlay.visibility = View.GONE
             dimOverlay.alpha = 0f
             (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
-            loadingOverlay.visibility = if (showLoader) View.VISIBLE else View.GONE
+            hideLoadingOverlayImmediately()
             return
         }
 
+        hideLoadingOverlayImmediately()
         previousView.isClickable = false
 
         val width = container.width.toFloat().takeIf { it > 0 } ?: resources.displayMetrics.widthPixels.toFloat()
@@ -427,12 +481,36 @@ class HomeActivity : AppCompatActivity() {
                 (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
             }
         }
+    }
 
-        webView.postDelayed({
-            if (currentRoute == safeRoute) {
-                loadingOverlay.visibility = if (showLoader) View.VISIBLE else View.GONE
+    /**
+     * Chamado quando o WebView de pendingFirstLoadRoute termina a primeira
+     * carga. Se o utilizador ainda estiver nessa mesma rota (não navegou
+     * para outro lado enquanto carregava), a tela nativa de loading
+     * dá lugar suavemente ao conteúdo já pronto — um fade curto e rápido,
+     * nunca um corte seco, e nunca um frame de conteúdo incompleto.
+     */
+    private fun handleFirstLoadFinished(finishedRoute: String) {
+        if (pendingFirstLoadRoute != finishedRoute) return
+        if (currentRoute != finishedRoute) return
+        pendingFirstLoadRoute = null
+
+        loadingOverlay.animate().cancel()
+        loadingOverlay.animate()
+            .alpha(0f)
+            .setDuration(180L)
+            .setInterpolator(iosEaseOut)
+            .withEndAction {
+                loadingOverlay.visibility = View.GONE
+                loadingOverlay.alpha = 1f
             }
-        }, 250L)
+            .start()
+    }
+
+    private fun hideLoadingOverlayImmediately() {
+        loadingOverlay.animate().cancel()
+        loadingOverlay.visibility = View.GONE
+        loadingOverlay.alpha = 1f
     }
 
     private fun animateFloat(
@@ -481,6 +559,17 @@ class HomeActivity : AppCompatActivity() {
 
     private fun applyThemeSelection(theme: String) {
         runOnUiThread {
+            // Antes disto só se avisava o WebView via JS — a status bar
+            // nativa, o loader e o próprio drawer (se reaberto) ficavam
+            // presos no tema antigo até a Activity ser recriada, porque
+            // ThemePreference nunca era gravado nem applyNativeStatusBar()
+            // era chamado aqui. Agora os três lados (SharedPreferences +
+            // status bar nativa + WebView) mudam juntos, na mesma chamada.
+            ThemePreference.save(this, theme)
+
+            val resolvedIsDark = ThemePreference.resolveIsDark(this)
+            applyNativeStatusBar(resolvedIsDark)
+
             val webView = try {
                 getOrCreateWebView(currentRoute)
             } catch (_: Exception) {
@@ -510,6 +599,10 @@ class HomeActivity : AppCompatActivity() {
             window.statusBarColor = bg
             WindowCompat.setDecorFitsSystemWindows(window, true)
             WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDark
+
+            if (::loadingOverlay.isInitialized) {
+                loadingOverlay.setBackgroundColor(bg)
+            }
 
             val ringColor = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#4A4A4A")
             if (::loadingRing.isInitialized) {

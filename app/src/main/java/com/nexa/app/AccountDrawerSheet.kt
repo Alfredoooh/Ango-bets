@@ -34,6 +34,14 @@ import com.nexa.app.session.ThemePreference
  * e a flag FLAG_DIM_BEHIND é explicitamente removida, porque alguns temas
  * base do sistema aplicam um dim residual próprio por trás de Dialogs
  * mesmo com dimAmount=0f.
+ *
+ * Troca de tema: ao escolher dark/light/system aqui dentro, o callback
+ * onThemeSelected() é responsável por aplicar ThemePreference.save() +
+ * recriar a status bar nativa no HomeActivity (ver applyThemeSelection()
+ * lá). Este ficheiro só cuida da UI local — realce da opção selecionada
+ * e emissão do evento — nunca mais fica "preso" no tema com que o drawer
+ * foi aberto porque o isDark de entrada só define o ícone inicial da
+ * status bar do Dialog, e currentTheme já vem do ThemePreference real.
  */
 class AccountDrawerSheet(
     private val context: Context,
@@ -52,9 +60,18 @@ class AccountDrawerSheet(
         // ambos a disputar o mesmo scrim/translationX.
         @Volatile
         private var isAnyDrawerOpen = false
+
+        private const val OPEN_DURATION = 280L
+        private const val CLOSE_DURATION = 220L
+        private const val SCRIM_ALPHA = 0.4f
     }
 
-    private var currentTheme: String = if (isDark) "dark" else "light"
+    // Lido sempre do disco, nunca do parâmetro isDark isolado — garante que
+    // a opção realçada no accordion reflete a escolha real gravada, mesmo
+    // que o drawer tenha sido reaberto depois de o tema mudar por fora
+    // (ex.: mudou no sistema com "system" selecionado).
+    private var currentTheme: String = ThemePreference.get(context)
+
     private var dialog: Dialog? = null
     private var panelView: View? = null
     private var scrimView: View? = null
@@ -70,6 +87,8 @@ class AccountDrawerSheet(
     private var velocityPxPerMs = 0f
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val easeOut = android.view.animation.PathInterpolator(0.22f, 0.61f, 0.36f, 1f)
+    private val easeIn = android.view.animation.PathInterpolator(0.5f, 0f, 0.75f, 0.35f)
 
     fun show() {
         // Já existe um drawer aberto ou a abrir em qualquer instância —
@@ -161,18 +180,42 @@ class AccountDrawerSheet(
         }
     }
 
+    /**
+     * Entrada suave e nativa: slide + leve escala + fade, com curva de
+     * desaceleração (ease-out). O painel nasce ligeiramente mais estreito
+     * e menos opaco, chegando ao estado final com uma sensação de "settle"
+     * em vez de um corte seco a 0/1.
+     */
     private fun animateOpen() {
         val panel = panelView ?: return
         val scrim = scrimView ?: return
+
         panel.translationX = panelWidthPx
+        panel.alpha = 0.85f
+        panel.scaleX = 0.96f
+        panel.scaleY = 1f
+        panel.pivotX = panelWidthPx
+
         panel.animate()
             .translationX(0f)
-            .setDuration(260)
-            .setInterpolator(android.view.animation.PathInterpolator(0.25f, 0.1f, 0.25f, 1f))
+            .alpha(1f)
+            .scaleX(1f)
+            .setDuration(OPEN_DURATION)
+            .setInterpolator(easeOut)
             .start()
-        scrim.animate().alpha(0.4f).setDuration(260).start()
+
+        scrim.alpha = 0f
+        scrim.animate()
+            .alpha(SCRIM_ALPHA)
+            .setDuration(OPEN_DURATION)
+            .setInterpolator(android.view.animation.LinearInterpolator())
+            .start()
     }
 
+    /**
+     * Saída simétrica ao gesto de entrada: sai com ease-in (acelera para
+     * fora), leve escala para dentro e fade — nunca um "salto" abrupto.
+     */
     private fun animateClose() {
         // Evita reentrância: se já estiver a fechar (ex: scrim tocado
         // duas vezes seguidas), não reinicia a animação de saída.
@@ -181,13 +224,22 @@ class AccountDrawerSheet(
 
         val panel = panelView ?: run { dialog?.dismiss(); return }
         val scrim = scrimView ?: run { dialog?.dismiss(); return }
+
+        panel.pivotX = panelWidthPx
         panel.animate()
             .translationX(panelWidthPx)
-            .setDuration(220)
-            .setInterpolator(android.view.animation.PathInterpolator(0.25f, 0.1f, 0.25f, 1f))
+            .alpha(0.85f)
+            .scaleX(0.96f)
+            .setDuration(CLOSE_DURATION)
+            .setInterpolator(easeIn)
             .withEndAction { dialog?.dismiss() }
             .start()
-        scrim.animate().alpha(0f).setDuration(220).start()
+
+        scrim.animate()
+            .alpha(0f)
+            .setDuration(CLOSE_DURATION)
+            .setInterpolator(android.view.animation.LinearInterpolator())
+            .start()
     }
 
     private fun bindDragToClose(panel: View) {
@@ -212,7 +264,9 @@ class AccountDrawerSheet(
                         val newTranslation = (downTranslationX + deltaX).coerceAtLeast(0f)
                         view.translationX = newTranslation
                         val progress = (newTranslation / panelWidthPx).coerceIn(0f, 1f)
-                        scrimView?.alpha = 0.4f * (1f - progress)
+                        scrimView?.alpha = SCRIM_ALPHA * (1f - progress)
+                        view.alpha = 1f - (progress * 0.15f)
+                        view.scaleX = 1f - (progress * 0.04f)
 
                         val dt = (event.eventTime - lastMoveTime).coerceAtLeast(1L)
                         velocityPxPerMs = (event.rawX - lastMoveX) / dt
@@ -233,10 +287,12 @@ class AccountDrawerSheet(
                         } else {
                             view.animate()
                                 .translationX(0f)
+                                .alpha(1f)
+                                .scaleX(1f)
                                 .setDuration(200)
-                                .setInterpolator(android.view.animation.PathInterpolator(0.25f, 0.1f, 0.25f, 1f))
+                                .setInterpolator(easeOut)
                                 .start()
-                            scrimView?.animate()?.alpha(0.4f)?.setDuration(200)?.start()
+                            scrimView?.animate()?.alpha(SCRIM_ALPHA)?.setDuration(200)?.start()
                         }
                         true
                     } else {
@@ -277,10 +333,14 @@ class AccountDrawerSheet(
         val optionSystem = view.findViewById<TextView>(R.id.themeOptionSystem)
 
         fun selectTheme(theme: String) {
+            if (currentTheme == theme) return
             currentTheme = theme
             highlightSelected(optionDark, optionLight, optionSystem, theme)
             try {
-                ThemePreference.save(context, theme)
+                // onThemeSelected é o único ponto de verdade: grava a
+                // preferência E repinta a status bar/loader nativos no
+                // HomeActivity, na MESMA chamada — é o que faltava antes,
+                // e é o motivo de a troca nunca "acontecer junto".
                 onThemeSelected(theme)
             } catch (e: Exception) {
                 // Nunca deixar a escolha de tema crashar o drawer.
