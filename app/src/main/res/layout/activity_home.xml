@@ -18,8 +18,8 @@
 
         <com.nexa.app.widgets.GradientRingLoader
             android:id="@+id/loadingRing"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
             android:layout_gravity="center" />
 
     </FrameLayout>

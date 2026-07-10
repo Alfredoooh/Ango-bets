@@ -29,7 +29,7 @@ class GradientRingLoader @JvmOverloads constructor(
             invalidate()
         }
 
-    private val strokeWidthPx = dp(4f)
+    private val strokeWidthPx = dp(6f)
     private val rect = RectF()
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE

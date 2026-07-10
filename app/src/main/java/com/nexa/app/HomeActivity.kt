@@ -119,7 +119,6 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         cancelRunningAnimations()
-        WebViewPool.clearAll()
         super.onDestroy()
     }
 
@@ -325,7 +324,7 @@ class HomeActivity : AppCompatActivity() {
             WindowCompat.setDecorFitsSystemWindows(window, true)
             WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDark
 
-            val ringColor = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#2F7BF6")
+            val ringColor = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#4A4A4A")
             if (::loadingRing.isInitialized) {
                 loadingRing.ringColor = ringColor
             }

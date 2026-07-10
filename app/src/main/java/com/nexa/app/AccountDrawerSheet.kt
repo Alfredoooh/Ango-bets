@@ -22,11 +22,11 @@ import com.nexa.app.session.ThemePreference
 
 /**
  * Drawer de conta nativo LATERAL, ancorado à direita, com gesto de
- * "arrastar para fechar". A janela do Dialog é configurada para desenhar
- * por trás da status bar (edge-to-edge) e a status bar fica transparente
- * enquanto o drawer está aberto — assim o drawer se estende visualmente
- * por trás da status bar (como pedido), em vez da barra ficar por cima
- * cortando o topo do painel.
+ * "arrastar para fechar". A janela do Dialog usa FLAG_LAYOUT_NO_LIMITS e
+ * decor edge-to-edge com status bar e navigation bar transparentes, para
+ * que o painel se desenhe fisicamente por cima de toda a tela — incluindo
+ * a status bar — sem depender de pintar a status bar da Activity por
+ * baixo (essa nunca é tocada).
  */
 class AccountDrawerSheet(
     private val context: Context,
@@ -50,8 +50,6 @@ class AccountDrawerSheet(
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
-    private var originalStatusBarColor: Int = 0
-
     fun show() {
         val activity = context as? android.app.Activity
         if (activity == null || activity.isFinishing || activity.isDestroyed) return
@@ -64,22 +62,16 @@ class AccountDrawerSheet(
             setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
             setGravity(Gravity.END)
             setBackgroundDrawableResource(android.R.color.transparent)
+            addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
             attributes = attributes?.apply {
                 dimAmount = 0f
                 flags = flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
             }
             WindowCompat.setDecorFitsSystemWindows(this, false)
+            statusBarColor = android.graphics.Color.TRANSPARENT
+            navigationBarColor = android.graphics.Color.TRANSPARENT
+            WindowCompat.getInsetsController(this, decorView).isAppearanceLightStatusBars = !isDark
         }
-
-        originalStatusBarColor = activity.window.statusBarColor
-        val drawerStatusBarColor = if (isDark) {
-            android.graphics.Color.parseColor("#121212")
-        } else {
-            android.graphics.Color.WHITE
-        }
-        activity.window.statusBarColor = drawerStatusBarColor
-        dlg.window?.statusBarColor = drawerStatusBarColor
-        WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars = !isDark
 
         val scrim = View(activity).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
@@ -111,12 +103,7 @@ class AccountDrawerSheet(
             bindDragToClose(panel)
         } catch (e: Exception) {
             Toast.makeText(activity, "Erro ao abrir o menu", Toast.LENGTH_SHORT).show()
-            restoreStatusBar(activity)
             return
-        }
-
-        dlg.setOnDismissListener {
-            restoreStatusBar(activity)
         }
 
         dialog = dlg
@@ -127,14 +114,7 @@ class AccountDrawerSheet(
                 animateOpen()
             }
         } catch (e: WindowManager.BadTokenException) {
-            restoreStatusBar(activity)
-        }
-    }
-
-    private fun restoreStatusBar(activity: android.app.Activity) {
-        if (!activity.isFinishing && !activity.isDestroyed) {
-            activity.window.statusBarColor = originalStatusBarColor
-            WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars = !isDark
+            // Diálogo não pôde ser mostrado (activity finalizando); nada a reverter.
         }
     }
 

@@ -134,8 +134,8 @@
 
                 <com.nexa.app.widgets.GradientRingLoader
                     android:id="@+id/registerProgress"
-                    android:layout_width="22dp"
-                    android:layout_height="22dp"
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
                     android:layout_gravity="center"
                     android:visibility="gone" />
 
