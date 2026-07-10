@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout
+<FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/loginRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
-    android:background="?attr/colorSurface">
+    android:background="@color/app_background">
 
     <ScrollView
         android:layout_width="match_parent"
@@ -23,7 +22,7 @@
             <ImageView
                 android:layout_width="64dp"
                 android:layout_height="64dp"
-                android:src="@mipmap/ic_launcher"
+                android:src="@drawable/logo"
                 android:contentDescription="@string/app_name" />
 
             <TextView
@@ -31,67 +30,92 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
                 android:text="@string/login_title"
-                android:textAppearance="?attr/textAppearanceHeadlineMedium" />
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:textColor="@color/drawer_text" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="@string/login_subtitle"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textSize="14sp"
                 android:textColor="@color/text_secondary" />
 
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/emailInputLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
-                android:hint="@string/hint_email">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/emailEditText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textEmailAddress"
-                    android:maxLines="1" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/passwordInputLayout"
-                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                app:endIconMode="password_toggle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:hint="@string/hint_password">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/passwordEditText"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:inputType="textPassword"
-                    android:maxLines="1" />
-
-            </com.google.android.material.textfield.TextInputLayout>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/loginButton"
-                style="@style/Widget.Material3.Button"
+            <EditText
+                android:id="@+id/emailEditText"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:layout_marginTop="28dp"
-                android:text="@string/action_login"
-                android:backgroundTint="@color/primary" />
+                android:layout_marginTop="32dp"
+                android:background="@drawable/bg_input_pill"
+                android:paddingHorizontal="20dp"
+                android:hint="@string/hint_email"
+                android:textColorHint="@color/text_secondary"
+                android:textColor="@color/drawer_text"
+                android:inputType="textEmailAddress"
+                android:maxLines="1"
+                android:imeOptions="actionNext" />
 
-            <com.google.android.material.progressindicator.CircularProgressIndicator
-                android:id="@+id/loginProgress"
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:layout_marginTop="-38dp"
-                android:indeterminate="true"
+            <TextView
+                android:id="@+id/emailError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:layout_marginStart="18dp"
+                android:textColor="@color/error_red"
+                android:textSize="12sp"
                 android:visibility="gone" />
+
+            <EditText
+                android:id="@+id/passwordEditText"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_input_pill"
+                android:paddingHorizontal="20dp"
+                android:hint="@string/hint_password"
+                android:textColorHint="@color/text_secondary"
+                android:textColor="@color/drawer_text"
+                android:inputType="textPassword"
+                android:maxLines="1"
+                android:imeOptions="actionDone" />
+
+            <TextView
+                android:id="@+id/passwordError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:layout_marginStart="18dp"
+                android:textColor="@color/error_red"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="28dp">
+
+                <Button
+                    android:id="@+id/loginButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_btn_primary"
+                    android:text="@string/action_login"
+                    android:textColor="@color/white"
+                    android:textAllCaps="false"
+                    android:textStyle="bold"
+                    android:textSize="16sp"
+                    android:elevation="0dp"
+                    android:stateListAnimator="@null" />
+
+                <com.nexa.app.widgets.GradientRingLoader
+                    android:id="@+id/loginProgress"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:layout_gravity="center"
+                    android:visibility="gone" />
+
+            </FrameLayout>
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -125,4 +149,4 @@
 
     </ScrollView>
 
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
+</FrameLayout>

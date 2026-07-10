@@ -15,11 +15,11 @@
         android:background="@color/app_background"
         android:visibility="gone">
 
-        <ProgressBar
+        <com.nexa.app.widgets.GradientRingLoader
+            android:id="@+id/loadingRing"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:layout_gravity="center"
-            android:indeterminateTint="@color/primary" />
+            android:layout_gravity="center" />
 
     </FrameLayout>
 
