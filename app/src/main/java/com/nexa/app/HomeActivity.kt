@@ -60,8 +60,6 @@ class HomeActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        val containerIndex = rootLayout.indexOfChild(container)
-        rootLayout.addView(dimOverlay, containerIndex + 1)
 
         restoreNavigationState(savedInstanceState)
 
@@ -144,7 +142,7 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun currentWebView(): WebView? = container.getChildAt(0) as? WebView
+    private fun currentWebView(): WebView? = container.getChildAt(container.childCount - 1) as? WebView
 
     private fun getOrCreateWebView(route: String) = WebViewPool.get(
         context = this,
@@ -197,7 +195,7 @@ class HomeActivity : AppCompatActivity() {
         webView.translationX = 0f
         webView.alpha = 1f
 
-        val previousView = container.getChildAt(0)?.takeIf { it !== webView }
+        val previousView = container.children().firstOrNull { it !== webView }
         previousView?.animate()?.cancel()
 
         if (!animate || previousView == null) {
@@ -206,15 +204,21 @@ class HomeActivity : AppCompatActivity() {
             container.addView(webView)
             dimOverlay.visibility = View.GONE
             dimOverlay.alpha = 0f
+            (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
             loadingOverlay.visibility = if (showLoader) View.VISIBLE else View.GONE
             return
         }
 
         val width = container.width.toFloat().takeIf { it > 0 } ?: resources.displayMetrics.widthPixels.toFloat()
         val parallaxDistance = width * 0.28f
-        val overlayAlpha = 0.16f
+        val overlayAlpha = 0.06f
 
+        // O dim entra ENTRE a página antiga (por baixo) e a página nova (por cima),
+        // para escurecer só quem está a sair — nunca a página que está a assumir a tela.
         (webView.parent as? ViewGroup)?.removeView(webView)
+        (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
+        val previousIndex = container.indexOfChild(previousView)
+        container.addView(dimOverlay, previousIndex + 1)
         container.addView(webView)
         dimOverlay.visibility = View.VISIBLE
         dimOverlay.alpha = 0f
@@ -230,6 +234,7 @@ class HomeActivity : AppCompatActivity() {
             animateFloat(dimOverlay, "alpha", overlayAlpha, 0f) {
                 dimOverlay.visibility = View.GONE
                 dimOverlay.alpha = 0f
+                (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
             }
         } else {
             webView.translationX = width
@@ -239,6 +244,7 @@ class HomeActivity : AppCompatActivity() {
             animateFloat(dimOverlay, "alpha", 0f, overlayAlpha) {
                 dimOverlay.visibility = View.GONE
                 dimOverlay.alpha = 0f
+                (dimOverlay.parent as? ViewGroup)?.removeView(dimOverlay)
             }
         }
 
@@ -286,6 +292,7 @@ class HomeActivity : AppCompatActivity() {
             AccountDrawerSheet(
                 context = this,
                 isDark = isDarkTheme,
+                onOpenProfile = { navigateTo("profile") },
                 onThemeSelected = { theme -> applyThemeSelection(theme) },
                 onLogoutConfirmed = { performLogout() }
             ).show()
@@ -329,5 +336,9 @@ class HomeActivity : AppCompatActivity() {
                 loadingRing.ringColor = ringColor
             }
         }
+    }
+
+    private fun ViewGroup.children(): List<View> {
+        return (0 until childCount).map { getChildAt(it) }
     }
 }
