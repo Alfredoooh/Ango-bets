@@ -39,7 +39,7 @@ class WebPageActivity : AppCompatActivity() {
             currentRoute = currentRoute,
             onThemeChanged = { /* não há chrome nativo aqui para recolorir */ },
             onExternalRoute = { route, _ ->
-                RouteMap.openRoute(this, route)
+                RouteMap.ensureHomeActivity(this)
             }
         )
 
@@ -50,7 +50,6 @@ class WebPageActivity : AppCompatActivity() {
                 } else {
                     isEnabled = false
                     finish()
-                    RouteMap.applyFinishTransition(this@WebPageActivity)
                 }
             }
         })
