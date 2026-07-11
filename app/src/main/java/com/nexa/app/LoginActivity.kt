@@ -12,6 +12,7 @@ import com.nexa.app.api.LoginRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
 import com.nexa.app.widgets.BottomSnackbar
+import com.nexa.app.widgets.GradientRingLoader
 import com.nexa.app.widgets.NetworkStatusMonitor
 import kotlinx.coroutines.launch
 
@@ -21,9 +22,9 @@ import kotlinx.coroutines.launch
  * token via SessionManager, e segue para a HomeActivity — que injeta esse
  * token no WebView.
  *
- * Sem spinner: durante o pedido o botão fica apenas desativado com o texto
- * "A entrar...". Erros e estado de rede aparecem numa barra inferior de
- * largura total (BottomSnackbar), estilo YouTube.
+ * Durante o pedido, o GradientRingLoader aparece sobre o botão (que fica
+ * sem texto e desativado). Erros e estado de rede aparecem numa barra
+ * inferior de largura total (BottomSnackbar), estilo YouTube.
  */
 class LoginActivity : AppCompatActivity() {
 
@@ -32,6 +33,7 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var emailError: android.widget.TextView
     private lateinit var passwordError: android.widget.TextView
     private lateinit var loginButton: android.widget.Button
+    private lateinit var progress: GradientRingLoader
     private lateinit var registerLink: android.widget.TextView
     private lateinit var root: View
 
@@ -49,6 +51,7 @@ class LoginActivity : AppCompatActivity() {
         emailError = findViewById(R.id.emailError)
         passwordError = findViewById(R.id.passwordError)
         loginButton = findViewById(R.id.loginButton)
+        progress = findViewById(R.id.loginProgress)
         registerLink = findViewById(R.id.registerLink)
 
         snackbar = BottomSnackbar.attach(findViewById(R.id.snackbarContainer))
@@ -151,8 +154,9 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun setLoading(loading: Boolean) {
+        progress.visibility = if (loading) View.VISIBLE else View.GONE
         loginButton.isEnabled = !loading
-        loginButton.text = if (loading) getString(R.string.action_login_loading) else getString(R.string.action_login)
+        loginButton.text = if (loading) "" else getString(R.string.action_login)
     }
 
     private fun showError(message: String) {

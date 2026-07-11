@@ -26,8 +26,9 @@ import com.nexa.app.session.SessionManager
  * Toda a navegação interna do host da app (mobilewebin.onrender.com) fica
  * por conta do próprio WebView — não há mais interceção de rota nem troca
  * de Activity nativa: shouldOverrideUrlLoading só intercepta links que
- * saiam do host da app, abrindo-os no browser externo do sistema, tal como
- * qualquer WebView de produção deve fazer.
+ * saiam do host da app, abrindo-os numa Chrome Custom Tab (ExternalLinkHandler),
+ * exatamente como o ChatGPT faz: sem sair da app, mas com o motor e a
+ * sessão do browser do sistema.
  *
  * onThemeChanged é chamado pela ponte AndroidTheme sempre que o WebApp
  * mudar de tema, para a Activity poder inverter a aparência da status bar.
@@ -82,15 +83,10 @@ fun WebView.setupNexaWebView(
                 return false
             }
 
-            // Fora do host da app (ex.: links externos): abre no browser
-            // do sistema em vez de navegar dentro do WebView.
-            return try {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
-                context.startActivity(intent)
-                true
-            } catch (e: Exception) {
-                false
-            }
+            // Fora do host da app: abre numa Chrome Custom Tab, mantendo o
+            // utilizador "dentro da app" visualmente, tal como o ChatGPT.
+            ExternalLinkHandler.open(context, uri)
+            return true
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
@@ -122,10 +118,6 @@ fun WebView.setupNexaWebView(
 
     webChromeClient = object : WebChromeClient() {
 
-        // Disparado quando a página chama getUserMedia() (câmera/microfone
-        // via JS, ex: gravação de áudio do App.svelte). Sem isto, o
-        // WebView nega automaticamente qualquer pedido, e o getUserMedia
-        // falha em silêncio no lado do JS.
         override fun onPermissionRequest(request: PermissionRequest) {
             if (onPermissionRequest != null) {
                 onPermissionRequest(request)
@@ -134,10 +126,6 @@ fun WebView.setupNexaWebView(
             }
         }
 
-        // Disparado quando a página abre um <input type="file">, incluindo
-        // capture="camera" ou capture="user" para foto direta. Sem isto,
-        // clicar no input não abre nada — é o mesmo tipo de silêncio que
-        // afetava o pedido de câmera acima.
         override fun onShowFileChooser(
             webView: WebView,
             filePathCallback: ValueCallback<Array<android.net.Uri>>,

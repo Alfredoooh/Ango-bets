@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/anim/slide_out_right.xml
+     Ecrã de CIMA a sair pela direita — companheiro de slide_in_left,
+     imita o pop do iOS onde o ecrã atual desliza para fora. -->
 <set xmlns:android="http://schemas.android.com/apk/res/android">
     <translate
         android:fromXDelta="0%p"
         android:toXDelta="100%p"
-        android:duration="300" />
-    <alpha
-        android:fromAlpha="1.0"
-        android:toAlpha="0.0"
-        android:duration="300" />
+        android:duration="300"
+        android:interpolator="@android:interpolator/fast_out_slow_in" />
 </set>

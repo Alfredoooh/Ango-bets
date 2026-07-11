@@ -3,31 +3,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Câmera e microfone: necessários para getUserMedia() dentro do
-         WebView (gravação de áudio já existe em App.svelte, e captura de
-         foto via <input type="file" capture> pode ser usada em qualquer
-         página). android:required="false" na feature de câmera evita que
-         a Play Store bloqueie instalação em devices sem câmera. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
-    <!-- Armazenamento: Android 13+ (API 33) usa permissões granulares por
-         tipo de mídia; Android 12 e abaixo usa READ_EXTERNAL_STORAGE.
-         maxSdkVersion garante que o sistema não pede READ_EXTERNAL_STORAGE
-         em devices novos, onde ela é substituída pelas granulares. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
-
-    <!-- Necessário só até API 28 para apps que escrevem em storage público;
-         mantido por segurança para uploads em devices muito antigos que
-         ainda usem caminho de escrita legado no seletor de ficheiros. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
@@ -43,10 +30,6 @@
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true">
 
-        <!-- FileProvider necessário para o intent de captura de câmera
-             (onShowFileChooser) entregar o URI de destino da foto ao app
-             de câmera do sistema em Android 7+ (Nougat exige content://,
-             não mais file://). -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

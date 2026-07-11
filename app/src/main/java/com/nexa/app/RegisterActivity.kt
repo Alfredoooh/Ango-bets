@@ -12,6 +12,7 @@ import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
 import com.nexa.app.widgets.BottomSnackbar
+import com.nexa.app.widgets.GradientRingLoader
 import com.nexa.app.widgets.NetworkStatusMonitor
 import kotlinx.coroutines.launch
 
@@ -20,12 +21,12 @@ import kotlinx.coroutines.launch
  * os campos do formulário web (src/auth/RegisterPage.svelte): Nome, Email,
  * Password.
  *
- * Sem spinner: durante o pedido o botão fica apenas desativado com o texto
- * "A criar conta...". Erros e estado de rede aparecem numa barra inferior
- * de largura total (BottomSnackbar), estilo YouTube.
+ * Tem uma seta de voltar fixa no topo (estilo iOS/Material) para retroceder
+ * sempre ao ecrã de Login, além do próprio gesto/botão físico do sistema.
  */
 class RegisterActivity : AppCompatActivity() {
 
+    private lateinit var backButton: android.widget.ImageButton
     private lateinit var nameInput: android.widget.EditText
     private lateinit var emailInput: android.widget.EditText
     private lateinit var passwordInput: android.widget.EditText
@@ -33,6 +34,7 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var emailError: android.widget.TextView
     private lateinit var passwordError: android.widget.TextView
     private lateinit var registerButton: android.widget.Button
+    private lateinit var progress: GradientRingLoader
     private lateinit var loginLink: android.widget.TextView
     private lateinit var root: View
 
@@ -45,6 +47,7 @@ class RegisterActivity : AppCompatActivity() {
         setContentView(R.layout.activity_register)
 
         root = findViewById(R.id.registerRoot)
+        backButton = findViewById(R.id.backButton)
         nameInput = findViewById(R.id.nameEditText)
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
@@ -52,6 +55,7 @@ class RegisterActivity : AppCompatActivity() {
         emailError = findViewById(R.id.emailError)
         passwordError = findViewById(R.id.passwordError)
         registerButton = findViewById(R.id.registerButton)
+        progress = findViewById(R.id.registerProgress)
         loginLink = findViewById(R.id.loginLink)
 
         snackbar = BottomSnackbar.attach(findViewById(R.id.snackbarContainer))
@@ -74,12 +78,11 @@ class RegisterActivity : AppCompatActivity() {
         )
 
         registerButton.setOnClickListener { attemptRegister() }
-        loginLink.setOnClickListener {
-            finish()
-            overridePendingTransition(
-                com.nexa.app.R.anim.slide_in_left,
-                com.nexa.app.R.anim.slide_out_right
-            )
+        backButton.setOnClickListener { goBackToLogin() }
+        loginLink.setOnClickListener { goBackToLogin() }
+
+        onBackPressedDispatcher.addCallback(this) {
+            goBackToLogin()
         }
     }
 
@@ -91,6 +94,14 @@ class RegisterActivity : AppCompatActivity() {
     override fun onStop() {
         networkMonitor.stop()
         super.onStop()
+    }
+
+    private fun goBackToLogin() {
+        finish()
+        overridePendingTransition(
+            com.nexa.app.R.anim.slide_in_left,
+            com.nexa.app.R.anim.slide_out_right
+        )
     }
 
     private fun attemptRegister() {
@@ -161,8 +172,9 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun setLoading(loading: Boolean) {
+        progress.visibility = if (loading) View.VISIBLE else View.GONE
         registerButton.isEnabled = !loading
-        registerButton.text = if (loading) getString(R.string.action_register_loading) else getString(R.string.action_register)
+        registerButton.text = if (loading) "" else getString(R.string.action_register)
     }
 
     private fun showError(message: String) {

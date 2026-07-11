@@ -9,19 +9,18 @@
     <string name="login_subtitle">Acede à tua conta nexa</string>
     <string name="login_no_account">Não tens conta?</string>
     <string name="action_login">Entrar</string>
-    <string name="action_login_loading">A entrar…</string>
     
     <string name="register_title">Criar conta</string>
     <string name="register_subtitle">Regista-te para começar</string>
     <string name="register_has_account">Já tens conta?</string>
     <string name="action_register">Criar conta</string>
-    <string name="action_register_loading">A criar conta…</string>
     
     <string name="hint_name">Nome</string>
     <string name="hint_email">Email</string>
     <string name="hint_password">Password</string>
     
     <string name="action_open_menu">Abrir menu</string>
+    <string name="action_back">Voltar</string>
     
     <string name="nav_home">Início</string>
     <string name="nav_ai">IA</string>
