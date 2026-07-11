@@ -4,6 +4,7 @@ package com.nexa.app
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import androidx.activity.addCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.nexa.app.api.ApiClient
