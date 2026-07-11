@@ -1,36 +1,56 @@
+// app/src/main/java/com/nexa/app/WebPageActivity.kt
 package com.nexa.app
 
 import android.os.Bundle
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.webview.setupNexaWebView
 
+/**
+ * Activity auxiliar para abrir uma URL avulsa fora do fluxo principal.
+ * Segue exatamente o mesmo comportamento de HomeActivity: sem drawer, sem
+ * loader nativo, status bar transparente com aparência invertida pelo tema
+ * do WebApp, e botão de voltar delegado ao histórico do WebView.
+ */
 class WebPageActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-    private lateinit var currentRoute: String
 
     companion object {
         const val EXTRA_URL = "extra_url"
-        const val EXTRA_ROUTE = "extra_route"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_web_page)
 
-        webView = findViewById(R.id.webView)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
-        val url = intent.getStringExtra(EXTRA_URL) ?: RouteMap.pageUrl("home")
-        currentRoute = intent.getStringExtra(EXTRA_ROUTE) ?: RouteMap.routeSegment(android.net.Uri.parse(url).path ?: "/")
+        webView = WebView(this).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        setContentView(webView)
+
+        val url = intent.getStringExtra(EXTRA_URL) ?: RouteMap.BASE_URL
 
         webView.setupNexaWebView(
             context = this,
-            currentRoute = currentRoute,
-            onThemeChanged = { },
-            onExternalRoute = { route, _ -> RouteMap.ensureHomeActivity(this, route) }
+            onThemeChanged = { isDark ->
+                runOnUiThread {
+                    WindowInsetsControllerCompat(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = !isDark
+                        isAppearanceLightNavigationBars = !isDark
+                    }
+                }
+            }
         )
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -39,7 +59,7 @@ class WebPageActivity : AppCompatActivity() {
                     webView.goBack()
                 } else {
                     isEnabled = false
-                    finish()
+                    onBackPressedDispatcher.onBackPressed()
                 }
             }
         })

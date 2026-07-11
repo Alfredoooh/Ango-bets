@@ -17,16 +17,20 @@ import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
 
 /**
- * Configuração partilhada do WebView, usada pelo WebViewPool para cada
- * rota. O site (src/shared/auth-guard.js) verifica sessão via
- * localStorage.getItem('nexa_user'), não via cookie — por isso a sessão
- * nativa é injetada como localStorage, com o mesmo shape que
- * AuthApiService.login()/register() gravam no browser (token, id, name,
+ * Configuração do WebView único da app. O site (src/shared/auth-guard.js)
+ * verifica sessão via localStorage.getItem('nexa_user'), não via cookie —
+ * por isso a sessão nativa é injetada como localStorage, com o mesmo shape
+ * que AuthApiService.login()/register() gravam no browser (token, id, name,
  * email, credits).
  *
- * onFirstPageFinished é chamado uma única vez, na primeira vez que esta
- * instância de WebView termina de carregar — sinal para o WebViewPool
- * marcar a rota como já carregada e esconder o loader nativo.
+ * Toda a navegação interna do host da app (mobilewebin.onrender.com) fica
+ * por conta do próprio WebView — não há mais interceção de rota nem troca
+ * de Activity nativa: shouldOverrideUrlLoading só intercepta links que
+ * saiam do host da app, abrindo-os no browser externo do sistema, tal como
+ * qualquer WebView de produção deve fazer.
+ *
+ * onThemeChanged é chamado pela ponte AndroidTheme sempre que o WebApp
+ * mudar de tema, para a Activity poder inverter a aparência da status bar.
  *
  * onPermissionRequest e onShowFileChooser são repassados para fora
  * (HomeActivity) porque pedir permissão runtime e abrir o seletor de
@@ -36,11 +40,7 @@ import com.nexa.app.session.SessionManager
 @SuppressLint("SetJavaScriptEnabled")
 fun WebView.setupNexaWebView(
     context: Context,
-    currentRoute: String,
     onThemeChanged: (isDark: Boolean) -> Unit,
-    onExternalRoute: (route: String, url: String) -> Unit,
-    onOpenAccountDrawer: (() -> Unit)? = null,
-    onFirstPageFinished: (() -> Unit)? = null,
     onPermissionRequest: ((PermissionRequest) -> Unit)? = null,
     onShowFileChooser: ((ValueCallback<Array<android.net.Uri>>, android.webkit.WebChromeClient.FileChooserParams) -> Boolean)? = null
 ) {
@@ -61,12 +61,6 @@ fun WebView.setupNexaWebView(
 
     addJavascriptInterface(ThemeBridge(onThemeChanged), "AndroidTheme")
 
-    if (onOpenAccountDrawer != null) {
-        addJavascriptInterface(AccountDrawerBridge(onOpenAccountDrawer), "AndroidDrawer")
-    }
-
-    var firstFinishReported = false
-
     webViewClient = object : WebViewClient() {
 
         override fun shouldOverrideUrlLoading(
@@ -75,17 +69,22 @@ fun WebView.setupNexaWebView(
         ): Boolean {
             val uri = request.url
 
-            if (uri.host != RouteMap.HOST) {
+            // Dentro do host da própria app: deixa o WebView navegar
+            // normalmente, sem qualquer interceção nativa — é o WebApp
+            // (Svelte) que decide tudo sobre as suas próprias rotas.
+            if (uri.host == RouteMap.HOST) {
                 return false
             }
 
-            val route = RouteMap.routeSegment(uri.path ?: "/")
-            if (route != currentRoute) {
-                onExternalRoute(route, uri.toString())
-                return true
+            // Fora do host da app (ex.: links externos): abre no browser
+            // do sistema em vez de navegar dentro do WebView.
+            return try {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+                context.startActivity(intent)
+                true
+            } catch (e: Exception) {
+                false
             }
-
-            return false
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
@@ -96,10 +95,6 @@ fun WebView.setupNexaWebView(
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
             injectSession(view, context)
-            if (!firstFinishReported) {
-                firstFinishReported = true
-                onFirstPageFinished?.invoke()
-            }
         }
 
         override fun onReceivedError(
@@ -108,10 +103,6 @@ fun WebView.setupNexaWebView(
             error: WebResourceError
         ) {
             super.onReceivedError(view, request, error)
-            if (!firstFinishReported) {
-                firstFinishReported = true
-                onFirstPageFinished?.invoke()
-            }
         }
 
         override fun onReceivedSslError(
