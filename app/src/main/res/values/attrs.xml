@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/values/attrs.xml -->
+<resources>
+    <!-- Tema local aplicado a cada EditText de autenticação para anular
+         por completo o comportamento visual do Material3: sem underline
+         de foco, sem cor de destaque M3, sem ripple/highlight herdado do
+         tema da Activity. O input passa a ser só a bg_input_pill, ponto. -->
+    <style name="PlainAuthInput" parent="Widget.AppCompat.EditText">
+        <item name="android:background">@drawable/bg_input_pill</item>
+        <item name="colorControlNormal">@android:color/transparent</item>
+        <item name="colorControlActivated">@android:color/transparent</item>
+        <item name="colorControlHighlight">@android:color/transparent</item>
+        <item name="android:textCursorDrawable">@null</item>
+    </style>
+</resources>

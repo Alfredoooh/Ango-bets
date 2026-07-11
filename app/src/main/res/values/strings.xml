@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/values/strings.xml -->
 <resources>
     <string name="app_name">nexa</string>
     <string name="notification_channel_name">nexa</string>
@@ -8,11 +9,13 @@
     <string name="login_subtitle">Acede à tua conta nexa</string>
     <string name="login_no_account">Não tens conta?</string>
     <string name="action_login">Entrar</string>
+    <string name="action_login_loading">A entrar…</string>
     
     <string name="register_title">Criar conta</string>
     <string name="register_subtitle">Regista-te para começar</string>
     <string name="register_has_account">Já tens conta?</string>
     <string name="action_register">Criar conta</string>
+    <string name="action_register_loading">A criar conta…</string>
     
     <string name="hint_name">Nome</string>
     <string name="hint_email">Email</string>
@@ -50,4 +53,7 @@
     
     <string name="permission_camera_mic_denied">Permissão de câmara/microfone negada</string>
     <string name="file_chooser_title">Escolher ficheiro</string>
+    
+    <string name="network_offline">Sem ligação à internet</string>
+    <string name="network_online">Ligação restabelecida</string>
 </resources>

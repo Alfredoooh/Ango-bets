@@ -37,15 +37,14 @@ workflows:
       - name: Install Pillow
         script: pip3 install Pillow --quiet
 
-      - name: Process launcher and splash icons
+      - name: Process launcher icon
         script: |
           python3 << 'PYEOF'
-          import os, shutil
+          import os
           from PIL import Image, ImageDraw
           CM  = os.environ["CM_BUILD_DIR"]
           RES = os.path.join(CM, "app/src/main/res")
           LAUNCHER = os.path.join(CM, "ic_launcher.png")
-          SPLASH   = os.path.join(CM, "splash_icon.png")
 
           if not os.path.exists(LAUNCHER):
               raise FileNotFoundError("ic_launcher.png nao encontrado na raiz do repo!")
@@ -86,19 +85,7 @@ workflows:
               canvas.paste(fg_img, (off, off), fg_img)
               save(canvas, os.path.join(RES, d, "ic_launcher_foreground.png"))
 
-          if os.path.exists(SPLASH):
-              dest = os.path.join(RES, "drawable", "splash_icon.png")
-              os.makedirs(os.path.dirname(dest), exist_ok=True)
-              shutil.copy2(SPLASH, dest)
-              print(f"  -> {dest}")
-          else:
-              print("AVISO: splash_icon.png nao encontrado, a usar placeholder...")
-              placeholder = Image.new("RGBA", (192, 192), (0,0,0,0))
-              dest = os.path.join(RES, "drawable", "splash_icon.png")
-              os.makedirs(os.path.dirname(dest), exist_ok=True)
-              placeholder.save(dest, "PNG")
-
-          print("Icones processados com sucesso!")
+          print("Icone do launcher processado com sucesso!")
           PYEOF
 
       - name: Set executable permission on gradlew
@@ -160,15 +147,14 @@ workflows:
       - name: Install Pillow
         script: pip3 install Pillow --quiet
 
-      - name: Process launcher and splash icons
+      - name: Process launcher icon
         script: |
           python3 << 'PYEOF'
-          import os, shutil
+          import os
           from PIL import Image, ImageDraw
           CM  = os.environ["CM_BUILD_DIR"]
           RES = os.path.join(CM, "app/src/main/res")
           LAUNCHER = os.path.join(CM, "ic_launcher.png")
-          SPLASH   = os.path.join(CM, "splash_icon.png")
 
           if not os.path.exists(LAUNCHER):
               raise FileNotFoundError("ic_launcher.png nao encontrado na raiz do repo!")
@@ -209,19 +195,7 @@ workflows:
               canvas.paste(fg_img, (off, off), fg_img)
               save(canvas, os.path.join(RES, d, "ic_launcher_foreground.png"))
 
-          if os.path.exists(SPLASH):
-              dest = os.path.join(RES, "drawable", "splash_icon.png")
-              os.makedirs(os.path.dirname(dest), exist_ok=True)
-              shutil.copy2(SPLASH, dest)
-              print(f"  -> {dest}")
-          else:
-              print("AVISO: splash_icon.png nao encontrado, a usar placeholder...")
-              placeholder = Image.new("RGBA", (192, 192), (0,0,0,0))
-              dest = os.path.join(RES, "drawable", "splash_icon.png")
-              os.makedirs(os.path.dirname(dest), exist_ok=True)
-              placeholder.save(dest, "PNG")
-
-          print("Icones processados com sucesso!")
+          print("Icone do launcher processado com sucesso!")
           PYEOF
 
       - name: Set executable permission on gradlew

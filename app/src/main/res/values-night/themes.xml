@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/values-night/themes.xml -->
 <resources>
     <style name="Theme.nexa" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="android:statusBarColor">@color/status_bar_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">@color/splash_background_dark</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="windowActionBar">false</item>
@@ -17,7 +19,7 @@
     <style name="Theme.nexa.NoActionBar" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="android:statusBarColor">@color/status_bar_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
     </style>

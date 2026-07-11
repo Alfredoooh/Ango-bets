@@ -24,19 +24,21 @@ import com.nexa.app.webview.setupNexaWebView
 import java.io.File
 
 /**
- * HomeActivity agora é apenas um casco nativo para um único WebView.
- * Sem drawer, sem menu de navegação nativa, sem loader nativo, sem pool de
- * rotas — o WebView carrega a app web (Svelte) uma única vez e toda a
- * navegação interna (rotas, menus, ecrãs) passa a ser 100% responsabilidade
- * do próprio WebApp, tal como aconteceria num browser normal.
+ * HomeActivity é apenas um casco nativo para um único WebView. Sem drawer,
+ * sem menu de navegação nativa, sem loader nativo, sem pool de rotas — o
+ * WebView carrega a app web (Svelte) uma única vez e toda a navegação
+ * interna (rotas, menus, ecrãs) é 100% responsabilidade do próprio WebApp,
+ * tal como aconteceria num browser normal.
  *
  * Status bar: transparente e "edge-to-edge" — o conteúdo do WebView pode
- * desenhar-se por trás dela (WindowCompat.setDecorFitsSystemWindows(false)).
- * A cor dos ícones/texto da status bar (clara ou escura) é decidida pelo
- * próprio WebApp através da ponte já existente `AndroidTheme`: sempre que o
- * JS chamar `window.AndroidTheme.onThemeChanged(isDark)`, aplicamos
- * imediatamente `isAppearanceLightStatusBars = !isDark` — ou seja, tema
- * escuro no WebApp -> ícones claros na status bar, e vice-versa.
+ * desenhar-se por trás dela. A cor dos ícones/texto da status bar é
+ * decidida pelo próprio WebApp através da ponte `AndroidTheme`: sempre que
+ * o JS chamar `window.AndroidTheme.onThemeChanged(isDark)`, aplicamos
+ * imediatamente `isAppearanceLightStatusBars = !isDark`.
+ *
+ * Logout: quando o utilizador confirma "Terminar sessão" no drawer do
+ * WebApp, o JS chama `window.AndroidSession.onLogout()`. Isso limpa a
+ * sessão nativa e devolve o utilizador à LoginActivity.
  *
  * Botão/gesto de voltar: delega sempre no histórico do próprio WebView
  * (webView.goBack()), exatamente como um navegador — só fecha a app quando
@@ -47,11 +49,9 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var root: FrameLayout
     private lateinit var webView: WebView
 
-    // --- Ponte de permissões runtime para o WebView (getUserMedia) ---
     private var pendingPermissionRequest: PermissionRequest? = null
     private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
 
-    // --- Ponte do seletor de ficheiros para o WebView (<input type=file>) ---
     private var pendingFilePathCallback: ValueCallback<Array<Uri>>? = null
     private var pendingCameraCaptureUri: Uri? = null
     private lateinit var fileChooserLauncher: ActivityResultLauncher<Intent>
@@ -59,8 +59,6 @@ class HomeActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Edge-to-edge: o conteúdo do WebView pode ficar por trás da status
-        // bar, e a própria status bar fica transparente.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
@@ -82,6 +80,7 @@ class HomeActivity : AppCompatActivity() {
         webView.setupNexaWebView(
             context = this,
             onThemeChanged = { isDark -> applyStatusBarAppearance(isDark) },
+            onLogout = { performLogout() },
             onPermissionRequest = { request -> handleWebPermissionRequest(request) },
             onShowFileChooser = { callback, params -> handleShowFileChooser(callback, params) }
         )
@@ -102,13 +101,6 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Aplica apenas a aparência (cor dos ícones/texto) da status bar, nunca
-     * um fundo sólido — a status bar mantém-se sempre transparente, e é o
-     * conteúdo do próprio WebApp que aparece por trás dela. isDark=true
-     * (tema escuro no WebApp) => ícones claros; isDark=false => ícones
-     * escuros. É exatamente o inverso do tema do WebApp, como pedido.
-     */
     private fun applyStatusBarAppearance(isDark: Boolean) {
         runOnUiThread {
             WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -118,10 +110,6 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Permissões runtime (câmera/microfone) pedidas pelo getUserMedia()
-    // dentro da página web, via WebChromeClient.onPermissionRequest.
-    // ------------------------------------------------------------------
     private fun setupPermissionLauncher() {
         runtimePermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
@@ -165,11 +153,6 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Seletor de ficheiros (galeria/câmera/documentos) pedido por
-    // <input type="file"> dentro da página web, via
-    // WebChromeClient.onShowFileChooser.
-    // ------------------------------------------------------------------
     private fun setupFileChooserLauncher() {
         fileChooserLauncher = registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
@@ -199,16 +182,11 @@ class HomeActivity : AppCompatActivity() {
         filePathCallback: ValueCallback<Array<Uri>>,
         params: WebChromeClient.FileChooserParams
     ): Boolean {
-        // Cancela qualquer seleção pendente anterior antes de abrir uma nova.
         pendingFilePathCallback?.onReceiveValue(null)
         pendingFilePathCallback = filePathCallback
 
         val hasMediaPermission = PermissionManager.hasMediaPermission(this)
         if (!hasMediaPermission) {
-            // Pede a permissão de galeria/mídia primeiro; o próprio
-            // getUserMedia/onShowFileChooser será re-acionado pela página
-            // quando o utilizador tocar de novo no input, já com a
-            // permissão concedida.
             runtimePermissionLauncher.launch(PermissionManager.mediaPermissionsToRequest())
         }
 
@@ -291,16 +269,19 @@ class HomeActivity : AppCompatActivity() {
     }
 
     /**
-     * Logout continua disponível para quem chamar esta Activity a partir do
-     * próprio WebApp via ponte JS, se precisares — limpa sessão nativa e
-     * volta ao ecrã de Login.
+     * Chamado pela ponte AndroidSession quando o WebApp confirma logout,
+     * ou pode ser chamado diretamente se precisares de um logout nativo.
+     * Limpa a sessão local e volta sempre ao ecrã de Login, limpando a
+     * back stack para não ser possível voltar à Home sem autenticar de novo.
      */
     fun performLogout() {
-        SessionManager.clear(this)
-        val intent = Intent(this, LoginActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        runOnUiThread {
+            SessionManager.clear(this)
+            val intent = Intent(this, LoginActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            startActivity(intent)
+            finish()
         }
-        startActivity(intent)
-        finish()
     }
 }

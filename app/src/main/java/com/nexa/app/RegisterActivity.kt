@@ -1,3 +1,4 @@
+// app/src/main/java/com/nexa/app/RegisterActivity.kt
 package com.nexa.app
 
 import android.content.Intent
@@ -10,13 +11,18 @@ import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
-import com.nexa.app.widgets.GradientRingLoader
+import com.nexa.app.widgets.BottomSnackbar
+import com.nexa.app.widgets.NetworkStatusMonitor
 import kotlinx.coroutines.launch
 
 /**
  * Ecrã de registo 100% nativo, sem Material Components. Espelha exatamente
  * os campos do formulário web (src/auth/RegisterPage.svelte): Nome, Email,
  * Password.
+ *
+ * Sem spinner: durante o pedido o botão fica apenas desativado com o texto
+ * "A criar conta...". Erros e estado de rede aparecem numa barra inferior
+ * de largura total (BottomSnackbar), estilo YouTube.
  */
 class RegisterActivity : AppCompatActivity() {
 
@@ -27,9 +33,11 @@ class RegisterActivity : AppCompatActivity() {
     private lateinit var emailError: android.widget.TextView
     private lateinit var passwordError: android.widget.TextView
     private lateinit var registerButton: android.widget.Button
-    private lateinit var progress: GradientRingLoader
     private lateinit var loginLink: android.widget.TextView
     private lateinit var root: View
+
+    private lateinit var snackbar: BottomSnackbar
+    private lateinit var networkMonitor: NetworkStatusMonitor
 
     override fun onCreate(savedInstanceState: Bundle?) {
         ThemePreference.applyStoredTheme(this)
@@ -44,8 +52,26 @@ class RegisterActivity : AppCompatActivity() {
         emailError = findViewById(R.id.emailError)
         passwordError = findViewById(R.id.passwordError)
         registerButton = findViewById(R.id.registerButton)
-        progress = findViewById(R.id.registerProgress)
         loginLink = findViewById(R.id.loginLink)
+
+        snackbar = BottomSnackbar.attach(findViewById(R.id.snackbarContainer))
+        networkMonitor = NetworkStatusMonitor(
+            context = this,
+            onOffline = {
+                snackbar.show(
+                    getString(R.string.network_offline),
+                    BottomSnackbar.Style.ERROR,
+                    persistent = true
+                )
+            },
+            onOnline = {
+                snackbar.show(
+                    getString(R.string.network_online),
+                    BottomSnackbar.Style.SUCCESS,
+                    durationMs = 2000L
+                )
+            }
+        )
 
         registerButton.setOnClickListener { attemptRegister() }
         loginLink.setOnClickListener {
@@ -55,6 +81,16 @@ class RegisterActivity : AppCompatActivity() {
                 com.nexa.app.R.anim.slide_out_right
             )
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        networkMonitor.start()
+    }
+
+    override fun onStop() {
+        networkMonitor.stop()
+        super.onStop()
     }
 
     private fun attemptRegister() {
@@ -125,12 +161,11 @@ class RegisterActivity : AppCompatActivity() {
     }
 
     private fun setLoading(loading: Boolean) {
-        progress.visibility = if (loading) View.VISIBLE else View.GONE
         registerButton.isEnabled = !loading
-        registerButton.text = if (loading) "" else getString(R.string.action_register)
+        registerButton.text = if (loading) getString(R.string.action_register_loading) else getString(R.string.action_register)
     }
 
     private fun showError(message: String) {
-        android.widget.Toast.makeText(root.context, message, android.widget.Toast.LENGTH_LONG).show()
+        snackbar.show(message, BottomSnackbar.Style.ERROR)
     }
 }

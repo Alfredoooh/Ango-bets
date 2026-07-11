@@ -32,6 +32,10 @@ import com.nexa.app.session.SessionManager
  * onThemeChanged é chamado pela ponte AndroidTheme sempre que o WebApp
  * mudar de tema, para a Activity poder inverter a aparência da status bar.
  *
+ * onLogout é chamado pela ponte AndroidSession sempre que o utilizador
+ * confirmar "Terminar sessão" dentro do WebApp (AppDrawer.svelte), para a
+ * Activity limpar a sessão nativa e voltar ao ecrã de Login.
+ *
  * onPermissionRequest e onShowFileChooser são repassados para fora
  * (HomeActivity) porque pedir permissão runtime e abrir o seletor de
  * ficheiros do sistema exige uma Activity — o WebView em si não tem
@@ -41,6 +45,7 @@ import com.nexa.app.session.SessionManager
 fun WebView.setupNexaWebView(
     context: Context,
     onThemeChanged: (isDark: Boolean) -> Unit,
+    onLogout: (() -> Unit)? = null,
     onPermissionRequest: ((PermissionRequest) -> Unit)? = null,
     onShowFileChooser: ((ValueCallback<Array<android.net.Uri>>, android.webkit.WebChromeClient.FileChooserParams) -> Boolean)? = null
 ) {
@@ -60,6 +65,7 @@ fun WebView.setupNexaWebView(
     CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
 
     addJavascriptInterface(ThemeBridge(onThemeChanged), "AndroidTheme")
+    addJavascriptInterface(SessionBridge { onLogout?.invoke() }, "AndroidSession")
 
     webViewClient = object : WebViewClient() {
 
