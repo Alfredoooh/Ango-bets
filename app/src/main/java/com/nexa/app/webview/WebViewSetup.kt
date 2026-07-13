@@ -3,7 +3,10 @@ package com.nexa.app.webview
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Color
 import android.net.http.SslError
+import android.view.Gravity
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
@@ -13,8 +16,11 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
+import android.widget.FrameLayout
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 
 /**
  * Configuração do WebView único da app. O site (src/shared/auth-guard.js)
@@ -29,6 +35,14 @@ import com.nexa.app.session.SessionManager
  * saiam do host da app, abrindo-os numa Chrome Custom Tab (ExternalLinkHandler),
  * exatamente como o ChatGPT faz: sem sair da app, mas com o motor e a
  * sessão do browser do sistema.
+ *
+ * ERRO DE REDE: em vez da tela nativa feia do WebView (o "ERR_INTERNET_
+ * DISCONNECTED" com o dinossauro/ícone do sistema), onReceivedError troca
+ * o conteúdo do WebView por uma overlay nativa mínima — só um botão
+ * "Recarregar" centrado — mas SÓ quando o erro é do próprio pedido
+ * principal (request.isForMainFrame), nunca para falhas de recursos
+ * secundários (imagens, fontes, analytics) que não devem esconder a
+ * página inteira.
  *
  * onThemeChanged é chamado pela ponte AndroidTheme sempre que o WebApp
  * mudar de tema, para a Activity poder inverter a aparência da status bar.
@@ -68,6 +82,8 @@ fun WebView.setupNexaWebView(
     addJavascriptInterface(ThemeBridge(onThemeChanged), "AndroidTheme")
     addJavascriptInterface(SessionBridge { onLogout?.invoke() }, "AndroidSession")
 
+    val errorOverlayHolder = NetworkErrorOverlay(this)
+
     webViewClient = object : WebViewClient() {
 
         override fun shouldOverrideUrlLoading(
@@ -91,6 +107,7 @@ fun WebView.setupNexaWebView(
 
         override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
             super.onPageStarted(view, url, favicon)
+            errorOverlayHolder.hide()
             injectSession(view, context)
         }
 
@@ -105,6 +122,12 @@ fun WebView.setupNexaWebView(
             error: WebResourceError
         ) {
             super.onReceivedError(view, request, error)
+            if (request.isForMainFrame) {
+                errorOverlayHolder.show(context) {
+                    errorOverlayHolder.hide()
+                    view.reload()
+                }
+            }
         }
 
         override fun onReceivedSslError(
@@ -138,6 +161,69 @@ fun WebView.setupNexaWebView(
                 false
             }
         }
+    }
+}
+
+/**
+ * Overlay nativa mínima de erro de rede: um FrameLayout adicionado por
+ * cima do WebView (mesmo pai), cor de fundo sólida igual ao tema atual,
+ * com um único botão "Recarregar" centrado. Sem ícones de sistema, sem
+ * texto de erro técnico — só a ação que o utilizador precisa de tomar.
+ */
+private class NetworkErrorOverlay(private val webView: WebView) {
+
+    private var overlay: FrameLayout? = null
+
+    fun show(context: Context, onReload: () -> Unit) {
+        if (overlay != null) return
+        val parent = webView.parent as? ViewGroup ?: return
+
+        val isDark = ThemePreference.resolveIsDark(context)
+        val bgColor = if (isDark) Color.parseColor("#17171A") else Color.WHITE
+        val textColor = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#10151C")
+
+        val reloadButton = Button(context).apply {
+            text = "Recarregar"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            textSize = 15f
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#2F7BF6"))
+                cornerRadius = dp(context, 14).toFloat()
+            }
+            setPadding(dp(context, 28), dp(context, 12), dp(context, 28), dp(context, 12))
+            setOnClickListener { onReload() }
+        }
+
+        val container = FrameLayout(context).apply {
+            setBackgroundColor(bgColor)
+            addView(
+                reloadButton,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { gravity = Gravity.CENTER }
+            )
+        }
+
+        parent.addView(
+            container,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        overlay = container
+    }
+
+    fun hide() {
+        val parent = webView.parent as? ViewGroup ?: return
+        overlay?.let { parent.removeView(it) }
+        overlay = null
+    }
+
+    private fun dp(context: Context, value: Int): Int {
+        return (value * context.resources.displayMetrics.density).toInt()
     }
 }
 

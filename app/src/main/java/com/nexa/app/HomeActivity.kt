@@ -4,6 +4,7 @@ package com.nexa.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.View
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -15,12 +16,15 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
 import com.nexa.app.webview.PermissionManager
 import com.nexa.app.webview.setupNexaWebView
+import com.nexa.app.widgets.ExitConfirmDialog
 import java.io.File
 
 /**
@@ -29,6 +33,14 @@ import java.io.File
  * WebView carrega a app web (Svelte) uma única vez e toda a navegação
  * interna (rotas, menus, ecrãs) é 100% responsabilidade do próprio WebApp,
  * tal como aconteceria num browser normal.
+ *
+ * KEYBOARD: a Activity usa android:windowSoftInputMode="adjustNothing" no
+ * manifest — o sistema NUNCA redimensiona nem move a janela/WebView quando
+ * o teclado abre. Em vez disso, escutamos manualmente o inset do IME via
+ * ViewCompat.setOnApplyWindowInsetsListener e aplicamos esse valor como
+ * padding-bottom SÓ no próprio WebView (nunca no root), para que o
+ * documento web receba a compressão via visualViewport de forma consistente
+ * e a appbar (fora do fluxo de resize do sistema) jamais se mova.
  *
  * Status bar: transparente e "edge-to-edge" — o conteúdo do WebView pode
  * desenhar-se por trás dela. A cor dos ícones/texto da status bar é
@@ -41,8 +53,9 @@ import java.io.File
  * sessão nativa e devolve o utilizador à LoginActivity.
  *
  * Botão/gesto de voltar: delega sempre no histórico do próprio WebView
- * (webView.goBack()), exatamente como um navegador — só fecha a app quando
- * já não há mais histórico para trás.
+ * (webView.goBack()) — só quando já não há mais histórico é que mostramos
+ * o popup nativo de confirmação de saída da app (não é logout, é sair
+ * mesmo, mantendo a sessão guardada).
  */
 class HomeActivity : AppCompatActivity() {
 
@@ -74,6 +87,7 @@ class HomeActivity : AppCompatActivity() {
         }
         root.addView(webView)
 
+        setupKeyboardInsets()
         setupPermissionLauncher()
         setupFileChooserLauncher()
 
@@ -90,8 +104,10 @@ class HomeActivity : AppCompatActivity() {
                 if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                    ExitConfirmDialog.show(this@HomeActivity) {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
                 }
             }
         })
@@ -99,6 +115,26 @@ class HomeActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             webView.loadUrl(RouteMap.BASE_URL)
         }
+    }
+
+    /**
+     * Único ponto de contacto entre o teclado real e o layout nativo: o
+     * inset do IME é aplicado como padding-bottom do WebView (nunca do
+     * root, nunca da Activity inteira). Isto é o que substitui
+     * windowSoftInputMode="adjustResize"/"adjustPan" de forma confiável
+     * entre fabricantes — porque deixamos de depender do resize automático
+     * do sistema (que a Chromium documenta como incoerente em WebView) e
+     * passamos a aplicar o valor exato do IME nós mesmos.
+     */
+    private fun setupKeyboardInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navHeight = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val bottomPadding = if (imeHeight > navHeight) imeHeight - navHeight else 0
+            webView.setPadding(0, 0, 0, bottomPadding)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun applyStatusBarAppearance(isDark: Boolean) {

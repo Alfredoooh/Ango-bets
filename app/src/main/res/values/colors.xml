@@ -3,9 +3,9 @@
     <color name="colorPrimary">#2F7BF6</color>
     <color name="dialog_accent">#2F7BF6</color>
     <color name="splash_background_light">#FFFFFF</color>
-    <color name="splash_background_dark">#0F0F0F</color>
+    <color name="splash_background_dark">#17171A</color>
     <color name="status_bar_light">#FFFFFF</color>
-    <color name="status_bar_dark">#0F0F0F</color>
+    <color name="status_bar_dark">#17171A</color>
     
     <color name="white">#FFFFFFFF</color>
     <color name="primary">#FF2F7BF6</color>
@@ -26,5 +26,5 @@
     <color name="app_background">#FFFFFFFF</color>
     <color name="auth_input_fill">#FFF2F2F7</color>
     <color name="primary_pressed">#FF1F63D6</color>
-<color name="primary_disabled">#552F7BF6</color>
+    <color name="primary_disabled">#552F7BF6</color>
 </resources>

@@ -3,21 +3,27 @@ package com.nexa.app
 
 import android.os.Bundle
 import android.webkit.WebView
+import android.widget.FrameLayout
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.webview.setupNexaWebView
+import com.nexa.app.widgets.ExitConfirmDialog
 
 /**
  * Activity auxiliar para abrir uma URL avulsa fora do fluxo principal.
- * Segue exatamente o mesmo comportamento de HomeActivity: sem drawer, sem
- * loader nativo, status bar transparente com aparência invertida pelo tema
- * do WebApp, e botão de voltar delegado ao histórico do WebView.
+ * Mesmo tratamento de teclado que HomeActivity: android:windowSoftInputMode
+ * ="adjustNothing" no manifest + inset do IME aplicado manualmente como
+ * padding-bottom do próprio WebView, nunca do root — a appbar dentro do
+ * WebApp nunca se desloca porque o sistema nunca redimensiona nada.
  */
 class WebPageActivity : AppCompatActivity() {
 
+    private lateinit var root: FrameLayout
     private lateinit var webView: WebView
 
     companion object {
@@ -31,13 +37,18 @@ class WebPageActivity : AppCompatActivity() {
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
+        root = FrameLayout(this)
+        setContentView(root)
+
         webView = WebView(this).apply {
-            layoutParams = android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
-        setContentView(webView)
+        root.addView(webView)
+
+        setupKeyboardInsets()
 
         val url = intent.getStringExtra(EXTRA_URL) ?: RouteMap.BASE_URL
 
@@ -58,8 +69,10 @@ class WebPageActivity : AppCompatActivity() {
                 if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                    ExitConfirmDialog.show(this@WebPageActivity) {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
                 }
             }
         })
@@ -67,6 +80,17 @@ class WebPageActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             webView.loadUrl(url)
         }
+    }
+
+    private fun setupKeyboardInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navHeight = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val bottomPadding = if (imeHeight > navHeight) imeHeight - navHeight else 0
+            webView.setPadding(0, 0, 0, bottomPadding)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

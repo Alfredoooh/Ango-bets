@@ -17,7 +17,7 @@ object ExternalLinkHandler {
 
     fun open(context: Context, uri: Uri) {
         val colorScheme = CustomTabColorSchemeParams.Builder()
-            .setToolbarColor(android.graphics.Color.parseColor("#0F0F0F"))
+            .setToolbarColor(android.graphics.Color.parseColor("#17171A"))
             .build()
 
         val customTabsIntent = CustomTabsIntent.Builder()
