@@ -1,16 +1,11 @@
-// app/src/main/java/com/nexa/app/session/SessionManager.kt
 package com.nexa.app.session
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
-/**
- * Guarda o token JWT devolvido por /auth/login e /auth/register de forma
- * encriptada em disco (EncryptedSharedPreferences), e expõe os dados básicos
- * do utilizador para uso rápido nas Activities (nome, email, credits).
- */
 object SessionManager {
 
     private const val PREFS_NAME = "nexa_session"
@@ -19,6 +14,7 @@ object SessionManager {
     private const val KEY_NAME = "name"
     private const val KEY_EMAIL = "email"
     private const val KEY_CREDITS = "credits"
+    private const val TAG = "SessionManager"
 
     @Volatile
     private var prefs: SharedPreferences? = null
@@ -30,17 +26,30 @@ object SessionManager {
     }
 
     private fun build(context: Context): SharedPreferences {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
+        return try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
 
-        return EncryptedSharedPreferences.create(
-            context,
-            PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+            EncryptedSharedPreferences.create(
+                context,
+                PREFS_NAME,
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            // Falha na encriptação (ex: keystore corrompido após re-install).
+            // Apaga o ficheiro corrompido e usa prefs normais como fallback.
+            Log.e(TAG, "EncryptedSharedPreferences falhou, a usar fallback: ${e.message}")
+            try {
+                context.deleteSharedPreferences(PREFS_NAME)
+            } catch (ignored: Exception) {}
+            context.applicationContext.getSharedPreferences(
+                "${PREFS_NAME}_fallback",
+                Context.MODE_PRIVATE
+            )
+        }
     }
 
     fun saveSession(
@@ -76,10 +85,6 @@ object SessionManager {
         get(context).edit().clear().apply()
     }
 
-    /**
-     * Header pronto a usar em pedidos autenticados: "Bearer <token>".
-     * Devolve null se não houver sessão.
-     */
     fun authHeader(context: Context): String? {
         val token = getToken(context) ?: return null
         return "Bearer $token"

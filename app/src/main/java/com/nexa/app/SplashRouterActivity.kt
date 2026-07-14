@@ -1,13 +1,15 @@
 package com.nexa.app
 
 import android.content.Intent
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.nexa.app.session.SessionManager
+import androidx.core.graphics.drawable.DrawableCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
 class SplashRouterActivity : AppCompatActivity() {
 
@@ -18,6 +20,8 @@ class SplashRouterActivity : AppCompatActivity() {
     private var currentDot = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // OBRIGATÓRIO antes de super.onCreate() quando o tema é Theme.SplashScreen
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_splash)
 
@@ -49,8 +53,9 @@ class SplashRouterActivity : AppCompatActivity() {
         val runnable = object : Runnable {
             override fun run() {
                 dotViews.forEachIndexed { index, dot ->
-                    val bg = dot.background as android.graphics.drawable.GradientDrawable
-                    bg.setColor(if (index == currentDot) activeColor else inactiveColor)
+                    // DrawableCompat.unwrap() protege contra wrappers (InsetDrawable, etc.)
+                    val unwrapped = DrawableCompat.unwrap<GradientDrawable>(dot.background)
+                    unwrapped.setColor(if (index == currentDot) activeColor else inactiveColor)
                 }
                 currentDot = (currentDot + 1) % dotViews.size
                 handler.postDelayed(this, dotIntervalMs)
