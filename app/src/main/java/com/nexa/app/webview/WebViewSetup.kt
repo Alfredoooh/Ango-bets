@@ -1,7 +1,8 @@
-// app/src/main/java/com/nexa/app/webview/WebViewSetup.kt
+// app/src/main/java/com/nexa/app/webview/WebViewSetup.kt (ficheiro completo, corrigido)
 package com.nexa.app.webview
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.net.http.SslError
@@ -18,6 +19,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.FrameLayout
+import com.nexa.app.localserver.StorageBridge
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
@@ -55,6 +57,14 @@ import com.nexa.app.session.ThemePreference
  * (HomeActivity) porque pedir permissão runtime e abrir o seletor de
  * ficheiros do sistema exige uma Activity — o WebView em si não tem
  * acesso a ActivityResultLauncher.
+ *
+ * AndroidStorage (StorageBridge) é registada aqui também, expondo
+ * hasPermission(), requestPermission(), getRootPath(), listFolders(path),
+ * createFolder(parentPath, name) e exportDocument(html, targetPath,
+ * format, mode) ao WebApp — chamado por ExportPickerPage.svelte
+ * (docs.zip), que é a própria tela de escolha de pasta/formato dentro
+ * do WebApp. Esta ponte não desenha nenhuma UI nativa — só dá acesso a
+ * dados de sistema de ficheiros e à geração real de .docx/.pdf.
  */
 @SuppressLint("SetJavaScriptEnabled")
 fun WebView.setupNexaWebView(
@@ -81,6 +91,9 @@ fun WebView.setupNexaWebView(
 
     addJavascriptInterface(ThemeBridge(onThemeChanged), "AndroidTheme")
     addJavascriptInterface(SessionBridge { onLogout?.invoke() }, "AndroidSession")
+    if (context is Activity) {
+        addJavascriptInterface(StorageBridge(context), "AndroidStorage")
+    }
 
     val errorOverlayHolder = NetworkErrorOverlay(this)
 
@@ -180,7 +193,6 @@ private class NetworkErrorOverlay(private val webView: WebView) {
 
         val isDark = ThemePreference.resolveIsDark(context)
         val bgColor = if (isDark) Color.parseColor("#17171A") else Color.WHITE
-        val textColor = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#10151C")
 
         val reloadButton = Button(context).apply {
             text = "Recarregar"

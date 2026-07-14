@@ -1,10 +1,9 @@
-// app/src/main/java/com/nexa/app/HomeActivity.kt
+// app/src/main/java/com/nexa/app/HomeActivity.kt (ficheiro completo)
 package com.nexa.app
 
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.view.View
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -51,6 +50,10 @@ import java.io.File
  * Logout: quando o utilizador confirma "Terminar sessão" no drawer do
  * WebApp, o JS chama `window.AndroidSession.onLogout()`. Isso limpa a
  * sessão nativa e devolve o utilizador à LoginActivity.
+ *
+ * Exportação/partilha de documentos: window.AndroidExport (ExportBridge,
+ * registada dentro de setupNexaWebView) abre a FolderPickerActivity
+ * nativa, que fala com o LocalDocServer para gerar .docx/.pdf reais.
  *
  * Botão/gesto de voltar: delega sempre no histórico do próprio WebView
  * (webView.goBack()) — só quando já não há mais histórico é que mostramos
