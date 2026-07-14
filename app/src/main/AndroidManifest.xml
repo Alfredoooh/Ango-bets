@@ -47,7 +47,7 @@
         <activity
             android:name=".SplashRouterActivity"
             android:exported="true"
-            android:theme="@style/Theme.nexa"
+            android:theme="@style/Theme.nexa.Splash"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:launchMode="singleTask">
             <intent-filter>
