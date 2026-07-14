@@ -2,6 +2,7 @@
 package com.nexa.app.docexport
 
 import android.content.Context
+import android.os.ParcelFileDescriptor
 import android.print.PageRange
 import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
@@ -9,8 +10,6 @@ import android.print.PrintDocumentInfo
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import java.io.File
-import java.io.FileOutputStream
-import java.io.ParcelFileDescriptor
 
 /**
  * Gera um .pdf real a partir do HTML do documento, usando o próprio motor
@@ -38,43 +37,64 @@ object PdfBuilder {
         webView.loadDataWithBaseURL(null, fullHtmlDocument, "text/html", "UTF-8", null)
     }
 
+    private class LayoutCallback(
+        private val adapter: PrintDocumentAdapter,
+        private val outputFile: File,
+        private val onDone: (Boolean) -> Unit
+    ) : PrintDocumentAdapter.LayoutResultCallback() {
+
+        override fun onLayoutFinished(info: PrintDocumentInfo?, changed: Boolean) {
+            try {
+                val pfd = ParcelFileDescriptor.open(
+                    outputFile,
+                    ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE or ParcelFileDescriptor.MODE_READ_WRITE
+                )
+                adapter.onWrite(
+                    arrayOf(PageRange.ALL_PAGES),
+                    pfd,
+                    null,
+                    WriteCallback(pfd, onDone)
+                )
+            } catch (e: Exception) {
+                onDone(false)
+            }
+        }
+
+        override fun onLayoutFailed(error: CharSequence?) {
+            onDone(false)
+        }
+    }
+
+    private class WriteCallback(
+        private val pfd: ParcelFileDescriptor,
+        private val onDone: (Boolean) -> Unit
+    ) : PrintDocumentAdapter.WriteResultCallback() {
+
+        override fun onWriteFinished(pages: Array<out PageRange>?) {
+            pfd.close()
+            onDone(true)
+        }
+
+        override fun onWriteFailed(error: CharSequence?) {
+            onDone(false)
+        }
+    }
+
     private fun printToFile(webView: WebView, outputFile: File, onDone: (Boolean) -> Unit) {
         val adapter = webView.createPrintDocumentAdapter("nexa_doc")
         val attributes = PrintAttributes.Builder()
             .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-            .setResolution(android.print.PrintAttributes.Resolution("pdf", "pdf", 300, 300))
+            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 300, 300))
             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
             .build()
 
-        adapter.onLayout(null, attributes, null, object : PrintDocumentAdapter.LayoutResultCallback() {
-            override fun onLayoutFinished(info: PrintDocumentInfo?, changed: Boolean) {
-                try {
-                    val pfd = ParcelFileDescriptor.open(
-                        outputFile,
-                        ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE or ParcelFileDescriptor.MODE_READ_WRITE
-                    )
-                    adapter.onWrite(
-                        arrayOf(PageRange.ALL_PAGES),
-                        pfd,
-                        null,
-                        object : PrintDocumentAdapter.WriteResultCallback() {
-                            override fun onWriteFinished(pages: Array<out PageRange>?) {
-                                pfd.close()
-                                onDone(true)
-                            }
-                            override fun onWriteFailed(error: CharSequence?) {
-                                onDone(false)
-                            }
-                        }
-                    )
-                } catch (e: Exception) {
-                    onDone(false)
-                }
-            }
-            override fun onLayoutFailed(error: CharSequence?) {
-                onDone(false)
-            }
-        }, null)
+        adapter.onLayout(
+            null,
+            attributes,
+            null,
+            LayoutCallback(adapter, outputFile, onDone),
+            null
+        )
     }
 
     /**
