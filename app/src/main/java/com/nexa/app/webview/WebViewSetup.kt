@@ -92,7 +92,7 @@ fun WebView.setupNexaWebView(
     addJavascriptInterface(ThemeBridge(onThemeChanged), "AndroidTheme")
     addJavascriptInterface(SessionBridge { onLogout?.invoke() }, "AndroidSession")
     if (context is Activity) {
-        addJavascriptInterface(StorageBridge(context), "AndroidStorage")
+        addJavascriptInterface(StorageBridge(context, this), "AndroidStorage")
     }
 
     val errorOverlayHolder = NetworkErrorOverlay(this)
