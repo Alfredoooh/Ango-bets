@@ -2,99 +2,86 @@
 package com.nexa.app.docexport
 
 import android.content.Context
-import android.os.ParcelFileDescriptor
-import android.print.PageRange
-import android.print.PrintAttributes
-import android.print.PrintDocumentAdapter
-import android.print.PrintDocumentInfo
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.pdf.PdfDocument
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Gera um .pdf real a partir do HTML do documento, usando o próprio motor
  * do WebView (Blink) para o layout — garante fidelidade visual com o que
  * o utilizador vê no editor (fontes, cores, tabelas, imagens), em vez de
- * tentar recriar o layout manualmente com Canvas.
+ * tentar recriar o layout manualmente com Canvas a partir do zero.
  *
- * Usa WebView.createPrintDocumentAdapter(), que é a API pública do
- * Android para "imprimir para PDF" — aqui redirecionamos a escrita para
- * um ficheiro em vez de abrir a caixa de diálogo de impressão do sistema.
+ * Em vez de WebView.createPrintDocumentAdapter() (cujas classes de
+ * callback do Android SDK têm construtor package-private e não podem
+ * ser sub-classificadas fora do package android.print), esta versão
+ * renderiza o próprio WebView para um Bitmap por página A4 e compõe
+ * o PDF diretamente com android.graphics.pdf.PdfDocument.
  */
 object PdfBuilder {
+
+    // Dimensões A4 a 300 DPI (aprox.): 210mm x 297mm
+    private const val A4_WIDTH_PT = 595  // pontos (72 dpi), tamanho padrão de página PDF
+    private const val A4_HEIGHT_PT = 842
 
     fun build(context: Context, outputFile: File, fullHtmlDocument: String, onDone: (Boolean) -> Unit) {
         val webView = WebView(context)
         webView.settings.javaScriptEnabled = false
 
+        // Layout do WebView com a largura de uma página A4 (escalado para pixels de alta resolução)
+        val scale = 2 // fator de nitidez (equivalente a ~144 dpi)
+        val widthPx = A4_WIDTH_PT * scale
+        val heightPx = A4_HEIGHT_PT * scale
+
+        webView.layout(0, 0, widthPx, heightPx)
+
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
-                printToFile(view, outputFile, onDone)
+                try {
+                    renderToPdf(view, widthPx, heightPx, scale, outputFile)
+                    onDone(true)
+                } catch (e: Exception) {
+                    onDone(false)
+                }
             }
         }
 
         webView.loadDataWithBaseURL(null, fullHtmlDocument, "text/html", "UTF-8", null)
     }
 
-    private class LayoutCallback(
-        private val adapter: PrintDocumentAdapter,
-        private val outputFile: File,
-        private val onDone: (Boolean) -> Unit
-    ) : PrintDocumentAdapter.LayoutResultCallback() {
+    private fun renderToPdf(webView: WebView, widthPx: Int, heightPx: Int, scale: Int, outputFile: File) {
+        val totalContentHeight = webView.contentHeight * scale
+        val pageCount = maxOf(1, Math.ceil(totalContentHeight.toDouble() / heightPx).toInt())
 
-        override fun onLayoutFinished(info: PrintDocumentInfo?, changed: Boolean) {
-            try {
-                val pfd = ParcelFileDescriptor.open(
-                    outputFile,
-                    ParcelFileDescriptor.MODE_CREATE or ParcelFileDescriptor.MODE_TRUNCATE or ParcelFileDescriptor.MODE_READ_WRITE
-                )
-                adapter.onWrite(
-                    arrayOf(PageRange.ALL_PAGES),
-                    pfd,
-                    null,
-                    WriteCallback(pfd, onDone)
-                )
-            } catch (e: Exception) {
-                onDone(false)
-            }
+        val pdfDocument = PdfDocument()
+
+        for (pageIndex in 0 until pageCount) {
+            val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH_PT, A4_HEIGHT_PT, pageIndex + 1).create()
+            val page = pdfDocument.startPage(pageInfo)
+
+            val bitmap = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
+            val bitmapCanvas = Canvas(bitmap)
+            bitmapCanvas.translate(0f, -(pageIndex * heightPx).toFloat())
+            webView.draw(bitmapCanvas)
+
+            val pdfCanvas = page.canvas
+            val srcRect = android.graphics.Rect(0, 0, widthPx, heightPx)
+            val dstRect = android.graphics.Rect(0, 0, A4_WIDTH_PT, A4_HEIGHT_PT)
+            pdfCanvas.drawBitmap(bitmap, srcRect, dstRect, null)
+            bitmap.recycle()
+
+            pdfDocument.finishPage(page)
         }
 
-        override fun onLayoutFailed(error: CharSequence?) {
-            onDone(false)
+        FileOutputStream(outputFile).use { out ->
+            pdfDocument.writeTo(out)
         }
-    }
-
-    private class WriteCallback(
-        private val pfd: ParcelFileDescriptor,
-        private val onDone: (Boolean) -> Unit
-    ) : PrintDocumentAdapter.WriteResultCallback() {
-
-        override fun onWriteFinished(pages: Array<out PageRange>?) {
-            pfd.close()
-            onDone(true)
-        }
-
-        override fun onWriteFailed(error: CharSequence?) {
-            onDone(false)
-        }
-    }
-
-    private fun printToFile(webView: WebView, outputFile: File, onDone: (Boolean) -> Unit) {
-        val adapter = webView.createPrintDocumentAdapter("nexa_doc")
-        val attributes = PrintAttributes.Builder()
-            .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
-            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 300, 300))
-            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
-            .build()
-
-        adapter.onLayout(
-            null,
-            attributes,
-            null,
-            LayoutCallback(adapter, outputFile, onDone),
-            null
-        )
+        pdfDocument.close()
     }
 
     /**
