@@ -1,4 +1,3 @@
-// app/src/main/java/com/nexa/app/HomeActivity.kt (ficheiro completo)
 package com.nexa.app
 
 import android.content.Intent
@@ -19,6 +18,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
 import com.nexa.app.webview.PermissionManager
@@ -26,40 +26,6 @@ import com.nexa.app.webview.setupNexaWebView
 import com.nexa.app.widgets.ExitConfirmDialog
 import java.io.File
 
-/**
- * HomeActivity é apenas um casco nativo para um único WebView. Sem drawer,
- * sem menu de navegação nativa, sem loader nativo, sem pool de rotas — o
- * WebView carrega a app web (Svelte) uma única vez e toda a navegação
- * interna (rotas, menus, ecrãs) é 100% responsabilidade do próprio WebApp,
- * tal como aconteceria num browser normal.
- *
- * KEYBOARD: a Activity usa android:windowSoftInputMode="adjustNothing" no
- * manifest — o sistema NUNCA redimensiona nem move a janela/WebView quando
- * o teclado abre. Em vez disso, escutamos manualmente o inset do IME via
- * ViewCompat.setOnApplyWindowInsetsListener e aplicamos esse valor como
- * padding-bottom SÓ no próprio WebView (nunca no root), para que o
- * documento web receba a compressão via visualViewport de forma consistente
- * e a appbar (fora do fluxo de resize do sistema) jamais se mova.
- *
- * Status bar: transparente e "edge-to-edge" — o conteúdo do WebView pode
- * desenhar-se por trás dela. A cor dos ícones/texto da status bar é
- * decidida pelo próprio WebApp através da ponte `AndroidTheme`: sempre que
- * o JS chamar `window.AndroidTheme.onThemeChanged(isDark)`, aplicamos
- * imediatamente `isAppearanceLightStatusBars = !isDark`.
- *
- * Logout: quando o utilizador confirma "Terminar sessão" no drawer do
- * WebApp, o JS chama `window.AndroidSession.onLogout()`. Isso limpa a
- * sessão nativa e devolve o utilizador à LoginActivity.
- *
- * Exportação/partilha de documentos: window.AndroidExport (ExportBridge,
- * registada dentro de setupNexaWebView) abre a FolderPickerActivity
- * nativa, que fala com o LocalDocServer para gerar .docx/.pdf reais.
- *
- * Botão/gesto de voltar: delega sempre no histórico do próprio WebView
- * (webView.goBack()) — só quando já não há mais histórico é que mostramos
- * o popup nativo de confirmação de saída da app (não é logout, é sair
- * mesmo, mantendo a sessão guardada).
- */
 class HomeActivity : AppCompatActivity() {
 
     private lateinit var root: FrameLayout
@@ -99,7 +65,11 @@ class HomeActivity : AppCompatActivity() {
             onThemeChanged = { isDark -> applyStatusBarAppearance(isDark) },
             onLogout = { performLogout() },
             onPermissionRequest = { request -> handleWebPermissionRequest(request) },
-            onShowFileChooser = { callback, params -> handleShowFileChooser(callback, params) }
+            onShowFileChooser = { callback, params -> handleShowFileChooser(callback, params) },
+            onPageFinished = {
+                LocalBroadcastManager.getInstance(this)
+                    .sendBroadcast(Intent(SplashRouterActivity.ACTION_WEBVIEW_READY))
+            }
         )
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -120,15 +90,6 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Único ponto de contacto entre o teclado real e o layout nativo: o
-     * inset do IME é aplicado como padding-bottom do WebView (nunca do
-     * root, nunca da Activity inteira). Isto é o que substitui
-     * windowSoftInputMode="adjustResize"/"adjustPan" de forma confiável
-     * entre fabricantes — porque deixamos de depender do resize automático
-     * do sistema (que a Chromium documenta como incoerente em WebView) e
-     * passamos a aplicar o valor exato do IME nós mesmos.
-     */
     private fun setupKeyboardInsets() {
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
@@ -237,9 +198,7 @@ class HomeActivity : AppCompatActivity() {
                 putExtra(android.provider.MediaStore.EXTRA_OUTPUT, captureUri)
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
-        } else {
-            null
-        }
+        } else null
 
         val contentIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -307,12 +266,6 @@ class HomeActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    /**
-     * Chamado pela ponte AndroidSession quando o WebApp confirma logout,
-     * ou pode ser chamado diretamente se precisares de um logout nativo.
-     * Limpa a sessão local e volta sempre ao ecrã de Login, limpando a
-     * back stack para não ser possível voltar à Home sem autenticar de novo.
-     */
     fun performLogout() {
         runOnUiThread {
             SessionManager.clear(this)

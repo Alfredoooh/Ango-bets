@@ -1,4 +1,3 @@
-// app/src/main/java/com/nexa/app/webview/WebViewSetup.kt (ficheiro completo, corrigido)
 package com.nexa.app.webview
 
 import android.annotation.SuppressLint
@@ -24,55 +23,14 @@ import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
 
-/**
- * Configuração do WebView único da app. O site (src/shared/auth-guard.js)
- * verifica sessão via localStorage.getItem('nexa_user'), não via cookie —
- * por isso a sessão nativa é injetada como localStorage, com o mesmo shape
- * que AuthApiService.login()/register() gravam no browser (token, id, name,
- * email, credits).
- *
- * Toda a navegação interna do host da app (mobilewebin.onrender.com) fica
- * por conta do próprio WebView — não há mais interceção de rota nem troca
- * de Activity nativa: shouldOverrideUrlLoading só intercepta links que
- * saiam do host da app, abrindo-os numa Chrome Custom Tab (ExternalLinkHandler),
- * exatamente como o ChatGPT faz: sem sair da app, mas com o motor e a
- * sessão do browser do sistema.
- *
- * ERRO DE REDE: em vez da tela nativa feia do WebView (o "ERR_INTERNET_
- * DISCONNECTED" com o dinossauro/ícone do sistema), onReceivedError troca
- * o conteúdo do WebView por uma overlay nativa mínima — só um botão
- * "Recarregar" centrado — mas SÓ quando o erro é do próprio pedido
- * principal (request.isForMainFrame), nunca para falhas de recursos
- * secundários (imagens, fontes, analytics) que não devem esconder a
- * página inteira.
- *
- * onThemeChanged é chamado pela ponte AndroidTheme sempre que o WebApp
- * mudar de tema, para a Activity poder inverter a aparência da status bar.
- *
- * onLogout é chamado pela ponte AndroidSession sempre que o utilizador
- * confirmar "Terminar sessão" dentro do WebApp (AppDrawer.svelte), para a
- * Activity limpar a sessão nativa e voltar ao ecrã de Login.
- *
- * onPermissionRequest e onShowFileChooser são repassados para fora
- * (HomeActivity) porque pedir permissão runtime e abrir o seletor de
- * ficheiros do sistema exige uma Activity — o WebView em si não tem
- * acesso a ActivityResultLauncher.
- *
- * AndroidStorage (StorageBridge) é registada aqui também, expondo
- * hasPermission(), requestPermission(), getRootPath(), listFolders(path),
- * createFolder(parentPath, name) e exportDocument(html, targetPath,
- * format, mode) ao WebApp — chamado por ExportPickerPage.svelte
- * (docs.zip), que é a própria tela de escolha de pasta/formato dentro
- * do WebApp. Esta ponte não desenha nenhuma UI nativa — só dá acesso a
- * dados de sistema de ficheiros e à geração real de .docx/.pdf.
- */
 @SuppressLint("SetJavaScriptEnabled")
 fun WebView.setupNexaWebView(
     context: Context,
     onThemeChanged: (isDark: Boolean) -> Unit,
     onLogout: (() -> Unit)? = null,
     onPermissionRequest: ((PermissionRequest) -> Unit)? = null,
-    onShowFileChooser: ((ValueCallback<Array<android.net.Uri>>, android.webkit.WebChromeClient.FileChooserParams) -> Boolean)? = null
+    onShowFileChooser: ((ValueCallback<Array<android.net.Uri>>, android.webkit.WebChromeClient.FileChooserParams) -> Boolean)? = null,
+    onPageFinished: (() -> Unit)? = null
 ) {
     val settings = this.settings
     settings.javaScriptEnabled = true
@@ -104,16 +62,9 @@ fun WebView.setupNexaWebView(
             request: WebResourceRequest
         ): Boolean {
             val uri = request.url
-
-            // Dentro do host da própria app: deixa o WebView navegar
-            // normalmente, sem qualquer interceção nativa — é o WebApp
-            // (Svelte) que decide tudo sobre as suas próprias rotas.
             if (uri.host == RouteMap.HOST) {
                 return false
             }
-
-            // Fora do host da app: abre numa Chrome Custom Tab, mantendo o
-            // utilizador "dentro da app" visualmente, tal como o ChatGPT.
             ExternalLinkHandler.open(context, uri)
             return true
         }
@@ -127,6 +78,7 @@ fun WebView.setupNexaWebView(
         override fun onPageFinished(view: WebView, url: String?) {
             super.onPageFinished(view, url)
             injectSession(view, context)
+            onPageFinished?.invoke()
         }
 
         override fun onReceivedError(
@@ -177,12 +129,6 @@ fun WebView.setupNexaWebView(
     }
 }
 
-/**
- * Overlay nativa mínima de erro de rede: um FrameLayout adicionado por
- * cima do WebView (mesmo pai), cor de fundo sólida igual ao tema atual,
- * com um único botão "Recarregar" centrado. Sem ícones de sistema, sem
- * texto de erro técnico — só a ação que o utilizador precisa de tomar.
- */
 private class NetworkErrorOverlay(private val webView: WebView) {
 
     private var overlay: FrameLayout? = null
@@ -239,12 +185,6 @@ private class NetworkErrorOverlay(private val webView: WebView) {
     }
 }
 
-/**
- * Escreve o utilizador autenticado nativamente no localStorage do WebView,
- * com o mesmo shape que LoginPage.svelte/RegisterPage.svelte gravam
- * (JSON.stringify do AuthResponse), para src/shared/auth-guard.js
- * reconhecer a sessão e não pedir login de novo.
- */
 private fun injectSession(view: WebView, context: Context) {
     val token = SessionManager.getToken(context) ?: return
     val userId = SessionManager.getUserId(context) ?: return
