@@ -15,6 +15,7 @@ import android.webkit.WebViewClient
 import android.widget.ProgressBar
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
 class MainActivity : AppCompatActivity() {
@@ -55,6 +56,11 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView() {
+        webView.setBackgroundColor(ContextCompat.getColor(this, R.color.app_background))
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        webView.isVerticalScrollBarEnabled = false
+        webView.isHorizontalScrollBarEnabled = false
+
         val settings = webView.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -66,6 +72,8 @@ class MainActivity : AppCompatActivity() {
         settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         settings.setSupportZoom(true)
         settings.builtInZoomControls = false
+        settings.setRenderPriority(android.webkit.WebSettings.RenderPriority.HIGH)
+        settings.blockNetworkImage = false
 
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)

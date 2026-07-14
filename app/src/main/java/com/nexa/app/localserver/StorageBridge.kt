@@ -8,12 +8,12 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.webkit.JavascriptInterface
+import android.webkit.WebView
 import com.nexa.app.docexport.DocxBuilder
 import com.nexa.app.docexport.PdfBuilder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.util.concurrent.CountDownLatch
 
 /**
  * Ponte JS exposta ao WebView como window.AndroidStorage. Ao contrário da
@@ -22,8 +22,15 @@ import java.util.concurrent.CountDownLatch
  * A tela em si (navegação de pastas, escolha de formato) é 100% a página
  * ExportPickerPage.svelte, dentro do próprio WebApp — mais consistente
  * com o resto do produto e mais fácil de manter visualmente.
+ *
+ * exportDocument é assíncrono: devolve de imediato (nunca bloqueia a UI
+ * thread) e avisa o JS do resultado via
+ * window.onNexaExportResult(requestId, resultJson) quando terminar.
+ * A versão anterior bloqueava a própria UI thread à espera de um
+ * runOnUiThread agendado nela mesma — um deadlock garantido que fazia
+ * a exportação nunca responder (nem PDF nem DOCX).
  */
-class StorageBridge(private val activity: Activity) {
+class StorageBridge(private val activity: Activity, private val webView: WebView) {
 
     @JavascriptInterface
     fun hasPermission(): Boolean {
@@ -95,21 +102,17 @@ class StorageBridge(private val activity: Activity) {
     }
 
     /**
-     * Gera o ficheiro (.docx ou .pdf) diretamente no targetPath indicado,
-     * usando o mesmo DocxBuilder/PdfBuilder do LocalDocServer, mas
-     * chamado diretamente aqui — sem precisar de um servidor HTTP local
-     * de verdade, já que agora estamos sempre a correr no mesmo processo
-     * do WebView. Devolve um JSON { ok, path, error }.
+     * Gera o ficheiro (.docx ou .pdf) diretamente no targetPath indicado.
+     * Devolve de imediato ao JS (retorno vazio ignorado do lado do JS);
+     * o resultado real chega via callback assíncrono para
+     * window.onNexaExportResult(requestId, resultJson).
      *
      * mode "share" também guarda o ficheiro (no targetPath escolhido pelo
      * utilizador) e, depois de gravar, abre o ShareSheet nativo custom
      * (Intent.ACTION_SEND) apontando para esse mesmo ficheiro.
      */
     @JavascriptInterface
-    fun exportDocument(html: String, targetPath: String, format: String, mode: String): String {
-        val latch = CountDownLatch(1)
-        var resultJson = JSONObject().apply { put("ok", false); put("error", "erro desconhecido") }
-
+    fun exportDocument(requestId: Int, html: String, targetPath: String, format: String, mode: String) {
         activity.runOnUiThread {
             try {
                 val file = File(targetPath)
@@ -117,15 +120,15 @@ class StorageBridge(private val activity: Activity) {
 
                 if (format == "docx") {
                     DocxBuilder.build(file, html)
-                    resultJson = JSONObject().apply { put("ok", true); put("path", file.absolutePath) }
                     if (mode == "share") {
                         com.nexa.app.widgets.ShareSheet.show(activity, file, format)
                     }
-                    latch.countDown()
+                    val result = JSONObject().apply { put("ok", true); put("path", file.absolutePath) }
+                    deliverResult(requestId, result)
                 } else {
                     val fullHtml = PdfBuilder.wrapPagesAsHtmlDocument(html)
                     PdfBuilder.build(activity, file, fullHtml) { ok ->
-                        resultJson = if (ok) {
+                        val result = if (ok) {
                             JSONObject().apply { put("ok", true); put("path", file.absolutePath) }
                         } else {
                             JSONObject().apply { put("ok", false); put("error", "falha ao gerar pdf") }
@@ -133,16 +136,25 @@ class StorageBridge(private val activity: Activity) {
                         if (ok && mode == "share") {
                             com.nexa.app.widgets.ShareSheet.show(activity, file, format)
                         }
-                        latch.countDown()
+                        deliverResult(requestId, result)
                     }
                 }
             } catch (e: Exception) {
-                resultJson = JSONObject().apply { put("ok", false); put("error", e.message ?: "erro desconhecido") }
-                latch.countDown()
+                val result = JSONObject().apply { put("ok", false); put("error", e.message ?: "erro desconhecido") }
+                deliverResult(requestId, result)
             }
         }
+    }
 
-        latch.await()
-        return resultJson.toString()
+    private fun deliverResult(requestId: Int, result: JSONObject) {
+        activity.runOnUiThread {
+            val resultJson = result.toString()
+                .replace("\\", "\\\\")
+                .replace("'", "\\'")
+            webView.evaluateJavascript(
+                "window.onNexaExportResult && window.onNexaExportResult($requestId, '$resultJson');",
+                null
+            )
+        }
     }
 }
