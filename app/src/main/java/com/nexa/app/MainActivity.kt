@@ -12,15 +12,15 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ProgressBar
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import com.google.android.material.progressindicator.LinearProgressIndicator
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
-    private var progressBar: LinearProgressIndicator? = null
+    private var progressBar: ProgressBar? = null
 
     companion object {
         private const val START_URL = "https://example.com"
