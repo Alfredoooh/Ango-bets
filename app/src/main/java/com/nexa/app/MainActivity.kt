@@ -1,146 +1,33 @@
 package com.nexa.app
 
-import android.annotation.SuppressLint
-import android.graphics.Bitmap
-import android.net.http.SslError
+import android.graphics.Color
 import android.os.Bundle
-import android.view.View
-import android.webkit.CookieManager
-import android.webkit.SslErrorHandler
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.ProgressBar
-import androidx.activity.OnBackPressedCallback
+import android.view.Gravity
+import android.widget.FrameLayout
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var webView: WebView
-    private var progressBar: ProgressBar? = null
-
-    companion object {
-        private const val START_URL = "https://example.com"
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
 
-        webView = findViewById(R.id.webView)
-        progressBar = findViewById(R.id.progressBar)
-
-        configureWebView()
-
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (webView.canGoBack()) {
-                    webView.goBack()
-                } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                }
-            }
-        })
-
-        if (savedInstanceState == null) {
-            webView.loadUrl(START_URL)
-        }
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun configureWebView() {
-        webView.setBackgroundColor(ContextCompat.getColor(this, R.color.app_background))
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
-        webView.isVerticalScrollBarEnabled = false
-        webView.isHorizontalScrollBarEnabled = false
-
-        val settings = webView.settings
-        settings.javaScriptEnabled = true
-        settings.domStorageEnabled = true
-        settings.databaseEnabled = true
-        settings.loadWithOverviewMode = true
-        settings.useWideViewPort = true
-        settings.mediaPlaybackRequiresUserGesture = false
-        settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
-        settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        settings.setSupportZoom(true)
-        settings.builtInZoomControls = false
-        settings.setRenderPriority(android.webkit.WebSettings.RenderPriority.HIGH)
-        settings.blockNetworkImage = false
-
-        CookieManager.getInstance().setAcceptCookie(true)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
-
-        webView.webViewClient = object : WebViewClient() {
-
-            override fun shouldOverrideUrlLoading(
-                view: WebView,
-                request: WebResourceRequest
-            ): Boolean {
-                val url = request.url.toString()
-                return if (url.startsWith("http://") || url.startsWith("https://")) {
-                    false
-                } else {
-                    true
-                }
-            }
-
-            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                progressBar?.visibility = View.VISIBLE
-            }
-
-            override fun onPageFinished(view: WebView, url: String?) {
-                super.onPageFinished(view, url)
-                progressBar?.visibility = View.GONE
-            }
-
-            override fun onReceivedError(
-                view: WebView,
-                request: WebResourceRequest,
-                error: WebResourceError
-            ) {
-                super.onReceivedError(view, request, error)
-                progressBar?.visibility = View.GONE
-            }
-
-            override fun onReceivedSslError(
-                view: WebView,
-                handler: SslErrorHandler,
-                error: SslError
-            ) {
-                handler.cancel()
-            }
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
         }
 
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, newProgress: Int) {
-                super.onProgressChanged(view, newProgress)
-                progressBar?.progress = newProgress
-                progressBar?.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
-            }
+        val text = TextView(this).apply {
+            text = "Hello World"
+            setTextColor(Color.WHITE)
+            textSize = 24f
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            )
         }
-    }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        webView.saveState(outState)
-    }
-
-    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
-        super.onRestoreInstanceState(savedInstanceState)
-        webView.restoreState(savedInstanceState)
-    }
-
-    override fun onDestroy() {
-        webView.destroy()
-        super.onDestroy()
+        root.addView(text)
+        setContentView(root)
     }
 }
