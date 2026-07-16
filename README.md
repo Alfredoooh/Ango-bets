@@ -3628,7 +3628,7 @@ Bom, o menu já dispara `export`. Vou agora atualizar `MainPage.svelte` (troca a
     if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
     else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo(); }
   }
-
+ 
   // ══════════════════════════════════════════════════════════════════
   //  KEYBOARD AVOIDING — v2
   //
