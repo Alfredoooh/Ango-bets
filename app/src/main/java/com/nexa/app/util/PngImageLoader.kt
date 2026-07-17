@@ -7,8 +7,8 @@ import android.widget.ImageView
 
 /**
  * Carrega PNGs reais a partir de assets/icons/png/ (paralelo ao
- * SvgImageLoader, que só trata de assets/*.svg). Sem cache, mesma
- * filosofia do SvgImageLoader.
+ * SvgImageLoader, que só trata de assets com extensão .svg).
+ * Sem cache, mesma filosofia do SvgImageLoader.
  */
 object PngImageLoader {
 
