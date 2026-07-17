@@ -33,8 +33,6 @@ class EmailLoginActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Garante que quando o teclado abre, a Activity redimensiona
-        // (empurra o conteúdo para cima) em vez de tapar os campos.
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
         val isDark = ThemePreference.resolveIsDark(this)
@@ -42,11 +40,14 @@ class EmailLoginActivity : AppCompatActivity() {
 
         setupStatusBar(isDark)
         setContentView(R.layout.activity_email_login)
-        applyTheme(palette)
 
+        // As propriedades têm de estar inicializadas ANTES de applyTheme(),
+        // que lhes acede diretamente (emailInput.setTextColor, etc.).
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
         loginButton = findViewById(R.id.loginButton)
+
+        applyTheme(palette)
 
         loginButton.setOnClickListener { attemptLogin() }
     }

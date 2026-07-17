@@ -39,12 +39,14 @@ class EmailRegisterActivity : AppCompatActivity() {
 
         setupStatusBar(isDark)
         setContentView(R.layout.activity_email_register)
-        applyTheme(palette)
 
+        // Inicializar ANTES de applyTheme(), que acede diretamente a estes campos.
         nameInput = findViewById(R.id.nameEditText)
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
         registerButton = findViewById(R.id.registerButton)
+
+        applyTheme(palette)
 
         registerButton.setOnClickListener { attemptRegister() }
     }
