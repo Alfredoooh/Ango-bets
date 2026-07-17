@@ -4,6 +4,7 @@ package com.nexa.app
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -22,13 +23,14 @@ import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
 import com.nexa.app.util.PngImageLoader
 import com.nexa.app.util.SvgImageLoader
+import com.nexa.app.util.ThemeApplier
+import com.nexa.app.util.ThemeColors
 import com.nexa.app.widgets.ExitConfirmDialog
 import kotlinx.coroutines.launch
 
 class LoginActivity : AppCompatActivity() {
 
-    // TODO: substituir pelo teu Web Client ID (tipo "Web application")
-    // do Google Cloud Console -> APIs & Services -> Credentials.
+    // TODO: substituir pelo teu Web Client ID do Google Cloud Console.
     private val googleWebClientId = "SUBSTITUI_PELO_TEU_WEB_CLIENT_ID.apps.googleusercontent.com"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,16 +42,16 @@ class LoginActivity : AppCompatActivity() {
         }
 
         val isDark = ThemePreference.resolveIsDark(this)
+        val palette = ThemeColors.get(isDark)
+
         setupStatusBar(isDark)
         setContentView(R.layout.activity_login)
+        applyTheme(palette)
 
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
         PngImageLoader.load(this, logoIcon, "icons/png/logo.png")
 
-        // Ícone de email é monocromático -> precisa de tint conforme o
-        // tema. Ícone do Google tem cor própria de marca -> nunca tint.
-        val iconTint = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#10151C")
-        SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, iconTint)
+        SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, palette.textPrimary)
         PngImageLoader.load(this, findViewById(R.id.iconGoogle), "icons/png/google.png")
 
         findViewById<LinearLayout>(R.id.btnGoogle).setOnClickListener {
@@ -72,9 +74,27 @@ class LoginActivity : AppCompatActivity() {
         })
     }
 
+    private fun applyTheme(palette: com.nexa.app.util.ThemePalette) {
+        val root = findViewById<View>(R.id.rootLogin)
+        ThemeApplier.applyBackground(root, palette)
+
+        ThemeApplier.applyPrimaryText(findViewById(R.id.welcomeTitle), palette)
+        ThemeApplier.applyPrimaryText(findViewById(R.id.textGoogle), palette)
+        ThemeApplier.applyPrimaryText(findViewById(R.id.textEmail), palette)
+        ThemeApplier.applyPrimaryText(findViewById(R.id.goToRegister), palette)
+        ThemeApplier.applySecondaryText(findViewById(R.id.orText), palette)
+        ThemeApplier.applySecondaryText(findViewById(R.id.termsText), palette)
+
+        ThemeApplier.applyDivider(findViewById(R.id.dividerLeft), palette)
+        ThemeApplier.applyDivider(findViewById(R.id.dividerRight), palette)
+
+        ThemeApplier.applyCardBackground(findViewById(R.id.btnGoogle), palette, 28f, this)
+        ThemeApplier.applyCardBackground(findViewById(R.id.btnEmail), palette, 28f, this)
+    }
+
     private fun setupStatusBar(isDark: Boolean) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        val bgColor = if (isDark) Color.parseColor("#0F0F0F") else Color.WHITE
+        val bgColor = ThemeColors.get(isDark).bgPrimary
         window.statusBarColor = bgColor
         window.navigationBarColor = bgColor
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -85,36 +105,22 @@ class LoginActivity : AppCompatActivity() {
 
     private fun launchGoogleSignIn() {
         val credentialManager = CredentialManager.create(this)
-
         val googleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(false)
             .setServerClientId(googleWebClientId)
             .build()
-
         val request = GetCredentialRequest.Builder()
             .addCredentialOption(googleIdOption)
             .build()
 
         lifecycleScope.launch {
             try {
-                val result = credentialManager.getCredential(
-                    request = request,
-                    context = this@LoginActivity
-                )
+                val result = credentialManager.getCredential(request = request, context = this@LoginActivity)
                 val credential = GoogleIdTokenCredential.createFrom(result.credential.data)
-                // TODO: enviar credential.idToken ao teu backend (Worker) para
-                // validar e trocar por sessão via SessionManager.saveSession(...).
-                Toast.makeText(
-                    this@LoginActivity,
-                    "Conta Google selecionada: ${credential.id}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                // TODO: enviar credential.idToken ao backend, trocar por sessão via SessionManager.saveSession(...).
+                Toast.makeText(this@LoginActivity, "Conta Google selecionada: ${credential.id}", Toast.LENGTH_SHORT).show()
             } catch (e: GetCredentialException) {
-                Toast.makeText(
-                    this@LoginActivity,
-                    "Login com Google cancelado ou indisponível",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this@LoginActivity, "Login com Google cancelado ou indisponível", Toast.LENGTH_SHORT).show()
             }
         }
     }
