@@ -2,17 +2,21 @@
 package com.nexa.app
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Patterns
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.nexa.app.api.ApiClient
 import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 import kotlinx.coroutines.launch
 
 class EmailRegisterActivity : AppCompatActivity() {
@@ -24,6 +28,7 @@ class EmailRegisterActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setupStatusBar()
         setContentView(R.layout.activity_email_register)
 
         nameInput = findViewById(R.id.nameEditText)
@@ -32,6 +37,18 @@ class EmailRegisterActivity : AppCompatActivity() {
         registerButton = findViewById(R.id.registerButton)
 
         registerButton.setOnClickListener { attemptRegister() }
+    }
+
+    private fun setupStatusBar() {
+        val isDark = ThemePreference.resolveIsDark(this)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val bgColor = if (isDark) Color.parseColor("#0F0F0F") else Color.WHITE
+        window.statusBarColor = bgColor
+        window.navigationBarColor = bgColor
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !isDark
+            isAppearanceLightNavigationBars = !isDark
+        }
     }
 
     private fun attemptRegister() {

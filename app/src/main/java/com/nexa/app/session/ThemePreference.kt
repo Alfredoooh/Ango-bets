@@ -1,39 +1,47 @@
+// app/src/main/java/com/nexa/app/session/ThemePreference.kt
 package com.nexa.app.session
 
 import android.content.Context
-import androidx.appcompat.app.AppCompatDelegate
+import android.content.SharedPreferences
 
 /**
- * Guarda e aplica a preferência de tema (light/dark/system).
+ * Fonte de verdade do tema do lado nativo. Gravada sempre que o PWA
+ * chama window.AndroidTheme.onThemeChanged(isDark) (ver ThemeBridge.kt).
+ * Isto permite que Activities nativas SEM WebView (LoginActivity,
+ * EmailLoginActivity, RegisterActivity) leiam o tema atual do PWA antes
+ * de desenhar a própria UI, mantendo nativo + web sempre alinhados,
+ * incluindo quando o utilizador escolheu "seguir o sistema".
  */
 object ThemePreference {
 
-    private const val PREFS_NAME = "nexa_theme"
-    private const val KEY_MODE = "mode"
+    private const val PREFS_NAME = "nexa_theme_prefs"
+    private const val KEY_IS_DARK = "is_dark"
+    private const val KEY_HAS_VALUE = "has_value"
 
-    const val MODE_LIGHT = "light"
-    const val MODE_DARK = "dark"
-    const val MODE_SYSTEM = "system"
+    private fun prefs(context: Context): SharedPreferences =
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    fun saveTheme(context: Context, mode: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_MODE, mode)
+    /** Chamado pelo ThemeBridge sempre que o PWA reporta o seu tema atual. */
+    fun saveIsDark(context: Context, isDark: Boolean) {
+        prefs(context).edit()
+            .putBoolean(KEY_IS_DARK, isDark)
+            .putBoolean(KEY_HAS_VALUE, true)
             .apply()
     }
 
-    fun getStoredTheme(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_MODE, MODE_SYSTEM) ?: MODE_SYSTEM
-    }
-
-    fun applyStoredTheme(context: Context) {
-        val mode = getStoredTheme(context)
-        val nightMode = when (mode) {
-            MODE_LIGHT -> AppCompatDelegate.MODE_NIGHT_NO
-            MODE_DARK -> AppCompatDelegate.MODE_NIGHT_YES
-            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+    /**
+     * Resolve o tema atual: usa o último valor reportado pelo PWA se
+     * existir; caso contrário (primeiríssimo arranque, antes de qualquer
+     * WebView ter carregado), cai no prefers-color-scheme do próprio
+     * Android — o mesmo fallback que o theme.js usa via matchMedia.
+     */
+    fun resolveIsDark(context: Context): Boolean {
+        val p = prefs(context)
+        if (p.getBoolean(KEY_HAS_VALUE, false)) {
+            return p.getBoolean(KEY_IS_DARK, true)
         }
-        AppCompatDelegate.setDefaultNightMode(nightMode)
+        val uiMode = context.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        return uiMode == android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
 }

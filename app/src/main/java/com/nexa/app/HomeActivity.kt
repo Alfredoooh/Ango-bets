@@ -10,9 +10,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.nav.RouteMap
+import com.nexa.app.session.ThemePreference
+import com.nexa.app.webview.ThemeAware
 import com.nexa.app.webview.WebViewSetup
 
-class HomeActivity : AppCompatActivity() {
+class HomeActivity : AppCompatActivity(), ThemeAware {
 
     private lateinit var webView: WebView
 
@@ -34,9 +36,15 @@ class HomeActivity : AppCompatActivity() {
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
+        // Pinta com o último tema conhecido do PWA já no arranque, antes
+        // do WebView carregar e poder chamar onThemeChanged pela primeira vez.
+        applyStatusBarAppearance(ThemePreference.resolveIsDark(this))
+    }
+
+    override fun applyStatusBarAppearance(isDark: Boolean) {
         val controller = WindowInsetsControllerCompat(window, window.decorView)
-        controller.isAppearanceLightStatusBars = false
-        controller.isAppearanceLightNavigationBars = false
+        controller.isAppearanceLightStatusBars = !isDark
+        controller.isAppearanceLightNavigationBars = !isDark
     }
 
     private fun disableSwipeGestures() {

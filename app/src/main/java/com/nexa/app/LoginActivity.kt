@@ -2,6 +2,7 @@
 package com.nexa.app
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -18,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 import com.nexa.app.util.PngImageLoader
 import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.widgets.ExitConfirmDialog
@@ -26,8 +28,7 @@ import kotlinx.coroutines.launch
 class LoginActivity : AppCompatActivity() {
 
     // TODO: substituir pelo teu Web Client ID (tipo "Web application")
-    // criado no Google Cloud Console -> APIs & Services -> Credentials.
-    // NÃO é o Android Client ID — o Credential Manager exige sempre o Web Client ID.
+    // do Google Cloud Console -> APIs & Services -> Credentials.
     private val googleWebClientId = "SUBSTITUI_PELO_TEU_WEB_CLIENT_ID.apps.googleusercontent.com"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,13 +39,17 @@ class LoginActivity : AppCompatActivity() {
             return
         }
 
-        setupStatusBar()
+        val isDark = ThemePreference.resolveIsDark(this)
+        setupStatusBar(isDark)
         setContentView(R.layout.activity_login)
 
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
         PngImageLoader.load(this, logoIcon, "icons/png/logo.png")
 
-        SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "email.svg", 22, 22)
+        // Ícone de email é monocromático -> precisa de tint conforme o
+        // tema. Ícone do Google tem cor própria de marca -> nunca tint.
+        val iconTint = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#10151C")
+        SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, iconTint)
         PngImageLoader.load(this, findViewById(R.id.iconGoogle), "icons/png/google.png")
 
         findViewById<LinearLayout>(R.id.btnGoogle).setOnClickListener {
@@ -67,13 +72,14 @@ class LoginActivity : AppCompatActivity() {
         })
     }
 
-    private fun setupStatusBar() {
+    private fun setupStatusBar(isDark: Boolean) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        window.statusBarColor = androidx.core.content.ContextCompat.getColor(this, R.color.bg_primary)
-        window.navigationBarColor = androidx.core.content.ContextCompat.getColor(this, R.color.bg_primary)
+        val bgColor = if (isDark) Color.parseColor("#0F0F0F") else Color.WHITE
+        window.statusBarColor = bgColor
+        window.navigationBarColor = bgColor
         WindowInsetsControllerCompat(window, window.decorView).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
+            isAppearanceLightStatusBars = !isDark
+            isAppearanceLightNavigationBars = !isDark
         }
     }
 
@@ -97,8 +103,7 @@ class LoginActivity : AppCompatActivity() {
                 )
                 val credential = GoogleIdTokenCredential.createFrom(result.credential.data)
                 // TODO: enviar credential.idToken ao teu backend (Worker) para
-                // validar e trocar por uma sessão própria via SessionManager.saveSession(...),
-                // tal como já acontece no fluxo de EmailLoginActivity.
+                // validar e trocar por sessão via SessionManager.saveSession(...).
                 Toast.makeText(
                     this@LoginActivity,
                     "Conta Google selecionada: ${credential.id}",

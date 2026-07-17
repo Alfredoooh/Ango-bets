@@ -1,22 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_primary"
-    android:fillViewport="true">
+    android:background="@color/bg_primary">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
         android:orientation="vertical"
         android:paddingHorizontal="24dp"
-        android:paddingTop="80dp">
+        android:paddingBottom="40dp">
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="32dp"
             android:fontFamily="serif"
+            android:gravity="center"
             android:text="Criar conta com Email"
             android:textColor="@color/text_primary"
             android:textSize="26sp"
@@ -30,7 +31,7 @@
             android:background="@drawable/bg_social_button"
             android:hint="Nome"
             android:inputType="textPersonName"
-            android:paddingHorizontal="16dp"
+            android:paddingHorizontal="20dp"
             android:textColor="@color/text_primary"
             android:textColorHint="@color/text_secondary" />
 
@@ -42,7 +43,7 @@
             android:background="@drawable/bg_social_button"
             android:hint="Email"
             android:inputType="textEmailAddress"
-            android:paddingHorizontal="16dp"
+            android:paddingHorizontal="20dp"
             android:textColor="@color/text_primary"
             android:textColorHint="@color/text_secondary" />
 
@@ -54,7 +55,7 @@
             android:background="@drawable/bg_social_button"
             android:hint="Palavra-passe"
             android:inputType="textPassword"
-            android:paddingHorizontal="16dp"
+            android:paddingHorizontal="20dp"
             android:textColor="@color/text_primary"
             android:textColorHint="@color/text_secondary" />
 
@@ -63,9 +64,11 @@
             style="@style/SocialButton">
             <TextView
                 style="@style/SocialButtonText"
+                android:layout_width="match_parent"
                 android:layout_gravity="center"
+                android:gravity="center"
                 android:text="Criar conta" />
         </LinearLayout>
 
     </LinearLayout>
-</ScrollView>
+</FrameLayout>
