@@ -7,6 +7,7 @@ import android.util.Patterns
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -49,6 +50,10 @@ class EmailRegisterActivity : AppCompatActivity() {
         applyTheme(palette)
 
         registerButton.setOnClickListener { attemptRegister() }
+
+        findViewById<TextView>(R.id.goToLogin).setOnClickListener {
+            startActivity(Intent(this, EmailLoginActivity::class.java))
+        }
     }
 
     private fun applyTheme(palette: ThemePalette) {
@@ -57,6 +62,8 @@ class EmailRegisterActivity : AppCompatActivity() {
 
         ThemeApplier.applyPrimaryText(findViewById(R.id.screenTitle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.registerButtonText), palette)
+        ThemeApplier.applyPrimaryText(findViewById(R.id.goToLogin), palette)
+        ThemeApplier.applySecondaryText(findViewById(R.id.termsText), palette)
 
         nameInput.setTextColor(palette.textPrimary)
         nameInput.setHintTextColor(palette.textSecondary)
@@ -68,7 +75,7 @@ class EmailRegisterActivity : AppCompatActivity() {
         ThemeApplier.applyCardBackground(nameInput, palette, 28f, this)
         ThemeApplier.applyCardBackground(emailInput, palette, 28f, this)
         ThemeApplier.applyCardBackground(passwordInput, palette, 28f, this)
-        ThemeApplier.applyCardBackground(registerButton, palette, 28f, this)
+        ThemeApplier.applyClickableCardBackground(registerButton, palette, 28f, this)
     }
 
     private fun setupStatusBar(isDark: Boolean) {

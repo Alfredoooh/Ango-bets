@@ -4,6 +4,39 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <ImageView
+        android:id="@+id/heroIllustration"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_gravity="top"
+        android:scaleType="fitCenter"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:orientation="horizontal"
+        android:gravity="center_horizontal|top"
+        android:paddingTop="28dp">
+
+        <ImageView
+            android:id="@+id/logoIcon"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="10dp"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/appNameText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="serif"
+            android:text="CraftLab"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -11,14 +44,6 @@
         android:orientation="vertical"
         android:paddingHorizontal="24dp"
         android:paddingBottom="40dp">
-
-        <ImageView
-            android:id="@+id/logoIcon"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="24dp"
-            android:contentDescription="@null" />
 
         <TextView
             android:id="@+id/welcomeTitle"
@@ -48,8 +73,11 @@
                 android:layout_marginEnd="16dp" />
             <TextView
                 android:id="@+id/textGoogle"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:layout_marginEnd="38dp"
                 android:text="Continuar com o Google"
                 android:textSize="16sp" />
         </LinearLayout>
@@ -99,8 +127,11 @@
                 android:layout_marginEnd="16dp" />
             <TextView
                 android:id="@+id/textEmail"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:layout_marginEnd="38dp"
                 android:text="Continuar com o Email"
                 android:textSize="16sp" />
         </LinearLayout>

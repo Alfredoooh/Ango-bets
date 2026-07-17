@@ -51,6 +51,21 @@ class LoginActivity : AppCompatActivity() {
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
         PngImageLoader.load(this, logoIcon, "icons/png/logo.png")
 
+        val heroIllustration = findViewById<ImageView>(R.id.heroIllustration)
+        heroIllustration.post {
+            heroIllustration.layoutParams = heroIllustration.layoutParams.apply {
+                height = (resources.displayMetrics.heightPixels * 0.45f).toInt()
+            }
+            heroIllustration.requestLayout()
+        }
+        SvgImageLoader.load(
+            this,
+            heroIllustration,
+            "illustrations/personagem_transparente_optimizado.svg",
+            resources.displayMetrics.widthPixels,
+            (resources.displayMetrics.heightPixels * 0.45f).toInt()
+        )
+
         SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, palette.textPrimary)
         PngImageLoader.load(this, findViewById(R.id.iconGoogle), "icons/png/google.png")
 
@@ -81,6 +96,7 @@ class LoginActivity : AppCompatActivity() {
         ThemeApplier.applyPrimaryText(findViewById(R.id.welcomeTitle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.textGoogle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.textEmail), palette)
+        ThemeApplier.applyPrimaryText(findViewById(R.id.appNameText), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.goToRegister), palette)
         ThemeApplier.applySecondaryText(findViewById(R.id.orText), palette)
         ThemeApplier.applySecondaryText(findViewById(R.id.termsText), palette)
@@ -88,8 +104,8 @@ class LoginActivity : AppCompatActivity() {
         ThemeApplier.applyDivider(findViewById(R.id.dividerLeft), palette)
         ThemeApplier.applyDivider(findViewById(R.id.dividerRight), palette)
 
-        ThemeApplier.applyCardBackground(findViewById(R.id.btnGoogle), palette, 28f, this)
-        ThemeApplier.applyCardBackground(findViewById(R.id.btnEmail), palette, 28f, this)
+        ThemeApplier.applyClickableCardBackground(findViewById(R.id.btnGoogle), palette, 28f, this)
+        ThemeApplier.applyClickableCardBackground(findViewById(R.id.btnEmail), palette, 28f, this)
     }
 
     private fun setupStatusBar(isDark: Boolean) {

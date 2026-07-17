@@ -3,7 +3,10 @@ package com.nexa.app
 
 import android.os.Build
 import android.os.Bundle
+import android.view.View
+import android.view.animation.AlphaAnimation
 import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -11,12 +14,14 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.util.ThemeColors
 import com.nexa.app.webview.ThemeAware
 import com.nexa.app.webview.WebViewSetup
 
 class HomeActivity : AppCompatActivity(), ThemeAware {
 
     private lateinit var webView: WebView
+    private lateinit var loadingOverlay: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,9 +31,48 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
         setContentView(R.layout.activity_home)
 
+        loadingOverlay = findViewById(R.id.loadingOverlay)
+        loadingOverlay.setBackgroundColor(ThemeColors.get(ThemePreference.resolveIsDark(this)).bgPrimary)
+
         webView = findViewById(R.id.webView)
         WebViewSetup.configure(this, webView)
+        attachLoadingListener()
         webView.loadUrl(RouteMap.BASE_URL)
+    }
+
+    private fun attachLoadingListener() {
+        val existingClient = webView.webViewClient
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: android.webkit.WebResourceRequest
+            ): Boolean {
+                return existingClient.shouldOverrideUrlLoading(view, request)
+            }
+
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                existingClient.onPageStarted(view, url, favicon)
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                existingClient.onPageFinished(view, url)
+                hideLoadingOverlay()
+            }
+        }
+    }
+
+    private fun hideLoadingOverlay() {
+        if (loadingOverlay.visibility != View.VISIBLE) return
+        loadingOverlay.postDelayed({
+            val fadeOut = AlphaAnimation(1f, 0f).apply {
+                duration = 250
+                fillAfter = true
+            }
+            loadingOverlay.startAnimation(fadeOut)
+            loadingOverlay.postDelayed({
+                loadingOverlay.visibility = View.GONE
+            }, 250)
+        }, 200)
     }
 
     private fun setupEdgeToEdgeStatusBar() {

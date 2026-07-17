@@ -2,7 +2,9 @@
 package com.nexa.app.util
 
 import android.app.Activity
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.view.View
 import android.widget.TextView
 
@@ -24,6 +26,29 @@ object ThemeApplier {
             setColor(palette.cardBg)
             cornerRadius = cornerRadiusDp * density
         }
+    }
+
+    /**
+     * Igual a applyCardBackground, mas envolve o fundo num RippleDrawable
+     * para dar feedback visual ao toque. Usar apenas em elementos clicáveis
+     * (botões), nunca em EditText.
+     */
+    fun applyClickableCardBackground(view: View, palette: ThemePalette, cornerRadiusDp: Float, activity: Activity) {
+        val density = activity.resources.displayMetrics.density
+        val baseDrawable = GradientDrawable().apply {
+            setColor(palette.cardBg)
+            cornerRadius = cornerRadiusDp * density
+        }
+        val maskDrawable = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            cornerRadius = cornerRadiusDp * density
+        }
+        val rippleColor = Color.argb(60, 128, 128, 128)
+        view.background = RippleDrawable(
+            android.content.res.ColorStateList.valueOf(rippleColor),
+            baseDrawable,
+            maskDrawable
+        )
     }
 
     fun applyPrimaryText(textView: TextView, palette: ThemePalette) {

@@ -7,14 +7,16 @@
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:fillViewport="true">
+        android:fillViewport="true"
+        android:clipToPadding="false">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="bottom"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:orientation="vertical"
             android:paddingHorizontal="24dp"
+            android:paddingTop="48dp"
             android:paddingBottom="40dp">
 
             <TextView
@@ -52,6 +54,7 @@
                 android:id="@+id/loginButton"
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
+                android:layout_marginBottom="24dp"
                 android:gravity="center"
                 android:clickable="true"
                 android:focusable="true">
@@ -59,9 +62,29 @@
                     android:id="@+id/loginButtonText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:gravity="center"
                     android:text="Entrar"
                     android:textSize="16sp" />
             </LinearLayout>
+
+            <TextView
+                android:id="@+id/termsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:gravity="center"
+                android:lineSpacingExtra="4dp"
+                android:text="Ao continuar, você concorda com os nossos Termos de Serviço e leu a nossa Política de Privacidade. © 2026 CraftLab"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/goToRegister"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:padding="8dp"
+                android:text="Não tens conta? Criar conta"
+                android:textSize="14sp" />
 
         </LinearLayout>
     </ScrollView>

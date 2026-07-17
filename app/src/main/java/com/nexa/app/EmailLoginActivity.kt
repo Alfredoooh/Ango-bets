@@ -50,6 +50,10 @@ class EmailLoginActivity : AppCompatActivity() {
         applyTheme(palette)
 
         loginButton.setOnClickListener { attemptLogin() }
+
+        findViewById<TextView>(R.id.goToRegister).setOnClickListener {
+            startActivity(Intent(this, EmailRegisterActivity::class.java))
+        }
     }
 
     private fun applyTheme(palette: ThemePalette) {
@@ -58,6 +62,8 @@ class EmailLoginActivity : AppCompatActivity() {
 
         ThemeApplier.applyPrimaryText(findViewById(R.id.screenTitle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.loginButtonText), palette)
+        ThemeApplier.applyPrimaryText(findViewById(R.id.goToRegister), palette)
+        ThemeApplier.applySecondaryText(findViewById(R.id.termsText), palette)
 
         emailInput.setTextColor(palette.textPrimary)
         emailInput.setHintTextColor(palette.textSecondary)
@@ -66,7 +72,7 @@ class EmailLoginActivity : AppCompatActivity() {
 
         ThemeApplier.applyCardBackground(emailInput, palette, 28f, this)
         ThemeApplier.applyCardBackground(passwordInput, palette, 28f, this)
-        ThemeApplier.applyCardBackground(loginButton, palette, 28f, this)
+        ThemeApplier.applyClickableCardBackground(loginButton, palette, 28f, this)
     }
 
     private fun setupStatusBar(isDark: Boolean) {
