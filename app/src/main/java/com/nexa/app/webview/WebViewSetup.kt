@@ -1,16 +1,23 @@
+// app/src/main/java/com/nexa/app/webview/WebViewSetup.kt
 package com.nexa.app.webview
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import com.nexa.app.nav.RouteMap
+import com.nexa.app.session.SessionManager
 
 /**
  * Configuração central do WebView: settings, client, chrome client e
  * ligação das bridges (tema, sessão, links externos, permissões).
+ *
+ * A sessão (token guardado via SessionManager, após login/registo nativo
+ * contra o Worker) é injetada diretamente em localStorage do WebApp em
+ * onPageStarted e onPageFinished, replicando o mecanismo comprovado que o
+ * WebApp (Svelte) já lê em src/shared/api.js / auth store.
  */
 object WebViewSetup {
 
@@ -31,6 +38,9 @@ object WebViewSetup {
             builtInZoomControls = false
         }
 
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true)
+        android.webkit.CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+
         ThemeBridge.attach(activity, webView)
         SessionBridge.attach(activity, webView)
 
@@ -47,6 +57,16 @@ object WebViewSetup {
                     false
                 }
             }
+
+            override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                injectSession(view, activity)
+            }
+
+            override fun onPageFinished(view: WebView, url: String?) {
+                super.onPageFinished(view, url)
+                injectSession(view, activity)
+            }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
@@ -54,5 +74,27 @@ object WebViewSetup {
                 PermissionManager.handle(activity, request)
             }
         }
+    }
+
+    private fun injectSession(view: WebView, context: Context) {
+        val token = SessionManager.getToken(context) ?: return
+        val userId = SessionManager.getUserId(context) ?: return
+        val name = SessionManager.getName(context) ?: ""
+        val email = SessionManager.getEmail(context) ?: ""
+        val credits = SessionManager.getCredits(context)
+
+        val json = org.json.JSONObject().apply {
+            put("token", token)
+            put("id", userId)
+            put("name", name)
+            put("email", email)
+            put("credits", credits)
+        }.toString()
+
+        val escaped = json.replace("\\", "\\\\").replace("'", "\\'")
+        view.evaluateJavascript(
+            "localStorage.setItem('nexa_user', '$escaped');",
+            null
+        )
     }
 }

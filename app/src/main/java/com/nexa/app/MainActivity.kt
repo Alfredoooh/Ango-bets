@@ -1,33 +1,23 @@
+// app/src/main/java/com/nexa/app/MainActivity.kt
 package com.nexa.app
 
-import android.graphics.Color
+import android.content.Intent
 import android.os.Bundle
-import android.view.Gravity
-import android.widget.FrameLayout
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.nexa.app.session.SessionManager
 
 class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val root = FrameLayout(this).apply {
-            setBackgroundColor(Color.BLACK)
+        val destination = if (SessionManager.isLoggedIn(this)) {
+            HomeActivity::class.java
+        } else {
+            LoginActivity::class.java
         }
 
-        val text = TextView(this).apply {
-            text = "Hello World"
-            setTextColor(Color.WHITE)
-            textSize = 24f
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER
-            )
-        }
-
-        root.addView(text)
-        setContentView(root)
+        startActivity(Intent(this, destination))
+        finish()
     }
 }

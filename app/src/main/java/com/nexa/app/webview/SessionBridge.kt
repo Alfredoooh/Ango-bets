@@ -1,3 +1,4 @@
+// app/src/main/java/com/nexa/app/webview/SessionBridge.kt
 package com.nexa.app.webview
 
 import android.app.Activity
@@ -8,8 +9,8 @@ import com.nexa.app.LoginActivity
 import com.nexa.app.session.SessionManager
 
 /**
- * Injeta o token de sessão no WebApp e escuta pedidos de logout
- * vindos de dentro do WebView.
+ * Ponte JS -> Kotlin para o logout. O lado web, ao terminar sessão,
+ * deve chamar: if (window.NativeSession) window.NativeSession.logout();
  */
 class SessionBridge(private val activity: Activity) {
 
