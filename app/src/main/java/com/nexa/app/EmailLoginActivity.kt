@@ -5,8 +5,10 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Patterns
+import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -17,6 +19,9 @@ import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.LoginRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.util.ThemeApplier
+import com.nexa.app.util.ThemeColors
+import com.nexa.app.util.ThemePalette
 import kotlinx.coroutines.launch
 
 class EmailLoginActivity : AppCompatActivity() {
@@ -27,8 +32,17 @@ class EmailLoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setupStatusBar()
+
+        // Garante que quando o teclado abre, a Activity redimensiona
+        // (empurra o conteúdo para cima) em vez de tapar os campos.
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+
+        val isDark = ThemePreference.resolveIsDark(this)
+        val palette = ThemeColors.get(isDark)
+
+        setupStatusBar(isDark)
         setContentView(R.layout.activity_email_login)
+        applyTheme(palette)
 
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
@@ -37,10 +51,26 @@ class EmailLoginActivity : AppCompatActivity() {
         loginButton.setOnClickListener { attemptLogin() }
     }
 
-    private fun setupStatusBar() {
-        val isDark = ThemePreference.resolveIsDark(this)
+    private fun applyTheme(palette: ThemePalette) {
+        val root = findViewById<View>(R.id.rootEmailLogin)
+        ThemeApplier.applyBackground(root, palette)
+
+        ThemeApplier.applyPrimaryText(findViewById(R.id.screenTitle), palette)
+        ThemeApplier.applyPrimaryText(findViewById(R.id.loginButtonText), palette)
+
+        emailInput.setTextColor(palette.textPrimary)
+        emailInput.setHintTextColor(palette.textSecondary)
+        passwordInput.setTextColor(palette.textPrimary)
+        passwordInput.setHintTextColor(palette.textSecondary)
+
+        ThemeApplier.applyCardBackground(emailInput, palette, 28f, this)
+        ThemeApplier.applyCardBackground(passwordInput, palette, 28f, this)
+        ThemeApplier.applyCardBackground(loginButton, palette, 28f, this)
+    }
+
+    private fun setupStatusBar(isDark: Boolean) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        val bgColor = if (isDark) Color.parseColor("#0F0F0F") else Color.WHITE
+        val bgColor = ThemeColors.get(isDark).bgPrimary
         window.statusBarColor = bgColor
         window.navigationBarColor = bgColor
         WindowInsetsControllerCompat(window, window.decorView).apply {

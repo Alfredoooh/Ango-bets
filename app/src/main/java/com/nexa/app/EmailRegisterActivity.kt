@@ -2,9 +2,9 @@
 package com.nexa.app
 
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.util.Patterns
+import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
@@ -17,6 +17,9 @@ import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.util.ThemeApplier
+import com.nexa.app.util.ThemeColors
+import com.nexa.app.util.ThemePalette
 import kotlinx.coroutines.launch
 
 class EmailRegisterActivity : AppCompatActivity() {
@@ -28,8 +31,15 @@ class EmailRegisterActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setupStatusBar()
+
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+
+        val isDark = ThemePreference.resolveIsDark(this)
+        val palette = ThemeColors.get(isDark)
+
+        setupStatusBar(isDark)
         setContentView(R.layout.activity_email_register)
+        applyTheme(palette)
 
         nameInput = findViewById(R.id.nameEditText)
         emailInput = findViewById(R.id.emailEditText)
@@ -39,10 +49,29 @@ class EmailRegisterActivity : AppCompatActivity() {
         registerButton.setOnClickListener { attemptRegister() }
     }
 
-    private fun setupStatusBar() {
-        val isDark = ThemePreference.resolveIsDark(this)
+    private fun applyTheme(palette: ThemePalette) {
+        val root = findViewById<View>(R.id.rootEmailRegister)
+        ThemeApplier.applyBackground(root, palette)
+
+        ThemeApplier.applyPrimaryText(findViewById(R.id.screenTitle), palette)
+        ThemeApplier.applyPrimaryText(findViewById(R.id.registerButtonText), palette)
+
+        nameInput.setTextColor(palette.textPrimary)
+        nameInput.setHintTextColor(palette.textSecondary)
+        emailInput.setTextColor(palette.textPrimary)
+        emailInput.setHintTextColor(palette.textSecondary)
+        passwordInput.setTextColor(palette.textPrimary)
+        passwordInput.setHintTextColor(palette.textSecondary)
+
+        ThemeApplier.applyCardBackground(nameInput, palette, 28f, this)
+        ThemeApplier.applyCardBackground(emailInput, palette, 28f, this)
+        ThemeApplier.applyCardBackground(passwordInput, palette, 28f, this)
+        ThemeApplier.applyCardBackground(registerButton, palette, 28f, this)
+    }
+
+    private fun setupStatusBar(isDark: Boolean) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        val bgColor = if (isDark) Color.parseColor("#0F0F0F") else Color.WHITE
+        val bgColor = ThemeColors.get(isDark).bgPrimary
         window.statusBarColor = bgColor
         window.navigationBarColor = bgColor
         WindowInsetsControllerCompat(window, window.decorView).apply {

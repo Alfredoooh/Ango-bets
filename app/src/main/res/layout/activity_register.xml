@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootRegister"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/bg_primary">
+    android:layout_height="match_parent">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -21,25 +21,37 @@
             android:contentDescription="@null" />
 
         <TextView
+            android:id="@+id/screenTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="40dp"
             android:fontFamily="serif"
             android:gravity="center"
             android:text="Criar conta na CraftLab"
-            android:textColor="@color/text_primary"
             android:textSize="28sp"
             android:textStyle="bold" />
 
         <LinearLayout
             android:id="@+id/btnGoogle"
-            style="@style/SocialButton">
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginBottom="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:clickable="true"
+            android:focusable="true">
             <ImageView
                 android:id="@+id/iconGoogle"
-                style="@style/SocialButtonIcon" />
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginEnd="16dp" />
             <TextView
-                style="@style/SocialButtonText"
-                android:text="Continuar com o Google" />
+                android:id="@+id/textGoogle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Continuar com o Google"
+                android:textSize="16sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -50,45 +62,57 @@
             android:orientation="horizontal">
 
             <View
+                android:id="@+id/dividerLeft"
                 android:layout_width="0dp"
                 android:layout_height="1dp"
-                android:layout_weight="1"
-                android:background="@color/divider" />
+                android:layout_weight="1" />
 
             <TextView
+                android:id="@+id/orText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginHorizontal="12dp"
                 android:text="OU"
-                android:textColor="@color/text_secondary"
                 android:textSize="12sp" />
 
             <View
+                android:id="@+id/dividerRight"
                 android:layout_width="0dp"
                 android:layout_height="1dp"
-                android:layout_weight="1"
-                android:background="@color/divider" />
+                android:layout_weight="1" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/btnEmail"
-            style="@style/SocialButton">
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginBottom="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:clickable="true"
+            android:focusable="true">
             <ImageView
                 android:id="@+id/iconEmail"
-                style="@style/SocialButtonIcon" />
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginEnd="16dp" />
             <TextView
-                style="@style/SocialButtonText"
-                android:text="Criar conta com Email" />
+                android:id="@+id/textEmail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Criar conta com Email"
+                android:textSize="16sp" />
         </LinearLayout>
 
         <TextView
+            android:id="@+id/termsText"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="32dp"
             android:gravity="center"
             android:lineSpacingExtra="4dp"
             android:text="Ao continuar, você concorda com os nossos Termos de Serviço e leu a nossa Política de Privacidade. © 2026 CraftLab"
-            android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
         <TextView
@@ -99,7 +123,6 @@
             android:layout_marginTop="20dp"
             android:padding="8dp"
             android:text="Já tens conta? Entrar"
-            android:textColor="@color/text_primary"
             android:textSize="14sp" />
 
     </LinearLayout>
