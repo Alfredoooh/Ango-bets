@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_primary"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingTop="100dp"
+        android:paddingBottom="24dp">
+
+        <ImageView
+            android:id="@+id/logoIcon"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_gravity="center_horizontal"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="48dp"
+            android:fontFamily="serif"
+            android:text="Bem-vindo ao Nexa"
+            android:textColor="@color/text_primary"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/btnFacebook"
+            style="@style/SocialButton">
+            <ImageView
+                android:id="@+id/iconFacebook"
+                style="@style/SocialButtonIcon" />
+            <TextView
+                style="@style/SocialButtonText"
+                android:text="Continuar com Facebook" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/btnGoogle"
+            style="@style/SocialButton">
+            <ImageView
+                android:id="@+id/iconGoogle"
+                style="@style/SocialButtonIcon" />
+            <TextView
+                style="@style/SocialButtonText"
+                android:text="Continuar com o Google" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/btnMicrosoft"
+            style="@style/SocialButton">
+            <ImageView
+                android:id="@+id/iconMicrosoft"
+                style="@style/SocialButtonIcon" />
+            <TextView
+                style="@style/SocialButtonText"
+                android:text="Continuar com Microsoft" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/btnApple"
+            style="@style/SocialButton">
+            <ImageView
+                android:id="@+id/iconApple"
+                style="@style/SocialButtonIcon" />
+            <TextView
+                style="@style/SocialButtonText"
+                android:text="Continuar com a Apple" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginVertical="20dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:background="@color/divider" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="12dp"
+                android:text="OU"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:background="@color/divider" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/btnEmail"
+            style="@style/SocialButton">
+            <ImageView
+                android:id="@+id/iconEmail"
+                style="@style/SocialButtonIcon" />
+            <TextView
+                style="@style/SocialButtonText"
+                android:text="Continuar com o Email" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/termsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="Ao continuar, você concorda com os nossos Termos de Serviço e leu a nossa Política de Privacidade. © 2026 Nexa"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/goToRegister"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="20dp"
+            android:padding="8dp"
+            android:text="Não tens conta? Criar conta"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp" />
+
+    </LinearLayout>
+</ScrollView>
