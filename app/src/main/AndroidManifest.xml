@@ -37,6 +37,18 @@
     android:name=".HomeActivity"
     android:exported="false"
     android:theme="@style/Theme.Nexa" />
+    
+    <activity
+    android:name=".EmailLoginActivity"
+    android:exported="false"
+    android:theme="@style/Theme.Nexa"
+    android:windowSoftInputMode="adjustResize" />
+
+<activity
+    android:name=".EmailRegisterActivity"
+    android:exported="false"
+    android:theme="@style/Theme.Nexa"
+    android:windowSoftInputMode="adjustResize" />
 
     </application>
 </manifest>
