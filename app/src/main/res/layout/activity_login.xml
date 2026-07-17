@@ -1,48 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_primary"
-    android:fillViewport="true">
+    android:background="@color/bg_primary">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
         android:orientation="vertical"
         android:paddingHorizontal="24dp"
-        android:paddingTop="100dp"
-        android:paddingBottom="24dp">
+        android:paddingBottom="40dp">
 
         <ImageView
             android:id="@+id/logoIcon"
             android:layout_width="80dp"
             android:layout_height="80dp"
             android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="24dp"
             android:contentDescription="@null" />
 
         <TextView
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="48dp"
+            android:layout_marginBottom="40dp"
             android:fontFamily="serif"
-            android:text="Bem-vindo ao Nexa"
+            android:gravity="center"
+            android:text="Bem-vindo ao CraftLab"
             android:textColor="@color/text_primary"
             android:textSize="28sp"
             android:textStyle="bold" />
-
-        <LinearLayout
-            android:id="@+id/btnFacebook"
-            style="@style/SocialButton">
-            <ImageView
-                android:id="@+id/iconFacebook"
-                style="@style/SocialButtonIcon" />
-            <TextView
-                style="@style/SocialButtonText"
-                android:text="Continuar com Facebook" />
-        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/btnGoogle"
@@ -53,28 +40,6 @@
             <TextView
                 style="@style/SocialButtonText"
                 android:text="Continuar com o Google" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/btnMicrosoft"
-            style="@style/SocialButton">
-            <ImageView
-                android:id="@+id/iconMicrosoft"
-                style="@style/SocialButtonIcon" />
-            <TextView
-                style="@style/SocialButtonText"
-                android:text="Continuar com Microsoft" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/btnApple"
-            style="@style/SocialButton">
-            <ImageView
-                android:id="@+id/iconApple"
-                style="@style/SocialButtonIcon" />
-            <TextView
-                style="@style/SocialButtonText"
-                android:text="Continuar com a Apple" />
         </LinearLayout>
 
         <LinearLayout
@@ -123,7 +88,7 @@
             android:layout_marginTop="32dp"
             android:gravity="center"
             android:lineSpacingExtra="4dp"
-            android:text="Ao continuar, você concorda com os nossos Termos de Serviço e leu a nossa Política de Privacidade. © 2026 Nexa"
+            android:text="Ao continuar, você concorda com os nossos Termos de Serviço e leu a nossa Política de Privacidade. © 2026 CraftLab"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
@@ -139,4 +104,4 @@
             android:textSize="14sp" />
 
     </LinearLayout>
-</ScrollView>
+</FrameLayout>

@@ -10,7 +10,7 @@ import com.nexa.app.session.SessionManager
 
 /**
  * Ponte JS -> Kotlin para o logout. O lado web, ao terminar sessão,
- * deve chamar: if (window.NativeSession) window.NativeSession.logout();
+ * chama: if (window.AndroidSession) window.AndroidSession.onLogout();
  */
 class SessionBridge(private val activity: Activity) {
 
@@ -20,7 +20,7 @@ class SessionBridge(private val activity: Activity) {
     }
 
     @JavascriptInterface
-    fun logout() {
+    fun onLogout() {
         activity.runOnUiThread {
             SessionManager.clear(activity)
             val intent = Intent(activity, LoginActivity::class.java).apply {
@@ -33,7 +33,7 @@ class SessionBridge(private val activity: Activity) {
 
     companion object {
         fun attach(activity: Activity, webView: WebView) {
-            webView.addJavascriptInterface(SessionBridge(activity), "NativeSession")
+            webView.addJavascriptInterface(SessionBridge(activity), "AndroidSession")
         }
     }
 }
