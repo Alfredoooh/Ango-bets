@@ -6,6 +6,7 @@ import android.animation.AnimatorListenerAdapter
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewAnimationUtils
+import android.view.ViewTreeObserver
 import android.view.animation.AccelerateDecelerateInterpolator
 import androidx.core.view.ViewCompat
 import kotlin.math.hypot
@@ -16,15 +17,19 @@ import kotlin.math.max
  * container transform, a partir do ponto tocado (o botão sol/lua).
  *
  * Como funciona:
- * 1. Cria um overlay opaco com a cor de fundo NOVA, do tamanho do
- *    ecrã inteiro, e coloca-o no topo do z-order (bringToFront) para
- *    garantir que fica por cima de tudo, incluindo a status/nav bar
- *    da própria Activity.
+ * 1. Cria um overlay opaco com a cor de fundo NOVA (ou ANTIGA, consoante
+ *    o sentido), do tamanho do ecrã inteiro, e coloca-o no topo do
+ *    z-order (bringToFront) para garantir que fica por cima de tudo.
  * 2. Aplica a nova paleta ao conteúdo real por baixo IMEDIATAMENTE
  *    (antes de animar) — isto é o que faz a animação ser um
  *    verdadeiro "reveal" do tema novo, e não um fade: quando o
- *    círculo cresce e o overlay é removido no fim, o conteúdo por
- *    baixo já está correto e não há flash nem salto visual.
+ *    círculo termina de animar e o overlay é removido, o conteúdo
+ *    por baixo já está correto e não há flash nem salto visual.
+ * 3. Espera o overlay estar completamente desenhado (via
+ *    OnPreDrawListener) antes de disparar a animação, evitando que o
+ *    Android funda a "entrada" da view com o circular reveal — é
+ *    esse frame perdido que produzia um fade em vez de uma animação
+ *    de raio limpa.
  * 3a. Modo "expandir" (ex: claro -> escuro): reveal cresce de 0 até
  *     cobrir o ecrã todo a partir da origem, depois o overlay é
  *     removido (o conteúdo por baixo, já no tema novo, fica visível).
@@ -50,6 +55,13 @@ object ThemeRevealHelper {
         if (isRevealInProgress) return
         isRevealInProgress = true
 
+        if (rootView.width == 0 || rootView.height == 0) {
+            // fallback sem animação se ainda não houver bounds válidos
+            applyNewTheme()
+            isRevealInProgress = false
+            return
+        }
+
         val overlayColor = if (isSwitchingToDark) newBackgroundColor else oldBackgroundColor
 
         val overlay = View(rootView.context).apply {
@@ -58,10 +70,13 @@ object ThemeRevealHelper {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // Sem esta linha o Android pode animar a entrada da view
+            // (alpha/scale) por baixo dos panos, o que se soma ao
+            // circular reveal e parece um "fade" indesejado.
+            layoutAnimation = null
         }
         rootView.addView(overlay)
         overlay.bringToFront()
-        rootView.requestLayout()
 
         // Aplica o tema novo ao conteúdo real JÁ, por baixo do overlay.
         // O overlay é que decide o que fica visualmente por cima até
@@ -73,27 +88,40 @@ object ThemeRevealHelper {
             max(originY, rootView.height - originY).toDouble()
         ).toFloat()
 
-        if (!ViewCompat.isLaidOut(overlay) || rootView.width == 0 || rootView.height == 0) {
-            // fallback sem animação se ainda não houver bounds válidos
-            rootView.removeView(overlay)
-            isRevealInProgress = false
-            return
-        }
-
         val startRadius = if (isSwitchingToDark) 0f else maxRadius
         val endRadius = if (isSwitchingToDark) maxRadius else 0f
 
-        val anim = ViewAnimationUtils.createCircularReveal(
-            overlay, originX, originY, startRadius, endRadius
-        )
-        anim.duration = durationMs
-        anim.interpolator = AccelerateDecelerateInterpolator()
-        anim.addListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
+        fun startReveal() {
+            if (!ViewCompat.isLaidOut(overlay)) {
                 rootView.removeView(overlay)
                 isRevealInProgress = false
+                return
+            }
+
+            val anim = ViewAnimationUtils.createCircularReveal(
+                overlay, originX, originY, startRadius, endRadius
+            )
+            anim.duration = durationMs
+            anim.interpolator = AccelerateDecelerateInterpolator()
+            anim.addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    rootView.removeView(overlay)
+                    isRevealInProgress = false
+                }
+            })
+            anim.start()
+        }
+
+        // Garante que o overlay já foi completamente desenhado (cobrindo
+        // a tela, na cor certa) ANTES de iniciar a animação do raio —
+        // equivalente ao "reflow forçado" que resolveu o mesmo problema
+        // na versão web.
+        overlay.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                overlay.viewTreeObserver.removeOnPreDrawListener(this)
+                overlay.post { startReveal() }
+                return true
             }
         })
-        anim.start()
     }
 }
