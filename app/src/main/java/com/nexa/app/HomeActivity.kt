@@ -1,6 +1,9 @@
 // app/src/main/java/com/nexa/app/HomeActivity.kt
 package com.nexa.app
 
+import android.graphics.Color
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -13,6 +16,9 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.airbnb.lottie.LottieAnimationView
+import com.airbnb.lottie.LottieProperty
+import com.airbnb.lottie.model.KeyPath
+import com.airbnb.lottie.value.LottieValueCallback
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.ThemePreference
 import com.nexa.app.util.ThemeColors
@@ -33,12 +39,14 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
         setContentView(R.layout.activity_home)
 
-        val bgColor = ThemeColors.get(ThemePreference.resolveIsDark(this)).bgPrimary
+        val isDark = ThemePreference.resolveIsDark(this)
+        val bgColor = ThemeColors.get(isDark).bgPrimary
         findViewById<View>(R.id.rootHome).setBackgroundColor(bgColor)
 
         loadingOverlay = findViewById(R.id.loadingOverlay)
         loadingSpinner = findViewById(R.id.loadingSpinner)
         loadingOverlay.setBackgroundColor(bgColor)
+        applyLottieTint(isDark)
         loadingSpinner.playAnimation()
 
         webView = findViewById(R.id.webView)
@@ -46,6 +54,22 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
         WebViewSetup.configure(this, webView)
         attachLoadingListener()
         webView.loadUrl(RouteMap.BASE_URL)
+    }
+
+    /**
+     * O loader.json vem sempre com a mesma cor escura de origem. Em vez de
+     * manter dois ficheiros Lottie (claro/escuro), aplicamos um
+     * PorterDuffColorFilter a todas as camadas do JSON em runtime:
+     * tema claro -> mantém a cor escura original; tema escuro -> força branco.
+     */
+    private fun applyLottieTint(isDark: Boolean) {
+        if (!isDark) return
+        val whiteFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_ATOP)
+        loadingSpinner.addValueCallback(
+            KeyPath("**"),
+            LottieProperty.COLOR_FILTER,
+            LottieValueCallback(whiteFilter)
+        )
     }
 
     private fun attachLoadingListener() {

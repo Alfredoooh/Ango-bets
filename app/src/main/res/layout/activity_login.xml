@@ -15,31 +15,6 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:orientation="horizontal"
-        android:gravity="center_horizontal|top"
-        android:paddingTop="28dp">
-
-        <ImageView
-            android:id="@+id/logoIcon"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginEnd="10dp"
-            android:contentDescription="@null" />
-
-        <TextView
-            android:id="@+id/appNameText"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="serif"
-            android:text="CraftLab"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:orientation="vertical"
         android:paddingHorizontal="24dp"
@@ -49,7 +24,7 @@
             android:id="@+id/welcomeTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="40dp"
+            android:layout_marginBottom="24dp"
             android:fontFamily="serif"
             android:gravity="center"
             android:text="Bem-vindo ao CraftLab"
@@ -85,7 +60,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginVertical="20dp"
+            android:layout_marginVertical="12dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -114,7 +89,6 @@
             android:id="@+id/btnEmail"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:layout_marginBottom="12dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
             android:paddingHorizontal="16dp"
@@ -137,24 +111,24 @@
         </LinearLayout>
 
         <TextView
-            android:id="@+id/termsText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
-            android:gravity="center"
-            android:lineSpacingExtra="4dp"
-            android:text="Ao continuar, você concorda com os nossos Termos de Serviço e leu a nossa Política de Privacidade. © 2026 CraftLab"
-            android:textSize="12sp" />
-
-        <TextView
             android:id="@+id/goToRegister"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="10dp"
             android:padding="8dp"
             android:text="Não tens conta? Criar conta"
             android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/termsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="Ao continuar, você concorda com os nossos Termos de Serviço e leu a nossa Política de Privacidade. © 2026 CraftLab"
+            android:textSize="12sp" />
 
     </LinearLayout>
 </FrameLayout>

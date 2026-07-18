@@ -55,13 +55,7 @@ class LoginActivity : AppCompatActivity() {
             }
             heroIllustration.requestLayout()
         }
-        SvgImageLoader.load(
-            this,
-            heroIllustration,
-            "illustrations/login.svg",
-            resources.displayMetrics.widthPixels,
-            (resources.displayMetrics.heightPixels * 0.38f).toInt()
-        )
+        PngImageLoader.load(this, heroIllustration, "illustrations/login.png")
 
         SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, palette.textPrimary)
         PngImageLoader.load(this, findViewById(R.id.iconGoogle), "icons/png/google.png")
