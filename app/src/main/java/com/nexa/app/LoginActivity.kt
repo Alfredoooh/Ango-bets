@@ -2,7 +2,6 @@
 package com.nexa.app
 
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.widget.FrameLayout
@@ -53,15 +52,6 @@ class LoginActivity : AppCompatActivity() {
         setContentView(R.layout.activity_login)
         applyTheme(palette)
 
-        val heroIllustration = findViewById<ImageView>(R.id.heroIllustration)
-        heroIllustration.post {
-            heroIllustration.layoutParams = heroIllustration.layoutParams.apply {
-                height = (resources.displayMetrics.heightPixels * 0.38f).toInt()
-            }
-            heroIllustration.requestLayout()
-        }
-        PngImageLoader.load(this, heroIllustration, "illustrations/login.png")
-
         loadLogo(palette)
         loadThemeToggleIcon(palette)
 
@@ -94,7 +84,7 @@ class LoginActivity : AppCompatActivity() {
 
     /** Logo em icons/svg/logo.svg, recolorido conforme o tema (tint sólido). */
     private fun loadLogo(palette: ThemePalette) {
-        SvgImageLoader.loadDp(this, findViewById(R.id.logoIcon), "icons/svg/logo.svg", 56, 56, palette.textPrimary)
+        SvgImageLoader.loadDp(this, findViewById(R.id.logoIcon), "icons/svg/logo.svg", 124, 124, palette.textPrimary)
     }
 
     /** Ícone claro -> lua (para ir para escuro); ícone escuro -> sol (para ir para claro). */
