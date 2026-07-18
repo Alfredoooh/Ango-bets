@@ -14,11 +14,16 @@ import kotlin.math.max
  * Efeito de troca de tema em círculo a crescer a partir do ponto de
  * toque, como no Telegram. Implementação por overlay: cria uma View
  * cheia da cor NOVA do tema, revela-a com um circular reveal
- * (ViewAnimationUtils) a partir de (originX, originY), e só quando a
- * animação termina é que o callback onMidAnimation() aplica de facto
- * a nova paleta ao conteúdo real por baixo — depois remove o overlay.
+ * (ViewAnimationUtils) a partir de (originX, originY). Só quando o
+ * overlay já cobre o ecrã por completo é que onAnimationComplete()
+ * aplica de facto a nova paleta ao conteúdo real por baixo — e só
+ * depois disso o overlay é removido, garantindo que nunca há um
+ * frame com o tema trocado mas ainda visível por baixo do overlay
+ * antigo.
  */
 object ThemeRevealHelper {
+
+    private var isRevealInProgress = false
 
     fun animateThemeChange(
         rootView: ViewGroup,
@@ -26,8 +31,13 @@ object ThemeRevealHelper {
         originY: Int,
         newBackgroundColor: Int,
         durationMs: Long = 480L,
-        onMidAnimation: () -> Unit
+        onAnimationComplete: () -> Unit
     ) {
+        // Evita sobrepor duas animações de reveal se o utilizador tocar
+        // várias vezes seguidas antes da primeira terminar.
+        if (isRevealInProgress) return
+        isRevealInProgress = true
+
         val overlay = View(rootView.context).apply {
             setBackgroundColor(newBackgroundColor)
             layoutParams = ViewGroup.LayoutParams(
@@ -44,8 +54,9 @@ object ThemeRevealHelper {
 
         if (!ViewCompat.isLaidOut(overlay)) {
             // fallback sem animação de reveal se a view ainda não tiver bounds
-            onMidAnimation()
+            onAnimationComplete()
             rootView.removeView(overlay)
+            isRevealInProgress = false
             return
         }
 
@@ -56,8 +67,9 @@ object ThemeRevealHelper {
         anim.interpolator = AccelerateDecelerateInterpolator()
         anim.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
-                onMidAnimation()
+                onAnimationComplete()
                 rootView.removeView(overlay)
+                isRevealInProgress = false
             }
         })
         anim.start()

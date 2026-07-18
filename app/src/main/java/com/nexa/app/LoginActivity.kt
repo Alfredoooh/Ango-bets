@@ -36,6 +36,7 @@ class LoginActivity : AppCompatActivity() {
     private val googleWebClientId = "SUBSTITUI_PELO_TEU_WEB_CLIENT_ID.apps.googleusercontent.com"
 
     private var isDark = false
+    private var isThemeAnimating = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,8 +99,14 @@ class LoginActivity : AppCompatActivity() {
      * tocado (estilo Telegram). Persiste a escolha em ThemePreference
      * (fonte de verdade nativa) para que, quando a HomeActivity abrir o
      * WebView, o PWA seja sincronizado com este valor via JS injetado.
+     *
+     * isThemeAnimating evita re-entrância: se o utilizador tocar várias
+     * vezes rápido no botão, só a primeira animação é despoletada.
      */
     private fun toggleTheme(originView: View) {
+        if (isThemeAnimating) return
+        isThemeAnimating = true
+
         val newIsDark = !isDark
         val newPalette = ThemeColors.get(newIsDark)
         val root = findViewById<FrameLayout>(R.id.rootLogin)
@@ -124,6 +131,7 @@ class LoginActivity : AppCompatActivity() {
             loadThemeToggleIcon(newPalette)
             SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, newPalette.textPrimary)
             setupStatusBar(newIsDark)
+            isThemeAnimating = false
         }
     }
 
