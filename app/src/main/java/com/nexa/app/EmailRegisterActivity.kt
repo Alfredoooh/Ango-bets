@@ -7,10 +7,13 @@ import android.util.Patterns
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.nexa.app.api.ApiClient
@@ -33,8 +36,6 @@ class EmailRegisterActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-
         val isDark = ThemePreference.resolveIsDark(this)
         val palette = ThemeColors.get(isDark)
 
@@ -48,12 +49,31 @@ class EmailRegisterActivity : AppCompatActivity() {
         registerButton = findViewById(R.id.registerButton)
 
         applyTheme(palette)
+        setupKeyboardInsetHandling()
 
         registerButton.setOnClickListener { attemptRegister() }
 
         findViewById<TextView>(R.id.goToLogin).setOnClickListener {
             startActivity(Intent(this, EmailLoginActivity::class.java))
         }
+    }
+
+    /**
+     * Com edge-to-edge ativo (decorFitsSystemWindows = false), o Manifest
+     * "adjustResize" deixa de funcionar sozinho: o sistema já não empurra
+     * a janela quando o teclado aparece. Aqui aplicamos manualmente o
+     * inset do teclado (ime()) como padding do ScrollView, para que o
+     * conteúdo suba e o campo focado fique visível acima do teclado.
+     */
+    private fun setupKeyboardInsetHandling() {
+        val scrollView = findViewById<ScrollView>(R.id.emailRegisterScrollView)
+        ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, insets ->
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navHeight = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, maxOf(imeHeight, navHeight))
+            insets
+        }
+        ViewCompat.requestApplyInsets(scrollView)
     }
 
     private fun applyTheme(palette: ThemePalette) {

@@ -48,22 +48,19 @@ class LoginActivity : AppCompatActivity() {
         setContentView(R.layout.activity_login)
         applyTheme(palette)
 
-        val logoIcon = findViewById<ImageView>(R.id.logoIcon)
-        PngImageLoader.load(this, logoIcon, "icons/png/logo.png")
-
         val heroIllustration = findViewById<ImageView>(R.id.heroIllustration)
         heroIllustration.post {
             heroIllustration.layoutParams = heroIllustration.layoutParams.apply {
-                height = (resources.displayMetrics.heightPixels * 0.45f).toInt()
+                height = (resources.displayMetrics.heightPixels * 0.38f).toInt()
             }
             heroIllustration.requestLayout()
         }
         SvgImageLoader.load(
             this,
             heroIllustration,
-            "illustrations/personagem_transparente_optimizado.svg",
+            "illustrations/login.svg",
             resources.displayMetrics.widthPixels,
-            (resources.displayMetrics.heightPixels * 0.45f).toInt()
+            (resources.displayMetrics.heightPixels * 0.38f).toInt()
         )
 
         SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, palette.textPrimary)
@@ -96,7 +93,6 @@ class LoginActivity : AppCompatActivity() {
         ThemeApplier.applyPrimaryText(findViewById(R.id.welcomeTitle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.textGoogle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.textEmail), palette)
-        ThemeApplier.applyPrimaryText(findViewById(R.id.appNameText), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.goToRegister), palette)
         ThemeApplier.applySecondaryText(findViewById(R.id.orText), palette)
         ThemeApplier.applySecondaryText(findViewById(R.id.termsText), palette)

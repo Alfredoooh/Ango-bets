@@ -12,6 +12,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.airbnb.lottie.LottieAnimationView
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.ThemePreference
 import com.nexa.app.util.ThemeColors
@@ -22,6 +23,7 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: View
+    private lateinit var loadingSpinner: LottieAnimationView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,10 +33,16 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
         setContentView(R.layout.activity_home)
 
+        val bgColor = ThemeColors.get(ThemePreference.resolveIsDark(this)).bgPrimary
+        findViewById<View>(R.id.rootHome).setBackgroundColor(bgColor)
+
         loadingOverlay = findViewById(R.id.loadingOverlay)
-        loadingOverlay.setBackgroundColor(ThemeColors.get(ThemePreference.resolveIsDark(this)).bgPrimary)
+        loadingSpinner = findViewById(R.id.loadingSpinner)
+        loadingOverlay.setBackgroundColor(bgColor)
+        loadingSpinner.playAnimation()
 
         webView = findViewById(R.id.webView)
+        webView.setBackgroundColor(bgColor)
         WebViewSetup.configure(this, webView)
         attachLoadingListener()
         webView.loadUrl(RouteMap.BASE_URL)
@@ -71,6 +79,7 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
             loadingOverlay.startAnimation(fadeOut)
             loadingOverlay.postDelayed({
                 loadingOverlay.visibility = View.GONE
+                loadingSpinner.cancelAnimation()
             }, 250)
         }, 200)
     }
