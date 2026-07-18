@@ -30,7 +30,7 @@ class RegisterActivity : AppCompatActivity() {
         applyTheme(palette)
 
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
-        SvgImageLoader.load(this, logoIcon, "icons/svg/logo.svg")
+        SvgImageLoader.loadDp(this, logoIcon, "icons/svg/logo.svg", 124, 124, palette.textPrimary)
 
         SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "email.svg", 22, 22, palette.textPrimary)
         PngImageLoader.load(this, findViewById(R.id.iconGoogle), "icons/png/google.png")
