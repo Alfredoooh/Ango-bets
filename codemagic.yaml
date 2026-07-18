@@ -100,13 +100,13 @@ workflows:
               placeholder.save(dest, "PNG")
 
           if os.path.exists(SPLASH_DARK):
-              dest_dark = os.path.join(RES, "drawable-night", "splash_icon.png")
+              dest_dark = os.path.join(RES, "drawable", "splash_icon_dark.png")
               os.makedirs(os.path.dirname(dest_dark), exist_ok=True)
               shutil.copy2(SPLASH_DARK, dest_dark)
               print(f"  -> {dest_dark}")
           else:
               print("AVISO: splash_icon_dark.png nao encontrado, a usar o claro como fallback no tema escuro...")
-              dest_dark = os.path.join(RES, "drawable-night", "splash_icon.png")
+              dest_dark = os.path.join(RES, "drawable", "splash_icon_dark.png")
               os.makedirs(os.path.dirname(dest_dark), exist_ok=True)
               shutil.copy2(SPLASH if os.path.exists(SPLASH) else LAUNCHER, dest_dark)
 
@@ -235,13 +235,13 @@ workflows:
               placeholder.save(dest, "PNG")
 
           if os.path.exists(SPLASH_DARK):
-              dest_dark = os.path.join(RES, "drawable-night", "splash_icon.png")
+              dest_dark = os.path.join(RES, "drawable", "splash_icon_dark.png")
               os.makedirs(os.path.dirname(dest_dark), exist_ok=True)
               shutil.copy2(SPLASH_DARK, dest_dark)
               print(f"  -> {dest_dark}")
           else:
               print("AVISO: splash_icon_dark.png nao encontrado, a usar o claro como fallback no tema escuro...")
-              dest_dark = os.path.join(RES, "drawable-night", "splash_icon.png")
+              dest_dark = os.path.join(RES, "drawable", "splash_icon_dark.png")
               os.makedirs(os.path.dirname(dest_dark), exist_ok=True)
               shutil.copy2(SPLASH if os.path.exists(SPLASH) else LAUNCHER, dest_dark)
 
