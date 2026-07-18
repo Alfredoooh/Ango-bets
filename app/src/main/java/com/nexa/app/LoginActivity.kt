@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -25,6 +26,8 @@ import com.nexa.app.util.PngImageLoader
 import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
+import com.nexa.app.util.ThemePalette
+import com.nexa.app.util.ThemeRevealHelper
 import com.nexa.app.widgets.ExitConfirmDialog
 import kotlinx.coroutines.launch
 
@@ -32,6 +35,8 @@ class LoginActivity : AppCompatActivity() {
 
     // TODO: substituir pelo teu Web Client ID do Google Cloud Console.
     private val googleWebClientId = "SUBSTITUI_PELO_TEU_WEB_CLIENT_ID.apps.googleusercontent.com"
+
+    private var isDark = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,7 +46,7 @@ class LoginActivity : AppCompatActivity() {
             return
         }
 
-        val isDark = ThemePreference.resolveIsDark(this)
+        isDark = ThemePreference.resolveIsDark(this)
         val palette = ThemeColors.get(isDark)
 
         setupStatusBar(isDark)
@@ -57,6 +62,9 @@ class LoginActivity : AppCompatActivity() {
         }
         PngImageLoader.load(this, heroIllustration, "illustrations/login.png")
 
+        loadLogo(palette)
+        loadThemeToggleIcon(palette)
+
         SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, palette.textPrimary)
         PngImageLoader.load(this, findViewById(R.id.iconGoogle), "icons/png/google.png")
 
@@ -71,6 +79,10 @@ class LoginActivity : AppCompatActivity() {
             startActivity(Intent(this, RegisterActivity::class.java))
         }
 
+        findViewById<ImageView>(R.id.themeToggleBtn).setOnClickListener { view ->
+            toggleTheme(view)
+        }
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 ExitConfirmDialog.show(this@LoginActivity) {
@@ -80,7 +92,52 @@ class LoginActivity : AppCompatActivity() {
         })
     }
 
-    private fun applyTheme(palette: com.nexa.app.util.ThemePalette) {
+    /** Logo em icons/svg/logo.svg, recolorido conforme o tema (tint sólido). */
+    private fun loadLogo(palette: ThemePalette) {
+        SvgImageLoader.loadDp(this, findViewById(R.id.logoIcon), "icons/svg/logo.svg", 56, 56, palette.textPrimary)
+    }
+
+    /** Ícone claro -> lua (para ir para escuro); ícone escuro -> sol (para ir para claro). */
+    private fun loadThemeToggleIcon(palette: ThemePalette) {
+        val iconPath = if (isDark) "icons/svg/sun.svg" else "icons/svg/moon.svg"
+        SvgImageLoader.loadDp(this, findViewById(R.id.themeToggleBtn), iconPath, 22, 22, palette.textPrimary)
+    }
+
+    /**
+     * Troca o tema com efeito de círculo a crescer a partir do botão
+     * tocado (estilo Telegram). Persiste a escolha em ThemePreference
+     * (fonte de verdade nativa) para que, quando a HomeActivity abrir o
+     * WebView, o PWA seja sincronizado com este valor via JS injetado.
+     */
+    private fun toggleTheme(originView: View) {
+        val newIsDark = !isDark
+        val newPalette = ThemeColors.get(newIsDark)
+        val root = findViewById<FrameLayout>(R.id.rootLogin)
+
+        val location = IntArray(2)
+        originView.getLocationInWindow(location)
+        val rootLocation = IntArray(2)
+        root.getLocationInWindow(rootLocation)
+        val originX = location[0] - rootLocation[0] + originView.width / 2
+        val originY = location[1] - rootLocation[1] + originView.height / 2
+
+        ThemeRevealHelper.animateThemeChange(
+            rootView = root,
+            originX = originX,
+            originY = originY,
+            newBackgroundColor = newPalette.bgPrimary
+        ) {
+            isDark = newIsDark
+            ThemePreference.saveIsDark(this, newIsDark)
+            applyTheme(newPalette)
+            loadLogo(newPalette)
+            loadThemeToggleIcon(newPalette)
+            SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, newPalette.textPrimary)
+            setupStatusBar(newIsDark)
+        }
+    }
+
+    private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootLogin)
         ThemeApplier.applyBackground(root, palette)
 

@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.util.Patterns
 import android.view.View
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -21,6 +22,7 @@ import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
 import com.nexa.app.util.ThemePalette
@@ -32,6 +34,7 @@ class EmailRegisterActivity : AppCompatActivity() {
     private lateinit var emailInput: EditText
     private lateinit var passwordInput: EditText
     private lateinit var registerButton: LinearLayout
+    private lateinit var backBtn: ImageView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,16 +50,38 @@ class EmailRegisterActivity : AppCompatActivity() {
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
         registerButton = findViewById(R.id.registerButton)
+        backBtn = findViewById(R.id.backBtn)
 
         applyTheme(palette)
+        applyBackBtnTopInset()
         setupKeyboardInsetHandling()
 
+        SvgImageLoader.loadDp(this, findViewById(R.id.logoIcon), "icons/svg/logo.svg", 48, 48, palette.textPrimary)
+        SvgImageLoader.loadDp(this, backBtn, "icons/svg/back.svg", 20, 20, palette.textPrimary)
+
         registerButton.setOnClickListener { attemptRegister() }
+
+        backBtn.setOnClickListener { finish() }
 
         findViewById<TextView>(R.id.goToLogin).setOnClickListener {
             startActivity(Intent(this, EmailLoginActivity::class.java))
         }
     }
+
+    /** Empurra o botão de voltar para baixo da status bar, sem valor fixo em dp. */
+    private fun applyBackBtnTopInset() {
+        ViewCompat.setOnApplyWindowInsetsListener(backBtn) { view, insets ->
+            val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            (view.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { lp ->
+                lp.topMargin = statusBarHeight + dp(14)
+                view.layoutParams = lp
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(backBtn)
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     /**
      * Com edge-to-edge ativo (decorFitsSystemWindows = false), o Manifest
@@ -96,6 +121,7 @@ class EmailRegisterActivity : AppCompatActivity() {
         ThemeApplier.applyCardBackground(emailInput, palette, 28f, this)
         ThemeApplier.applyCardBackground(passwordInput, palette, 28f, this)
         ThemeApplier.applyClickableCardBackground(registerButton, palette, 28f, this)
+        ThemeApplier.applyClickableCardBackground(backBtn, palette, 20f, this)
     }
 
     private fun setupStatusBar(isDark: Boolean) {

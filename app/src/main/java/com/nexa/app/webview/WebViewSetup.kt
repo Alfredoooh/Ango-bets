@@ -9,6 +9,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 
 /**
  * Configuração central do WebView: settings, client, chrome client e
@@ -61,11 +62,13 @@ object WebViewSetup {
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 injectSession(view, activity)
+                injectTheme(view, activity)
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
                 injectSession(view, activity)
+                injectTheme(view, activity)
             }
         }
 
@@ -94,6 +97,24 @@ object WebViewSetup {
         val escaped = json.replace("\\", "\\\\").replace("'", "\\'")
         view.evaluateJavascript(
             "localStorage.setItem('nexa_user', '$escaped');",
+            null
+        )
+    }
+
+    /**
+     * Sincroniza o tema escolhido no lado nativo (ex: toggle sol/lua na
+     * LoginActivity, que não tem WebView disponível) com o localStorage
+     * do PWA, e chama syncTheme() se já estiver definida em window, para
+     * o tema aplicar-se imediatamente sem esperar reload.
+     */
+    private fun injectTheme(view: WebView, context: Context) {
+        val isDark = ThemePreference.resolveIsDark(context)
+        val value = if (isDark) "dark" else "light"
+        view.evaluateJavascript(
+            """
+            localStorage.setItem('nexa_theme', '$value');
+            if (window.__nexaSetTheme) { window.__nexaSetTheme('$value'); }
+            """.trimIndent(),
             null
         )
     }

@@ -4,6 +4,17 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <ImageView
+        android:id="@+id/backBtn"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="16dp"
+        android:padding="10dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:contentDescription="@null" />
+
     <ScrollView
         android:id="@+id/emailRegisterScrollView"
         android:layout_width="match_parent"
@@ -16,8 +27,16 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingHorizontal="24dp"
-            android:paddingTop="120dp"
+            android:paddingTop="180dp"
             android:paddingBottom="40dp">
+
+            <ImageView
+                android:id="@+id/logoIcon"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginBottom="16dp"
+                android:contentDescription="@null" />
 
             <TextView
                 android:id="@+id/screenTitle"

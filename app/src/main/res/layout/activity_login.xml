@@ -12,6 +12,18 @@
         android:scaleType="fitCenter"
         android:contentDescription="@null" />
 
+    <ImageView
+        android:id="@+id/themeToggleBtn"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:padding="9dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:contentDescription="@null" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,6 +31,14 @@
         android:orientation="vertical"
         android:paddingHorizontal="24dp"
         android:paddingBottom="40dp">
+
+        <ImageView
+            android:id="@+id/logoIcon"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="16dp"
+            android:contentDescription="@null" />
 
         <TextView
             android:id="@+id/welcomeTitle"
@@ -43,16 +63,16 @@
             android:focusable="true">
             <ImageView
                 android:id="@+id/iconGoogle"
-                android:layout_width="22dp"
-                android:layout_height="22dp"
-                android:layout_marginEnd="16dp" />
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_marginEnd="14dp" />
             <TextView
                 android:id="@+id/textGoogle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:layout_marginEnd="38dp"
+                android:layout_marginEnd="40dp"
                 android:text="Continuar com o Google"
                 android:textSize="16sp" />
         </LinearLayout>
