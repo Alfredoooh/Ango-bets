@@ -6,6 +6,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.View
 import android.view.animation.AlphaAnimation
 import android.webkit.WebView
@@ -31,6 +32,12 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     private lateinit var loadingOverlay: View
     private lateinit var loadingSpinner: LottieAnimationView
 
+    // Tempo mínimo que o overlay de loading tem de ficar visível,
+    // independentemente de o WebView (onPageFinished) terminar antes disso.
+    private val minLoadingDurationMs = 8000L
+    private var loadingStartedAtMs = 0L
+    private var pageAlreadyFinished = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -48,11 +55,14 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
         loadingOverlay.setBackgroundColor(bgColor)
         applyLottieTint(isDark)
         loadingSpinner.playAnimation()
+        loadingStartedAtMs = SystemClock.elapsedRealtime()
 
         webView = findViewById(R.id.webView)
         webView.setBackgroundColor(bgColor)
         WebViewSetup.configure(this, webView)
         attachLoadingListener()
+        // O carregamento arranca imediatamente, em paralelo com o tempo
+        // mínimo de loading — não há atraso nenhum aqui.
         webView.loadUrl(RouteMap.BASE_URL)
     }
 
@@ -88,14 +98,29 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 existingClient.onPageFinished(view, url)
+                pageAlreadyFinished = true
                 hideLoadingOverlay()
             }
         }
     }
 
+    /**
+     * Garante que o overlay fica visível pelo menos minLoadingDurationMs
+     * a contar do momento em que começou a ser mostrado, mesmo que o
+     * WebView já tenha terminado de carregar bem antes disso. O WebView
+     * em si nunca é atrasado — só a cortina de loading por cima dele.
+     */
     private fun hideLoadingOverlay() {
         if (loadingOverlay.visibility != View.VISIBLE) return
+
+        val elapsed = SystemClock.elapsedRealtime() - loadingStartedAtMs
+        val remaining = (minLoadingDurationMs - elapsed).coerceAtLeast(0L)
+
         loadingOverlay.postDelayed({
+            // Se por algum motivo já não estivermos visíveis (ex: chamado
+            // duas vezes), não repetir a animação de saída.
+            if (loadingOverlay.visibility != View.VISIBLE) return@postDelayed
+
             val fadeOut = AlphaAnimation(1f, 0f).apply {
                 duration = 250
                 fillAfter = true
@@ -105,7 +130,7 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
                 loadingOverlay.visibility = View.GONE
                 loadingSpinner.cancelAnimation()
             }, 250)
-        }, 200)
+        }, remaining)
     }
 
     private fun setupEdgeToEdgeStatusBar() {

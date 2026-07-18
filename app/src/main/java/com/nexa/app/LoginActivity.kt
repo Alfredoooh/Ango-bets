@@ -83,9 +83,9 @@ class LoginActivity : AppCompatActivity() {
         })
     }
 
-    /** Logo em icons/svg/logo.svg, recolorido conforme o tema (tint sólido). */
+    /** Logo em icons/svg/logo.svg, mesmo tamanho (80dp) da tela de registo. */
     private fun loadLogo(palette: ThemePalette) {
-        SvgImageLoader.loadDp(this, findViewById(R.id.logoIcon), "icons/svg/logo.svg", 124, 124, palette.textPrimary)
+        SvgImageLoader.loadDp(this, findViewById(R.id.logoIcon), "icons/svg/logo.svg", 80, 80, palette.textPrimary)
     }
 
     /** Ícone claro -> lua (para ir para escuro); ícone escuro -> sol (para ir para claro). */
@@ -95,20 +95,19 @@ class LoginActivity : AppCompatActivity() {
     }
 
     /**
-     * Troca o tema com efeito de círculo a crescer a partir do botão
-     * tocado (estilo Telegram). Persiste a escolha em ThemePreference
-     * (fonte de verdade nativa) para que, quando a HomeActivity abrir o
-     * WebView, o PWA seja sincronizado com este valor via JS injetado.
-     *
-     * isThemeAnimating evita re-entrância: se o utilizador tocar várias
-     * vezes rápido no botão, só a primeira animação é despoletada.
+     * Troca o tema com efeito de círculo (container transform) a
+     * partir do botão tocado. Ao ir para escuro, o círculo EXPANDE a
+     * cobrir o ecrã com o tema novo; ao voltar para claro, é o
+     * reverso exato: o círculo ENCOLHE, "recolhendo" o tema escuro de
+     * volta para o ponto de origem.
      */
     private fun toggleTheme(originView: View) {
         if (isThemeAnimating) return
         isThemeAnimating = true
 
-        val newIsDark = !isDark
-        val newPalette = ThemeColors.get(newIsDark)
+        val goingToDark = !isDark
+        val oldPalette = ThemeColors.get(isDark)
+        val newPalette = ThemeColors.get(goingToDark)
         val root = findViewById<FrameLayout>(R.id.rootLogin)
 
         val location = IntArray(2)
@@ -122,17 +121,21 @@ class LoginActivity : AppCompatActivity() {
             rootView = root,
             originX = originX,
             originY = originY,
-            newBackgroundColor = newPalette.bgPrimary
+            oldBackgroundColor = oldPalette.bgPrimary,
+            newBackgroundColor = newPalette.bgPrimary,
+            isSwitchingToDark = goingToDark
         ) {
-            isDark = newIsDark
-            ThemePreference.saveIsDark(this, newIsDark)
+            isDark = goingToDark
+            ThemePreference.saveIsDark(this, goingToDark)
             applyTheme(newPalette)
             loadLogo(newPalette)
             loadThemeToggleIcon(newPalette)
             SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, newPalette.textPrimary)
-            setupStatusBar(newIsDark)
-            isThemeAnimating = false
+            setupStatusBar(goingToDark)
         }
+
+        // Libertar a trava um pouco depois do fim da animação (500ms no helper).
+        root.postDelayed({ isThemeAnimating = false }, 520L)
     }
 
     private fun applyTheme(palette: ThemePalette) {
