@@ -27,6 +27,13 @@ import com.nexa.app.util.ThemeColors
  *
  * Usado apenas para Câmara e Microfone — os únicos recursos de
  * dispositivo que o WebView deste app pede hoje.
+ *
+ * ic_fluent_camera_24_regular e ic_fluent_mic_off_24_regular são os
+ * únicos ícones de câmara/microfone confirmados na variante "regular"
+ * da versão 1.1.247 da biblioteca oficial (não existe um
+ * ic_fluent_mic_24_regular "ligado" sem sufixo nesta versão) — o ícone
+ * de microfone é usado aqui apenas como referência visual ao
+ * dispositivo, não ao estado ligado/desligado.
  */
 object BrowserPermissionDialog {
 
@@ -66,7 +73,7 @@ object BrowserPermissionDialog {
         val icon = ImageView(activity).apply {
             val iconRes = when (kind) {
                 DeviceKind.CAMERA -> R.drawable.ic_fluent_camera_24_regular
-                DeviceKind.MICROPHONE -> R.drawable.ic_fluent_mic_24_regular
+                DeviceKind.MICROPHONE -> R.drawable.ic_fluent_mic_off_24_regular
                 DeviceKind.BOTH -> R.drawable.ic_fluent_camera_24_regular
             }
             setImageDrawable(ContextCompat.getDrawable(activity, iconRes))

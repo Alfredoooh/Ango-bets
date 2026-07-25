@@ -9,9 +9,9 @@ import com.nexa.app.gallery.GalleryBottomSheet
 
 /**
  * Liga o onShowFileChooser do WebView (chamado quando o WebApp faz
- * <input type="file" accept="image/*">) à galeria Fluent própria, com
- * fallback automático para o Photo Picker do sistema (registado pela
- * HomeActivity via ActivityResultContracts.PickMultipleVisualMedia).
+ * upload de imagem via input de ficheiro) à galeria Fluent própria,
+ * com fallback automático para o Photo Picker do sistema (registado
+ * pela HomeActivity via ActivityResultContracts.PickMultipleVisualMedia).
  */
 class FileChooserBridge(
     private val activity: AppCompatActivity,

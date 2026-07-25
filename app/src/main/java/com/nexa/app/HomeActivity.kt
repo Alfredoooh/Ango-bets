@@ -11,6 +11,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.ImageView
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -107,15 +108,11 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
             pendingFileCallback = callback
             if (multiSelect) {
                 multiPhotoPickerLauncher.launch(
-                    androidx.activity.result.PickVisualMediaRequest(
-                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
-                    )
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
             } else {
                 singlePhotoPickerLauncher.launch(
-                    androidx.activity.result.PickVisualMediaRequest(
-                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
-                    )
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
             }
         }

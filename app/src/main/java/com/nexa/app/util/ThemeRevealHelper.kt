@@ -70,10 +70,6 @@ object ThemeRevealHelper {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            // Sem esta linha o Android pode animar a entrada da view
-            // (alpha/scale) por baixo dos panos, o que se soma ao
-            // circular reveal e parece um "fade" indesejado.
-            layoutAnimation = null
         }
         rootView.addView(overlay)
         overlay.bringToFront()
