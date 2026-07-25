@@ -4,16 +4,20 @@ package com.nexa.app.webview
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.net.Uri
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.appcompat.app.AppCompatActivity
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
 
 /**
  * Configuração central do WebView: settings, client, chrome client e
- * ligação das bridges (tema, sessão, links externos, permissões).
+ * ligação das bridges (tema, sessão, links externos, permissões,
+ * seletor de ficheiros/galeria).
  *
  * A sessão (token guardado via SessionManager, após login/registo nativo
  * contra o Worker) é injetada diretamente em localStorage do WebApp em
@@ -23,7 +27,11 @@ import com.nexa.app.session.ThemePreference
 object WebViewSetup {
 
     @SuppressLint("SetJavaScriptEnabled")
-    fun configure(activity: Activity, webView: WebView) {
+    fun configure(
+        activity: Activity,
+        webView: WebView,
+        fileChooserBridge: FileChooserBridge? = null
+    ) {
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -75,6 +83,17 @@ object WebViewSetup {
         webView.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: android.webkit.PermissionRequest) {
                 PermissionManager.handle(activity, request)
+            }
+
+            override fun onShowFileChooser(
+                webView: WebView,
+                filePathCallback: ValueCallback<Array<Uri>>,
+                fileChooserParams: FileChooserParams
+            ): Boolean {
+                if (fileChooserBridge == null || activity !is AppCompatActivity) {
+                    return false
+                }
+                return fileChooserBridge.handleShowFileChooser(filePathCallback, fileChooserParams)
             }
         }
     }

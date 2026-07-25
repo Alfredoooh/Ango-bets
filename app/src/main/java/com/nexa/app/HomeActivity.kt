@@ -1,28 +1,26 @@
 // app/src/main/java/com/nexa/app/HomeActivity.kt
 package com.nexa.app
 
-import android.graphics.Color
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.View
 import android.view.animation.AlphaAnimation
+import android.webkit.ValueCallback
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ImageView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import com.airbnb.lottie.LottieAnimationView
-import com.airbnb.lottie.LottieProperty
-import com.airbnb.lottie.model.KeyPath
-import com.airbnb.lottie.value.LottieValueCallback
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.ThemePreference
 import com.nexa.app.util.ThemeColors
+import com.nexa.app.webview.FileChooserBridge
 import com.nexa.app.webview.ThemeAware
 import com.nexa.app.webview.WebViewSetup
 
@@ -30,7 +28,7 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: View
-    private lateinit var loadingSpinner: LottieAnimationView
+    private lateinit var loadingLogo: ImageView
 
     // Tempo mínimo que o overlay de loading tem de ficar visível,
     // independentemente de o WebView (onPageFinished) terminar antes disso.
@@ -38,7 +36,38 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     private var loadingStartedAtMs = 0L
     private var pageAlreadyFinished = false
 
+    // Callback pendente do onShowFileChooser quando caímos para o Photo
+    // Picker do sistema (fallback da galeria Fluent própria).
+    private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
+
+    private val multiPhotoPickerLauncher =
+        registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris ->
+            deliverPickerResult(uris)
+        }
+
+    private val singlePhotoPickerLauncher =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            deliverPickerResult(if (uri != null) listOf(uri) else emptyList())
+        }
+
+    private fun deliverPickerResult(uris: List<Uri>) {
+        val callback = pendingFileCallback
+        pendingFileCallback = null
+        if (uris.isEmpty()) {
+            callback?.onReceiveValue(null)
+        } else {
+            callback?.onReceiveValue(uris.toTypedArray())
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // O tema dos date/time pickers nativos (disparados pelo WebView
+        // para <input type="date">/<input type="time">) tem de ser
+        // aplicado ANTES de super.onCreate()/setContentView, para o
+        // Android já desenhar esses dialogs com a paleta Fluent correta
+        // — sincronizada com o tema do PWA, não com o do sistema.
+        applyFluentPickerTheme()
+
         super.onCreate(savedInstanceState)
 
         setupEdgeToEdgeStatusBar()
@@ -46,39 +75,82 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
         setContentView(R.layout.activity_home)
 
-        val isDark = ThemePreference.resolveIsDark(this)
-        val bgColor = ThemeColors.get(isDark).bgPrimary
-        findViewById<View>(R.id.rootHome).setBackgroundColor(bgColor)
+        // O splash nativo (Theme.Nexa.Splash) usa sempre fundo #242424 com
+        // splash_icon_dark, independentemente do tema do sistema/PWA. Para
+        // a transição do splash nativo -> este overlay ser imperceptível,
+        // arrancamos com a MESMA cor de fundo do splash nativo e só depois
+        // repintamos para o tema real assim que ThemePreference o resolve.
+        val nativeSplashBg = android.graphics.Color.parseColor("#242424")
+        findViewById<View>(R.id.rootHome).setBackgroundColor(nativeSplashBg)
 
         loadingOverlay = findViewById(R.id.loadingOverlay)
-        loadingSpinner = findViewById(R.id.loadingSpinner)
-        loadingOverlay.setBackgroundColor(bgColor)
-        applyLottieTint(isDark)
-        loadingSpinner.playAnimation()
+        loadingLogo = findViewById(R.id.loadingLogo)
+        loadingOverlay.setBackgroundColor(nativeSplashBg)
+
+        val isDark = ThemePreference.resolveIsDark(this)
+        val bgColor = ThemeColors.get(isDark).bgPrimary
+
+        // Repinta para o tema real do PWA/sistema num único frame seguinte,
+        // para não gerar um "flash" percetível entre o splash nativo e este.
+        loadingOverlay.post {
+            findViewById<View>(R.id.rootHome).setBackgroundColor(bgColor)
+            loadingOverlay.setBackgroundColor(bgColor)
+        }
+
+        applyLogoTint(isDark)
         loadingStartedAtMs = SystemClock.elapsedRealtime()
 
         webView = findViewById(R.id.webView)
         webView.setBackgroundColor(bgColor)
-        WebViewSetup.configure(this, webView)
+
+        val fileChooserBridge = FileChooserBridge(this) { multiSelect, callback ->
+            pendingFileCallback = callback
+            if (multiSelect) {
+                multiPhotoPickerLauncher.launch(
+                    androidx.activity.result.PickVisualMediaRequest(
+                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            } else {
+                singlePhotoPickerLauncher.launch(
+                    androidx.activity.result.PickVisualMediaRequest(
+                        androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            }
+        }
+
+        WebViewSetup.configure(this, webView, fileChooserBridge)
         attachLoadingListener()
         // O carregamento arranca imediatamente, em paralelo com o tempo
         // mínimo de loading — não há atraso nenhum aqui.
         webView.loadUrl(RouteMap.BASE_URL)
     }
 
+    private fun applyFluentPickerTheme() {
+        val isDark = ThemePreference.resolveIsDark(this)
+        setTheme(
+            if (isDark) R.style.Theme_Nexa_FluentPickers_Dark
+            else R.style.Theme_Nexa_FluentPickers_Light
+        )
+    }
+
     /**
-     * O loader.json vem sempre com a mesma cor escura de origem. Em vez de
-     * manter dois ficheiros Lottie (claro/escuro), aplicamos um
-     * PorterDuffColorFilter a todas as camadas do JSON em runtime:
-     * tema claro -> mantém a cor escura original; tema escuro -> força branco.
+     * logo.png é um único asset (mesma arte para os dois temas). Em tema
+     * escuro, se o logo for de traço escuro sobre fundo transparente,
+     * aplicamos um filtro branco para garantir contraste com o fundo
+     * escuro — replicando a mesma lógica que existia para o Lottie.
+     * Se já fornecer um logo com contraste próprio nos dois temas, este
+     * filtro pode ser removido sem qualquer outro impacto.
      */
-    private fun applyLottieTint(isDark: Boolean) {
-        if (!isDark) return
-        val whiteFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_ATOP)
-        loadingSpinner.addValueCallback(
-            KeyPath("**"),
-            LottieProperty.COLOR_FILTER,
-            LottieValueCallback(whiteFilter)
+    private fun applyLogoTint(isDark: Boolean) {
+        if (!isDark) {
+            loadingLogo.clearColorFilter()
+            return
+        }
+        loadingLogo.setColorFilter(
+            android.graphics.Color.WHITE,
+            android.graphics.PorterDuff.Mode.SRC_ATOP
         )
     }
 
@@ -117,8 +189,6 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
         val remaining = (minLoadingDurationMs - elapsed).coerceAtLeast(0L)
 
         loadingOverlay.postDelayed({
-            // Se por algum motivo já não estivermos visíveis (ex: chamado
-            // duas vezes), não repetir a animação de saída.
             if (loadingOverlay.visibility != View.VISIBLE) return@postDelayed
 
             val fadeOut = AlphaAnimation(1f, 0f).apply {
@@ -128,7 +198,6 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
             loadingOverlay.startAnimation(fadeOut)
             loadingOverlay.postDelayed({
                 loadingOverlay.visibility = View.GONE
-                loadingSpinner.cancelAnimation()
             }, 250)
         }, remaining)
     }
@@ -137,9 +206,6 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
-
-        // Pinta com o último tema conhecido do PWA já no arranque, antes
-        // do WebView carregar e poder chamar onThemeChanged pela primeira vez.
         applyStatusBarAppearance(ThemePreference.resolveIsDark(this))
     }
 
