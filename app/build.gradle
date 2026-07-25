@@ -64,6 +64,6 @@ implementation 'androidx.activity:activity-ktx:1.9.3'
 implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
 implementation 'androidx.recyclerview:recyclerview:1.3.2'
 implementation 'androidx.exifinterface:exifinterface:1.3.7'
-implementation 'com.microsoft.design:fluent-system-icons:1.1.247@aar'
+implementation 'com.microsoft.design:fluent-system-icons:1.1.271@aar'
 testImplementation 'junit:junit:4.13.2'
 }
