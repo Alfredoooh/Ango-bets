@@ -15,10 +15,22 @@ import androidx.core.content.ContextCompat
  * (BrowserPermissionDialog) antes de decidir conceder ou negar — replica
  * o comportamento visível em Chrome/Edge quando um site pede acesso a
  * dispositivos.
+ *
+ * CORRIGIDO: antes, request.grant() era chamado logo a seguir a
+ * ActivityCompat.requestPermissions(), sem esperar pelo resultado real
+ * do popup do sistema — isto fazia o WebView pensar que tinha acesso
+ * mesmo que o utilizador ainda não tivesse respondido, ou tivesse
+ * negado. Agora o pedido fica pendente (pendingRequest/pendingGrantList)
+ * e só é resolvido (grant ou deny) quando HomeActivity.onRequestPermissionsResult
+ * efetivamente chamar resolvePendingResult() com a resposta real do
+ * utilizador.
  */
 object PermissionManager {
 
-    private const val REQUEST_CODE = 4321
+    const val REQUEST_CODE = 4321
+
+    private var pendingRequest: PermissionRequest? = null
+    private var pendingGrantList: Array<String> = emptyArray()
 
     fun handle(activity: Activity, request: PermissionRequest) {
         val needsCamera = request.resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
@@ -49,10 +61,36 @@ object PermissionManager {
                 missing.add(Manifest.permission.RECORD_AUDIO)
             }
 
-            if (missing.isNotEmpty()) {
-                ActivityCompat.requestPermissions(activity, missing.toTypedArray(), REQUEST_CODE)
+            if (missing.isEmpty()) {
+                // Já tínhamos tudo o que era preciso — pode conceder já.
+                request.grant(request.resources)
+                return@show
             }
-            request.grant(request.resources)
+
+            // Fica pendente: só resolvemos no callback real do sistema,
+            // em HomeActivity.onRequestPermissionsResult.
+            pendingRequest = request
+            pendingGrantList = request.resources
+            ActivityCompat.requestPermissions(activity, missing.toTypedArray(), REQUEST_CODE)
         }
+    }
+
+    /**
+     * Chamado pela Activity a partir de onRequestPermissionsResult.
+     * Só aqui, com a resposta REAL do utilizador ao popup do sistema,
+     * é que decidimos grant() ou deny() do pedido do WebView.
+     */
+    fun resolvePendingResult(requestCode: Int, grantResults: IntArray) {
+        if (requestCode != REQUEST_CODE) return
+        val request = pendingRequest ?: return
+        pendingRequest = null
+
+        val allGranted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+        if (allGranted) {
+            request.grant(pendingGrantList)
+        } else {
+            request.deny()
+        }
+        pendingGrantList = emptyArray()
     }
 }

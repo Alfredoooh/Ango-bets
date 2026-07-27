@@ -66,4 +66,5 @@ implementation 'androidx.recyclerview:recyclerview:1.3.2'
 implementation 'androidx.exifinterface:exifinterface:1.3.7'
 implementation 'com.microsoft.design:fluent-system-icons:1.1.247@aar'
 testImplementation 'junit:junit:4.13.2'
+implementation 'androidx.documentfile:documentfile:1.0.1'
 }

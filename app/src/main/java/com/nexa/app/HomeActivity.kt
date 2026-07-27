@@ -4,7 +4,6 @@ package com.nexa.app
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import android.view.View
 import android.view.animation.AlphaAnimation
 import android.webkit.ValueCallback
@@ -21,7 +20,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.nav.RouteMap
 import com.nexa.app.session.ThemePreference
 import com.nexa.app.util.ThemeColors
+import com.nexa.app.webview.AndroidStorageBridge
 import com.nexa.app.webview.FileChooserBridge
+import com.nexa.app.webview.PermissionManager
 import com.nexa.app.webview.ThemeAware
 import com.nexa.app.webview.WebViewSetup
 
@@ -30,12 +31,13 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: View
     private lateinit var loadingLogo: ImageView
+    private lateinit var storageBridge: AndroidStorageBridge
 
-    // Tempo mínimo que o overlay de loading tem de ficar visível,
-    // independentemente de o WebView (onPageFinished) terminar antes disso.
-    private val minLoadingDurationMs = 8000L
-    private var loadingStartedAtMs = 0L
     private var pageAlreadyFinished = false
+
+    // Guarda a altura do teclado (IME) vista da última vez, para só
+    // reagirmos quando ela efetivamente muda.
+    private var lastImeHeight = 0
 
     // Callback pendente do onShowFileChooser quando caímos para o Photo
     // Picker do sistema (fallback da galeria Fluent própria).
@@ -49,6 +51,17 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     private val singlePhotoPickerLauncher =
         registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             deliverPickerResult(if (uri != null) listOf(uri) else emptyList())
+        }
+
+    // Picker de pasta do sistema (Storage Access Framework) — disparado
+    // quando o WebApp chama AndroidStorage.requestPermission(). O
+    // resultado é a URI da árvore escolhida pelo utilizador, entregue
+    // ao AndroidStorageBridge para persistir a permissão.
+    private val openTreeLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                storageBridge.onRootTreeChosen(uri)
+            }
         }
 
     private fun deliverPickerResult(uris: List<Uri>) {
@@ -99,7 +112,6 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
         }
 
         applyLogoTint(isDark)
-        loadingStartedAtMs = SystemClock.elapsedRealtime()
 
         webView = findViewById(R.id.webView)
         webView.setBackgroundColor(bgColor)
@@ -117,10 +129,13 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
             }
         }
 
-        WebViewSetup.configure(this, webView, fileChooserBridge)
+        storageBridge = AndroidStorageBridge(this, webView) {
+            openTreeLauncher.launch(null)
+        }
+
+        WebViewSetup.configure(this, webView, fileChooserBridge, storageBridge)
         attachLoadingListener()
-        // O carregamento arranca imediatamente, em paralelo com o tempo
-        // mínimo de loading — não há atraso nenhum aqui.
+        attachImeInsetsGuard()
         webView.loadUrl(RouteMap.BASE_URL)
     }
 
@@ -174,29 +189,64 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     }
 
     /**
-     * Garante que o overlay fica visível pelo menos minLoadingDurationMs
-     * a contar do momento em que começou a ser mostrado, mesmo que o
-     * WebView já tenha terminado de carregar bem antes disso. O WebView
-     * em si nunca é atrasado — só a cortina de loading por cima dele.
+     * Esconde o overlay assim que o WebView termina de carregar
+     * (onPageFinished) — sem tempo mínimo artificial. O overlay fica
+     * visível exatamente pelo tempo real que o app leva a carregar.
      */
     private fun hideLoadingOverlay() {
         if (loadingOverlay.visibility != View.VISIBLE) return
 
-        val elapsed = SystemClock.elapsedRealtime() - loadingStartedAtMs
-        val remaining = (minLoadingDurationMs - elapsed).coerceAtLeast(0L)
-
+        val fadeOut = AlphaAnimation(1f, 0f).apply {
+            duration = 250
+            fillAfter = true
+        }
+        loadingOverlay.startAnimation(fadeOut)
         loadingOverlay.postDelayed({
-            if (loadingOverlay.visibility != View.VISIBLE) return@postDelayed
+            loadingOverlay.visibility = View.GONE
+        }, 250)
+    }
 
-            val fadeOut = AlphaAnimation(1f, 0f).apply {
-                duration = 250
-                fillAfter = true
+    /**
+     * Camada extra contra o appbar a saltar — reage a nível de View
+     * Android (WindowInsetsCompat.Type.ime()) e força a WebView de
+     * volta a scrollTo(0,0) nativamente, sem depender de JS injetado.
+     * Funciona em paralelo com o script em
+     * WebViewSetup.injectAppbarJumpFix e com o windowSoftInputMode do
+     * manifest.
+     */
+    private fun attachImeInsetsGuard() {
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
+            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+
+            if (imeHeight != lastImeHeight) {
+                lastImeHeight = imeHeight
+
+                if (view is WebView) {
+                    view.scrollTo(0, 0)
+                }
+
+                view.post {
+                    if (view is WebView) view.scrollTo(0, 0)
+                }
             }
-            loadingOverlay.startAnimation(fadeOut)
-            loadingOverlay.postDelayed({
-                loadingOverlay.visibility = View.GONE
-            }, 250)
-        }, remaining)
+
+            insets
+        }
+    }
+
+    /**
+     * Resultado real do popup do sistema para CAMERA/RECORD_AUDIO —
+     * antes não existia, e PermissionManager chamava request.grant()
+     * sem esperar por isto. Agora o grant/deny do pedido do WebView só
+     * acontece aqui, com a resposta efetiva do utilizador.
+     */
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        PermissionManager.resolvePendingResult(requestCode, grantResults)
     }
 
     private fun setupEdgeToEdgeStatusBar() {
