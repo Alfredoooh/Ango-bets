@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.nexa.app.session.SessionManager
+import com.nexa.app.session.ThemePreference
 
 class MainActivity : AppCompatActivity() {
 
@@ -15,7 +16,11 @@ class MainActivity : AppCompatActivity() {
         // a cor/ícone certos desde o primeiro frame. Lemos ThemePreference
         // (o último tema reportado pelo PWA) em vez do uiMode do sistema,
         // para o splash respeitar sempre o tema escolhido dentro da app.
-        setTheme(R.style.Theme_Nexa_Splash_Dark)
+        if (ThemePreference.resolveIsDark(this)) {
+            setTheme(R.style.Theme_Nexa_Splash_Dark)
+        } else {
+            setTheme(R.style.Theme_Nexa_Splash)
+        }
 
         installSplashScreen()
         super.onCreate(savedInstanceState)
