@@ -138,6 +138,14 @@ class LoginActivity : AppCompatActivity() {
         root.postDelayed({ isThemeAnimating = false }, 520L)
     }
 
+    /**
+     * btnGoogle e btnEmail passam a ser botões SECUNDÁRIOS Fluent 2
+     * (outline azul, fundo neutro) em vez de cartões cinzentos sem
+     * destaque — o padrão oficial da Microsoft para opções de login
+     * alternativas junto a uma ação primária. goToRegister usa a cor
+     * de acento diretamente no texto (como o link "Criar conta" no
+     * ecrã de login da Microsoft), em vez do texto neutro anterior.
+     */
     private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootLogin)
         ThemeApplier.applyBackground(root, palette)
@@ -145,15 +153,15 @@ class LoginActivity : AppCompatActivity() {
         ThemeApplier.applyPrimaryText(findViewById(R.id.welcomeTitle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.textGoogle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.textEmail), palette)
-        ThemeApplier.applyPrimaryText(findViewById(R.id.goToRegister), palette)
+        ThemeApplier.applyAccentText(findViewById(R.id.goToRegister), isDark)
         ThemeApplier.applySecondaryText(findViewById(R.id.orText), palette)
         ThemeApplier.applySecondaryText(findViewById(R.id.termsText), palette)
 
         ThemeApplier.applyDivider(findViewById(R.id.dividerLeft), palette)
         ThemeApplier.applyDivider(findViewById(R.id.dividerRight), palette)
 
-        ThemeApplier.applyClickableCardBackground(findViewById(R.id.btnGoogle), palette, 28f, this)
-        ThemeApplier.applyClickableCardBackground(findViewById(R.id.btnEmail), palette, 28f, this)
+        ThemeApplier.applyFluentSecondaryButton(findViewById(R.id.btnGoogle), palette, isDark, this)
+        ThemeApplier.applyFluentSecondaryButton(findViewById(R.id.btnEmail), palette, isDark, this)
     }
 
     private fun setupStatusBar(isDark: Boolean) {

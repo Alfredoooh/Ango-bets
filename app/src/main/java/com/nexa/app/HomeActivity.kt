@@ -35,10 +35,6 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
     private var pageAlreadyFinished = false
 
-    // Guarda a altura do teclado (IME) vista da última vez, para só
-    // reagirmos quando ela efetivamente muda.
-    private var lastImeHeight = 0
-
     // Callback pendente do onShowFileChooser quando caímos para o Photo
     // Picker do sistema (fallback da galeria Fluent própria).
     private var pendingFileCallback: ValueCallback<Array<Uri>>? = null
@@ -56,7 +52,11 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     // Picker de pasta do sistema (Storage Access Framework) — disparado
     // quando o WebApp chama AndroidStorage.requestPermission(). O
     // resultado é a URI da árvore escolhida pelo utilizador, entregue
-    // ao AndroidStorageBridge para persistir a permissão.
+    // ao AndroidStorageBridge para persistir a permissão. Isto só
+    // aparece UMA vez (na primeira exportação); depois disso a
+    // permissão fica persistida via takePersistableUriPermission e
+    // toda a navegação seguinte é feita dentro do próprio
+    // ExportPickerPage.svelte, sem qualquer janela nativa adicional.
     private val openTreeLauncher =
         registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
             if (uri != null) {
@@ -84,32 +84,30 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
         super.onCreate(savedInstanceState)
 
-        setupEdgeToEdgeStatusBar()
+        setupStatusBar()
         disableSwipeGestures()
 
         setContentView(R.layout.activity_home)
 
-        // O splash nativo (Theme.Nexa.Splash) usa sempre fundo #242424 com
-        // splash_icon_dark, independentemente do tema do sistema/PWA. Para
-        // a transição do splash nativo -> este overlay ser imperceptível,
-        // arrancamos com a MESMA cor de fundo do splash nativo e só depois
-        // repintamos para o tema real assim que ThemePreference o resolve.
-        val nativeSplashBg = android.graphics.Color.parseColor("#242424")
-        findViewById<View>(R.id.rootHome).setBackgroundColor(nativeSplashBg)
-
-        loadingOverlay = findViewById(R.id.loadingOverlay)
-        loadingLogo = findViewById(R.id.loadingLogo)
-        loadingOverlay.setBackgroundColor(nativeSplashBg)
-
+        // O splash nativo (Theme.Nexa.Splash / Theme.Nexa.Splash.Dark,
+        // ver themes.xml e values-night/themes.xml) agora segue o tema
+        // do SISTEMA automaticamente através do qualifier -night do
+        // Android, cada um com o seu próprio par cor+ícone
+        // (splash_icon claro / splash_icon_dark escuro). Este overlay
+        // (loadingOverlay) é a continuação desse splash enquanto o
+        // WebView carrega, por isso arrancamos com a MESMA cor de fundo
+        // que o splash nativo acabou de mostrar — mas essa cor é agora
+        // resolvida a partir do tema do PWA (ThemePreference), não
+        // fixa em #242424, para a transição entre os dois splashes
+        // continuar imperceptível em qualquer tema.
         val isDark = ThemePreference.resolveIsDark(this)
         val bgColor = ThemeColors.get(isDark).bgPrimary
 
-        // Repinta para o tema real do PWA/sistema num único frame seguinte,
-        // para não gerar um "flash" percetível entre o splash nativo e este.
-        loadingOverlay.post {
-            findViewById<View>(R.id.rootHome).setBackgroundColor(bgColor)
-            loadingOverlay.setBackgroundColor(bgColor)
-        }
+        findViewById<View>(R.id.rootHome).setBackgroundColor(bgColor)
+
+        loadingOverlay = findViewById(R.id.loadingOverlay)
+        loadingLogo = findViewById(R.id.loadingLogo)
+        loadingOverlay.setBackgroundColor(bgColor)
 
         applyLogoTint(isDark)
 
@@ -135,7 +133,6 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
 
         WebViewSetup.configure(this, webView, fileChooserBridge, storageBridge)
         attachLoadingListener()
-        attachImeInsetsGuard()
         webView.loadUrl(RouteMap.BASE_URL)
     }
 
@@ -148,22 +145,17 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     }
 
     /**
-     * logo.png é um único asset (mesma arte para os dois temas). Em tema
-     * escuro, se o logo for de traço escuro sobre fundo transparente,
-     * aplicamos um filtro branco para garantir contraste com o fundo
-     * escuro — replicando a mesma lógica que existia para o Lottie.
-     * Se já fornecer um logo com contraste próprio nos dois temas, este
-     * filtro pode ser removido sem qualquer outro impacto.
+     * logo.png (o "N" azul de gradiente da marca, em drawable/) é usado
+     * TAL COMO É, em ambos os temas — sem qualquer filtro de cor. Antes
+     * havia um setColorFilter(WHITE, SRC_ATOP) aplicado em modo escuro
+     * que substituía as cores originais do logo por um preenchimento
+     * branco chapado, destruindo o gradiente azul da marca. O logo já
+     * tem contraste suficiente sobre fundo escuro por si só (é
+     * predominantemente azul vivo sobre fundo transparente), por isso
+     * esse filtro nunca foi necessário — só estava a estragar o asset.
      */
     private fun applyLogoTint(isDark: Boolean) {
-        if (!isDark) {
-            loadingLogo.clearColorFilter()
-            return
-        }
-        loadingLogo.setColorFilter(
-            android.graphics.Color.WHITE,
-            android.graphics.PorterDuff.Mode.SRC_ATOP
-        )
+        loadingLogo.clearColorFilter()
     }
 
     private fun attachLoadingListener() {
@@ -207,34 +199,6 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     }
 
     /**
-     * Camada extra contra o appbar a saltar — reage a nível de View
-     * Android (WindowInsetsCompat.Type.ime()) e força a WebView de
-     * volta a scrollTo(0,0) nativamente, sem depender de JS injetado.
-     * Funciona em paralelo com o script em
-     * WebViewSetup.injectAppbarJumpFix e com o windowSoftInputMode do
-     * manifest.
-     */
-    private fun attachImeInsetsGuard() {
-        ViewCompat.setOnApplyWindowInsetsListener(webView) { view, insets ->
-            val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-
-            if (imeHeight != lastImeHeight) {
-                lastImeHeight = imeHeight
-
-                if (view is WebView) {
-                    view.scrollTo(0, 0)
-                }
-
-                view.post {
-                    if (view is WebView) view.scrollTo(0, 0)
-                }
-            }
-
-            insets
-        }
-    }
-
-    /**
      * Resultado real do popup do sistema para CAMERA/RECORD_AUDIO —
      * antes não existia, e PermissionManager chamava request.grant()
      * sem esperar por isto. Agora o grant/deny do pedido do WebView só
@@ -249,8 +213,34 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
         PermissionManager.resolvePendingResult(requestCode, grantResults)
     }
 
-    private fun setupEdgeToEdgeStatusBar() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+    /**
+     * Statusbar sólida, a combinar com o tema — NÃO edge-to-edge.
+     *
+     * Antes (setupEdgeToEdgeStatusBar): setDecorFitsSystemWindows(false)
+     * fazia o WebView desenhar por trás da status bar, que ficava
+     * totalmente transparente. Isso permitia à WebView pintar-se até ao
+     * topo do ecrã — incluindo por trás dos ícones de hora/bateria do
+     * sistema — o que ficava visualmente errado fora do editor de Docs
+     * (onde o efeito era intencional via env(safe-area-inset-top)).
+     *
+     * Agora: decorFitsSystemWindows volta a true, o que faz o Android
+     * reservar automaticamente o espaço da status bar como inset do
+     * content view — a WebView passa a começar sempre abaixo dela, e
+     * deixa de haver overlap para tratar no Svelte com
+     * safe-area-inset-top nos apps que não são o Docs (esse env()
+     * simplesmente resolve para 0px agora, o que já é seguro por si só
+     * porque está dentro de um calc() com um valor base fixo).
+     *
+     * A cor por trás da própria barra continua a não ser pintada
+     * explicitamente por nós (statusBarColor mantém-se TRANSPARENT) —
+     * o que aparece por trás dela é o background da Window/do
+     * rootHome, que já pintamos com a cor do tema (bgColor) logo no
+     * onCreate. isAppearanceLightStatusBars continua a garantir que os
+     * ícones do sistema (hora, bateria, sinal) ficam com contraste
+     * correto contra essa cor.
+     */
+    private fun setupStatusBar() {
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
         applyStatusBarAppearance(ThemePreference.resolveIsDark(this))

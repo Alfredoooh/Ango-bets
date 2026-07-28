@@ -23,6 +23,23 @@ import com.nexa.app.session.ThemePreference
  * contra o Worker) é injetada diretamente em localStorage do WebApp em
  * onPageStarted e onPageFinished, replicando o mecanismo comprovado que o
  * WebApp (Svelte) já lê em src/shared/api.js / auth store.
+ *
+ * NOTA: a correção do "appbar a saltar" com o teclado (docs, sheets,
+ * whiteboard) deixou de ser feita aqui. Antes havia uma injeção JS
+ * global (injectAppbarJumpFix) que corria em TODAS as páginas da app,
+ * independentemente da URL, e que forçava window.scrollTo(0,0) no
+ * document inteiro sempre que qualquer campo editável recebia foco.
+ * Isso duplicava — e sobrepunha-se a — uma lógica equivalente já
+ * implementada dentro do próprio DocPage.svelte (Nexa Docs), que trava
+ * apenas o scroll do document root e nunca interfere com o scroll
+ * interno de containers próprios da página (ex: .canvas-scroll). Ter
+ * as duas em paralelo era redundante e, pior, aplicava um
+ * comportamento pensado exclusivamente para o editor de Docs a todo o
+ * resto do app (Home, Sheets, Whiteboard, ecrãs de login), onde esses
+ * outros apps podem ter as suas próprias intenções de scroll no
+ * window/document que esta injeção estaria a esmagar sem necessidade.
+ * Cada app Svelte que precisar deste comportamento deve implementá-lo
+ * localmente, como o Docs já faz.
  */
 object WebViewSetup {
 
@@ -76,14 +93,12 @@ object WebViewSetup {
                 super.onPageStarted(view, url, favicon)
                 injectSession(view, activity)
                 injectTheme(view, activity)
-                injectAppbarJumpFix(view)
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
                 super.onPageFinished(view, url)
                 injectSession(view, activity)
                 injectTheme(view, activity)
-                injectAppbarJumpFix(view)
             }
         }
 
@@ -140,54 +155,6 @@ object WebViewSetup {
             """
             localStorage.setItem('nexa_theme', '$value');
             if (window.__nexaSetTheme) { window.__nexaSetTheme('$value'); }
-            """.trimIndent(),
-            null
-        )
-    }
-
-    /**
-     * CORREÇÃO DO APPBAR A SALTAR (docs, sheets, whiteboard) — injetada
-     * a nível de WebView, por isso cobre os três apps ao mesmo tempo,
-     * sem precisar de tocar em nenhum dos projetos Svelte deles.
-     *
-     * Um listener 'focusin' em capture, colocado no document, que
-     * assim que deteta foco em qualquer campo editável força já o
-     * document de volta a scrollTop/scrollLeft 0 — de forma síncrona
-     * no momento do foco, e outra vez num frame seguinte e num pequeno
-     * timeout (para cobrir o caso do teclado ainda estar a abrir).
-     * Isto nunca interfere com scroll interno de containers próprios
-     * da página — só neutraliza o scroll do document/html em si, que
-     * é o único capaz de arrastar um elemento position:fixed.
-     */
-    private fun injectAppbarJumpFix(view: WebView) {
-        view.evaluateJavascript(
-            """
-            (function() {
-                if (window.__nexaAppbarFixInstalled) return;
-                window.__nexaAppbarFixInstalled = true;
-
-                function travarScrollDoDocumento() {
-                    if (window.scrollX !== 0 || window.scrollY !== 0) {
-                        window.scrollTo(0, 0);
-                    }
-                }
-
-                function onFocusIn(e) {
-                    var alvo = e.target;
-                    if (!alvo) return;
-                    var editavel = alvo.isContentEditable
-                        || alvo.tagName === 'INPUT'
-                        || alvo.tagName === 'TEXTAREA'
-                        || (alvo.closest && alvo.closest('[contenteditable="true"]'));
-                    if (!editavel) return;
-
-                    travarScrollDoDocumento();
-                    requestAnimationFrame(travarScrollDoDocumento);
-                    setTimeout(travarScrollDoDocumento, 60);
-                }
-
-                document.addEventListener('focusin', onFocusIn, true);
-            })();
             """.trimIndent(),
             null
         )

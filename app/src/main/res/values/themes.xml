@@ -1,3 +1,4 @@
+<!-- app/src/main/res/values/themes.xml -->
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Nexa" parent="Theme.AppCompat.NoActionBar">
@@ -5,15 +6,19 @@
         <item name="windowNoTitle">true</item>
     </style>
 
+    <!--
+        Splash nativo do sistema (mostrado por Theme.SplashScreen antes
+        de qualquer código Kotlin correr, referenciado por
+        MainActivity no AndroidManifest.xml). Este ficheiro (values/,
+        sem qualifier) é o usado quando o SISTEMA está em modo claro.
+        A variante para modo escuro está em values-night/themes.xml,
+        com o mesmo nome de style — o Android escolhe automaticamente
+        qual dos dois aplicar, sem necessidade de nenhum código extra
+        para detetar o tema aqui.
+    -->
     <style name="Theme.Nexa.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#242424</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_dark</item>
-        <item name="postSplashScreenTheme">@style/Theme.Nexa</item>
-    </style>
-
-    <style name="Theme.Nexa.Splash.Dark" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#242424</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_dark</item>
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
         <item name="postSplashScreenTheme">@style/Theme.Nexa</item>
     </style>
 </resources>

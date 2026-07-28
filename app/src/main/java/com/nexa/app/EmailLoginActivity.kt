@@ -35,11 +35,12 @@ class EmailLoginActivity : AppCompatActivity() {
     private lateinit var passwordInput: EditText
     private lateinit var loginButton: LinearLayout
     private lateinit var backBtn: ImageView
+    private var isDark = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val isDark = ThemePreference.resolveIsDark(this)
+        isDark = ThemePreference.resolveIsDark(this)
         val palette = ThemeColors.get(isDark)
 
         setupStatusBar(isDark)
@@ -102,13 +103,22 @@ class EmailLoginActivity : AppCompatActivity() {
         ViewCompat.requestApplyInsets(scrollView)
     }
 
+    /**
+     * loginButton passa a botão PRIMÁRIO Fluent 2 — azul sólido, texto
+     * branco (applyOnAccentText, não applyPrimaryText, porque o texto
+     * está sobre um fundo azul, não sobre o fundo da tela). Os campos
+     * de input (email/password) mantêm-se como cartões neutros — no
+     * Fluent 2 os inputs de texto não levam cor de acento, só o botão
+     * de ação final. goToRegister usa a cor de acento, como nos
+     * outros ecrãs.
+     */
     private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootEmailLogin)
         ThemeApplier.applyBackground(root, palette)
 
         ThemeApplier.applyPrimaryText(findViewById(R.id.screenTitle), palette)
-        ThemeApplier.applyPrimaryText(findViewById(R.id.loginButtonText), palette)
-        ThemeApplier.applyPrimaryText(findViewById(R.id.goToRegister), palette)
+        ThemeApplier.applyOnAccentText(findViewById(R.id.loginButtonText), isDark)
+        ThemeApplier.applyAccentText(findViewById(R.id.goToRegister), isDark)
         ThemeApplier.applySecondaryText(findViewById(R.id.termsText), palette)
 
         emailInput.setTextColor(palette.textPrimary)
@@ -116,9 +126,9 @@ class EmailLoginActivity : AppCompatActivity() {
         passwordInput.setTextColor(palette.textPrimary)
         passwordInput.setHintTextColor(palette.textSecondary)
 
-        ThemeApplier.applyCardBackground(emailInput, palette, 28f, this)
-        ThemeApplier.applyCardBackground(passwordInput, palette, 28f, this)
-        ThemeApplier.applyClickableCardBackground(loginButton, palette, 28f, this)
+        ThemeApplier.applyCardBackground(emailInput, palette, 8f, this)
+        ThemeApplier.applyCardBackground(passwordInput, palette, 8f, this)
+        ThemeApplier.applyFluentPrimaryButton(loginButton, isDark, this)
         ThemeApplier.applyClickableCardBackground(backBtn, palette, 20f, this)
     }
 

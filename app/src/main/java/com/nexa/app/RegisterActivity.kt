@@ -19,10 +19,12 @@ import com.nexa.app.util.ThemePalette
 
 class RegisterActivity : AppCompatActivity() {
 
+    private var isDark = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val isDark = ThemePreference.resolveIsDark(this)
+        isDark = ThemePreference.resolveIsDark(this)
         val palette = ThemeColors.get(isDark)
 
         setupStatusBar(isDark)
@@ -47,6 +49,11 @@ class RegisterActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * btnGoogle e btnEmail passam a botões secundários Fluent 2
+     * (outline azul), consistentes com LoginActivity. goToLogin usa a
+     * cor de acento no texto, como o link equivalente na Microsoft.
+     */
     private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootRegister)
         ThemeApplier.applyBackground(root, palette)
@@ -54,15 +61,15 @@ class RegisterActivity : AppCompatActivity() {
         ThemeApplier.applyPrimaryText(findViewById(R.id.screenTitle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.textGoogle), palette)
         ThemeApplier.applyPrimaryText(findViewById(R.id.textEmail), palette)
-        ThemeApplier.applyPrimaryText(findViewById(R.id.goToLogin), palette)
+        ThemeApplier.applyAccentText(findViewById(R.id.goToLogin), isDark)
         ThemeApplier.applySecondaryText(findViewById(R.id.orText), palette)
         ThemeApplier.applySecondaryText(findViewById(R.id.termsText), palette)
 
         ThemeApplier.applyDivider(findViewById(R.id.dividerLeft), palette)
         ThemeApplier.applyDivider(findViewById(R.id.dividerRight), palette)
 
-        ThemeApplier.applyCardBackground(findViewById(R.id.btnGoogle), palette, 28f, this)
-        ThemeApplier.applyCardBackground(findViewById(R.id.btnEmail), palette, 28f, this)
+        ThemeApplier.applyFluentSecondaryButton(findViewById(R.id.btnGoogle), palette, isDark, this)
+        ThemeApplier.applyFluentSecondaryButton(findViewById(R.id.btnEmail), palette, isDark, this)
     }
 
     private fun setupStatusBar(isDark: Boolean) {

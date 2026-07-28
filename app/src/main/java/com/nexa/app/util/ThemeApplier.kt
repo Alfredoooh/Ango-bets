@@ -51,12 +51,85 @@ object ThemeApplier {
         )
     }
 
+    /**
+     * Botão de AÇÃO PRIMÁRIA no padrão Fluent 2 da Microsoft — o "botão
+     * azul" (Entrar, Criar conta): preenchimento sólido com
+     * FluentColors.accent(isDark), cantos a 8dp (não pill — Fluent 2
+     * usa cantos discretos, ao contrário do padrão iOS/Material
+     * arredondado ao máximo que estava a ser usado antes com 28dp).
+     * O texto sobre este botão deve usar FluentColors.onAccent(isDark),
+     * nunca palette.textPrimary — precisa de contraste com o azul, não
+     * com o fundo da tela.
+     */
+    fun applyFluentPrimaryButton(view: View, isDark: Boolean, activity: Activity) {
+        val density = activity.resources.displayMetrics.density
+        val accent = FluentColors.accent(isDark)
+        val cornerRadiusDp = 8f
+        val baseDrawable = GradientDrawable().apply {
+            setColor(accent)
+            cornerRadius = cornerRadiusDp * density
+        }
+        val maskDrawable = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            cornerRadius = cornerRadiusDp * density
+        }
+        // Ripple mais escuro sobre azul (não o ripple cinzento genérico
+        // usado nos cartões neutros), para o feedback de toque continuar
+        // visível sobre uma cor sólida de destaque.
+        val rippleColor = Color.argb(70, 0, 0, 0)
+        view.background = RippleDrawable(
+            android.content.res.ColorStateList.valueOf(rippleColor),
+            baseDrawable,
+            maskDrawable
+        )
+    }
+
+    /**
+     * Botão de AÇÃO SECUNDÁRIA no padrão Fluent 2 — usado para "Continuar
+     * com o Google" e "Continuar com o Email": contorno fino (1dp) na cor
+     * de acento, fundo transparente/neutro, cantos a 8dp. É o botão
+     * "subtle/outline" que a Microsoft usa ao lado de um botão primário
+     * sólido, para não competir visualmente com ele.
+     */
+    fun applyFluentSecondaryButton(view: View, palette: ThemePalette, isDark: Boolean, activity: Activity) {
+        val density = activity.resources.displayMetrics.density
+        val accent = FluentColors.accent(isDark)
+        val cornerRadiusDp = 8f
+        val baseDrawable = GradientDrawable().apply {
+            setColor(palette.cardBg)
+            setStroke((1.25f * density).toInt(), accent)
+            cornerRadius = cornerRadiusDp * density
+        }
+        val maskDrawable = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            cornerRadius = cornerRadiusDp * density
+        }
+        val rippleColor = Color.argb(50, 0, 103, 192)
+        view.background = RippleDrawable(
+            android.content.res.ColorStateList.valueOf(rippleColor),
+            baseDrawable,
+            maskDrawable
+        )
+    }
+
     fun applyPrimaryText(textView: TextView, palette: ThemePalette) {
         textView.setTextColor(palette.textPrimary)
     }
 
     fun applySecondaryText(textView: TextView, palette: ThemePalette) {
         textView.setTextColor(palette.textSecondary)
+    }
+
+    /** Texto sobre um botão Fluent primário (fundo azul sólido) — precisa
+     * de contraste com o azul, nunca com palette.textPrimary. */
+    fun applyOnAccentText(textView: TextView, isDark: Boolean) {
+        textView.setTextColor(FluentColors.onAccent(isDark))
+    }
+
+    /** Texto de um botão Fluent secundário/link — usa a própria cor de
+     * acento, como a Microsoft faz em "Já tens conta? Entrar". */
+    fun applyAccentText(textView: TextView, isDark: Boolean) {
+        textView.setTextColor(FluentColors.accent(isDark))
     }
 
     fun applyDivider(view: View, palette: ThemePalette) {
