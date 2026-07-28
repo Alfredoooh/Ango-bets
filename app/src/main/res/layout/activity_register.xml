@@ -1,5 +1,5 @@
-<!-- app/src/main/res/layout/activity_register.xml -->
 <?xml version="1.0" encoding="utf-8"?>
+<!-- app/src/main/res/layout/activity_register.xml -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/rootRegister"
     android:layout_width="match_parent"
