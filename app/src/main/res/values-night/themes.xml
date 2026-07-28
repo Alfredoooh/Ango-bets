@@ -1,14 +1,6 @@
 <!-- app/src/main/res/values-night/themes.xml -->
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!--
-        Variante escura de Theme.Nexa.Splash — o Android aplica este
-        ficheiro automaticamente sempre que o sistema está em modo
-        escuro, sem qualquer deteção manual de tema necessária no
-        Kotlin. Usa o par cor+ícone já preparado para fundo escuro
-        (splash_icon_dark), mantendo o mesmo #242424 que já existia
-        antes como fundo de splash escuro.
-    -->
     <style name="Theme.Nexa.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#242424</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_dark</item>
