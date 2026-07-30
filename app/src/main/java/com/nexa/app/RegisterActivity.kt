@@ -11,8 +11,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.session.ThemePreference
-import com.nexa.app.util.PngImageLoader
-import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
 import com.nexa.app.util.ThemePalette
@@ -32,10 +30,14 @@ class RegisterActivity : AppCompatActivity() {
         applyTheme(palette)
 
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
-        SvgImageLoader.loadDp(this, logoIcon, "icons/svg/logo.svg", 124, 124, palette.textPrimary)
+        logoIcon.setImageResource(R.drawable.ic_fluent_logo_nexa_80)
+        logoIcon.setColorFilter(palette.textPrimary)
 
-        SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "email.svg", 22, 22, palette.textPrimary)
-        PngImageLoader.load(this, findViewById(R.id.iconGoogle), "icons/png/google.png")
+        val iconEmail = findViewById<ImageView>(R.id.iconEmail)
+        iconEmail.setImageResource(R.drawable.ic_fluent_mail_24_regular)
+        iconEmail.setColorFilter(palette.textPrimary)
+
+        findViewById<ImageView>(R.id.iconGoogle).setImageResource(R.drawable.ic_fluent_google_24_regular)
 
         findViewById<LinearLayout>(R.id.btnGoogle).setOnClickListener {
             // TODO: mesmo fluxo Credential Manager já usado em LoginActivity.

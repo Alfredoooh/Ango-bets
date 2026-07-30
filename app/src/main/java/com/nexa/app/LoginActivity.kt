@@ -21,12 +21,9 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
-import com.nexa.app.util.PngImageLoader
-import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
 import com.nexa.app.util.ThemePalette
-import com.nexa.app.util.ThemeRevealHelper
 import com.nexa.app.widgets.ExitConfirmDialog
 import kotlinx.coroutines.launch
 
@@ -36,7 +33,6 @@ class LoginActivity : AppCompatActivity() {
     private val googleWebClientId = "SUBSTITUI_PELO_TEU_WEB_CLIENT_ID.apps.googleusercontent.com"
 
     private var isDark = false
-    private var isThemeAnimating = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,11 +49,12 @@ class LoginActivity : AppCompatActivity() {
         setContentView(R.layout.activity_login)
         applyTheme(palette)
 
-        loadLogo(palette)
-        loadThemeToggleIcon(palette)
+        loadLogo()
+        loadThemeToggleIcon()
 
-        SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, palette.textPrimary)
-        PngImageLoader.load(this, findViewById(R.id.iconGoogle), "icons/png/google.png")
+        findViewById<ImageView>(R.id.iconEmail).setImageResource(R.drawable.ic_fluent_mail_24_regular)
+        findViewById<ImageView>(R.id.iconEmail).setColorFilter(palette.textPrimary)
+        findViewById<ImageView>(R.id.iconGoogle).setImageResource(R.drawable.ic_fluent_google_24_regular)
 
         findViewById<LinearLayout>(R.id.btnGoogle).setOnClickListener {
             launchGoogleSignIn()
@@ -70,8 +67,8 @@ class LoginActivity : AppCompatActivity() {
             startActivity(Intent(this, RegisterActivity::class.java))
         }
 
-        findViewById<ImageView>(R.id.themeToggleBtn).setOnClickListener { view ->
-            toggleTheme(view)
+        findViewById<ImageView>(R.id.themeToggleBtn).setOnClickListener {
+            toggleTheme()
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -83,59 +80,41 @@ class LoginActivity : AppCompatActivity() {
         })
     }
 
-    /** Logo em icons/svg/logo.svg, mesmo tamanho (80dp) da tela de registo. */
-    private fun loadLogo(palette: ThemePalette) {
-        SvgImageLoader.loadDp(this, findViewById(R.id.logoIcon), "icons/svg/logo.svg", 80, 80, palette.textPrimary)
+    /** Logo Fluent, mesmo tamanho (80dp) da tela de registo. */
+    private fun loadLogo() {
+        val palette = ThemeColors.get(isDark)
+        val logoIcon = findViewById<ImageView>(R.id.logoIcon)
+        logoIcon.setImageResource(R.drawable.ic_fluent_logo_nexa_80)
+        logoIcon.setColorFilter(palette.textPrimary)
     }
 
     /** Ícone claro -> lua (para ir para escuro); ícone escuro -> sol (para ir para claro). */
-    private fun loadThemeToggleIcon(palette: ThemePalette) {
-        val iconPath = if (isDark) "icons/svg/sun.svg" else "icons/svg/moon.svg"
-        SvgImageLoader.loadDp(this, findViewById(R.id.themeToggleBtn), iconPath, 22, 22, palette.textPrimary)
+    private fun loadThemeToggleIcon() {
+        val palette = ThemeColors.get(isDark)
+        val themeToggleBtn = findViewById<ImageView>(R.id.themeToggleBtn)
+        val iconRes = if (isDark) R.drawable.ic_fluent_weather_sunny_24_regular
+        else R.drawable.ic_fluent_weather_moon_24_regular
+        themeToggleBtn.setImageResource(iconRes)
+        themeToggleBtn.setColorFilter(palette.textPrimary)
     }
 
     /**
-     * Troca o tema com efeito de círculo (container transform) a
-     * partir do botão tocado. Ao ir para escuro, o círculo EXPANDE a
-     * cobrir o ecrã com o tema novo; ao voltar para claro, é o
-     * reverso exato: o círculo ENCOLHE, "recolhendo" o tema escuro de
-     * volta para o ponto de origem.
+     * Troca de tema INSTANTÂNEA, sem qualquer animação de transição
+     * (sem circular reveal, sem fade, sem transform). O tema novo é
+     * aplicado diretamente — o único feedback visual da troca é o
+     * conteúdo em si a mudar de cor no frame seguinte, tal como o
+     * WebView já faz noutros apps do Nexa quando o tema muda.
      */
-    private fun toggleTheme(originView: View) {
-        if (isThemeAnimating) return
-        isThemeAnimating = true
+    private fun toggleTheme() {
+        isDark = !isDark
+        val newPalette = ThemeColors.get(isDark)
 
-        val goingToDark = !isDark
-        val oldPalette = ThemeColors.get(isDark)
-        val newPalette = ThemeColors.get(goingToDark)
-        val root = findViewById<FrameLayout>(R.id.rootLogin)
-
-        val location = IntArray(2)
-        originView.getLocationInWindow(location)
-        val rootLocation = IntArray(2)
-        root.getLocationInWindow(rootLocation)
-        val originX = location[0] - rootLocation[0] + originView.width / 2
-        val originY = location[1] - rootLocation[1] + originView.height / 2
-
-        ThemeRevealHelper.animateThemeChange(
-            rootView = root,
-            originX = originX,
-            originY = originY,
-            oldBackgroundColor = oldPalette.bgPrimary,
-            newBackgroundColor = newPalette.bgPrimary,
-            isSwitchingToDark = goingToDark
-        ) {
-            isDark = goingToDark
-            ThemePreference.saveIsDark(this, goingToDark)
-            applyTheme(newPalette)
-            loadLogo(newPalette)
-            loadThemeToggleIcon(newPalette)
-            SvgImageLoader.loadDp(this, findViewById(R.id.iconEmail), "icons/svg/email.svg", 22, 22, newPalette.textPrimary)
-            setupStatusBar(goingToDark)
-        }
-
-        // Libertar a trava um pouco depois do fim da animação (500ms no helper).
-        root.postDelayed({ isThemeAnimating = false }, 520L)
+        ThemePreference.saveIsDark(this, isDark)
+        applyTheme(newPalette)
+        loadLogo()
+        loadThemeToggleIcon()
+        findViewById<ImageView>(R.id.iconEmail).setColorFilter(newPalette.textPrimary)
+        setupStatusBar(isDark)
     }
 
     /**

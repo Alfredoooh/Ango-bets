@@ -114,6 +114,8 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
         webView = findViewById(R.id.webView)
         webView.setBackgroundColor(bgColor)
 
+        applyWebViewTopInset()
+
         val fileChooserBridge = FileChooserBridge(this) { multiSelect, callback ->
             pendingFileCallback = callback
             if (multiSelect) {
@@ -214,33 +216,27 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
     }
 
     /**
-     * Statusbar sólida, a combinar com o tema — NÃO edge-to-edge.
+     * Statusbar TRANSPARENTE de verdade (edge-to-edge) — a WebView
+     * desenha por trás da status bar, mas o CONTEÚDO da WebView nunca
+     * fica escondido por trás dela: aplicamos o inset real da status
+     * bar como padding-top ao próprio WebView (ver applyWebViewTopInset),
+     * o que reserva visualmente o espaço sem pintar nenhuma cor sólida
+     * ali — o que aparece por trás da barra é sempre o que a própria
+     * página desenhar (ou o bgColor da window, nas frações de segundo
+     * antes da primeira pintura da página).
      *
-     * Antes (setupEdgeToEdgeStatusBar): setDecorFitsSystemWindows(false)
-     * fazia o WebView desenhar por trás da status bar, que ficava
-     * totalmente transparente. Isso permitia à WebView pintar-se até ao
-     * topo do ecrã — incluindo por trás dos ícones de hora/bateria do
-     * sistema — o que ficava visualmente errado fora do editor de Docs
-     * (onde o efeito era intencional via env(safe-area-inset-top)).
+     * decorFitsSystemWindows(false) é o que ativa edge-to-edge: o
+     * Android deixa de reservar automaticamente o espaço da status bar
+     * como inset do content view, e passamos a controlar esse espaço
+     * nós, à mão, via WindowInsetsCompat.
      *
-     * Agora: decorFitsSystemWindows volta a true, o que faz o Android
-     * reservar automaticamente o espaço da status bar como inset do
-     * content view — a WebView passa a começar sempre abaixo dela, e
-     * deixa de haver overlap para tratar no Svelte com
-     * safe-area-inset-top nos apps que não são o Docs (esse env()
-     * simplesmente resolve para 0px agora, o que já é seguro por si só
-     * porque está dentro de um calc() com um valor base fixo).
-     *
-     * A cor por trás da própria barra continua a não ser pintada
-     * explicitamente por nós (statusBarColor mantém-se TRANSPARENT) —
-     * o que aparece por trás dela é o background da Window/do
-     * rootHome, que já pintamos com a cor do tema (bgColor) logo no
-     * onCreate. isAppearanceLightStatusBars continua a garantir que os
-     * ícones do sistema (hora, bateria, sinal) ficam com contraste
-     * correto contra essa cor.
+     * statusBarColor/navigationBarColor continuam TRANSPARENT — não há
+     * nenhuma cor sólida pintada pelo sistema atrás dos ícones de
+     * hora/bateria/sinal; só os próprios ícones (isAppearanceLightStatusBars)
+     * ficam visíveis, exatamente como pedido.
      */
     private fun setupStatusBar() {
-        WindowCompat.setDecorFitsSystemWindows(window, true)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
         applyStatusBarAppearance(ThemePreference.resolveIsDark(this))
@@ -250,6 +246,36 @@ class HomeActivity : AppCompatActivity(), ThemeAware {
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         controller.isAppearanceLightStatusBars = !isDark
         controller.isAppearanceLightNavigationBars = !isDark
+    }
+
+    /**
+     * Reserva o espaço da status bar como padding-top real da WebView,
+     * para o conteúdo da página nunca ficar por trás dela — apenas a
+     * BARRA em si (o espaço vazio, sem cor sólida do sistema) fica
+     * "transparente". Isto é o pedaço que falta ao decorFitsSystemWindows
+     * sozinho: sem isto, o WebView ocuparia o ecrã inteiro por baixo da
+     * barra e a própria página teria de tratar do inset via CSS
+     * (env(safe-area-inset-top)), o que depende do Svelte já estar
+     * preparado para isso em todos os apps — aqui garantimos o inset
+     * mesmo que a página não trate disso.
+     *
+     * clipToPadding fica true por definição da própria View (o WebView
+     * não desenha fora do padding), por isso este padding funciona como
+     * uma reserva de espaço real, não apenas visual.
+     */
+    private fun applyWebViewTopInset() {
+        val root = findViewById<View>(R.id.rootHome)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val statusBarInset = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            webView.setPadding(
+                webView.paddingLeft,
+                statusBarInset,
+                webView.paddingRight,
+                webView.paddingBottom
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun disableSwipeGestures() {

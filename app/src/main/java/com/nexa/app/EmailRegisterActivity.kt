@@ -4,6 +4,7 @@ package com.nexa.app
 import android.content.Intent
 import android.os.Bundle
 import android.util.Patterns
+import android.util.TypedValue
 import android.view.View
 import android.widget.EditText
 import android.widget.ImageView
@@ -22,7 +23,6 @@ import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
-import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
 import com.nexa.app.util.ThemePalette
@@ -55,10 +55,14 @@ class EmailRegisterActivity : AppCompatActivity() {
 
         applyTheme(palette)
         applyBackBtnTopInset()
-        setupKeyboardInsetHandling()
+        setupKeyboardAvoiding()
 
-        SvgImageLoader.loadDp(this, findViewById(R.id.logoIcon), "icons/svg/logo.svg", 48, 48, palette.textPrimary)
-        SvgImageLoader.loadDp(this, backBtn, "icons/svg/back.svg", 20, 20, palette.textPrimary)
+        findViewById<ImageView>(R.id.logoIcon).apply {
+            setImageResource(R.drawable.ic_fluent_logo_nexa_48)
+            setColorFilter(palette.textPrimary)
+        }
+        backBtn.setImageResource(R.drawable.ic_fluent_arrow_left_24_regular)
+        backBtn.setColorFilter(palette.textPrimary)
 
         registerButton.setOnClickListener { attemptRegister() }
 
@@ -85,13 +89,24 @@ class EmailRegisterActivity : AppCompatActivity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     /**
-     * Com edge-to-edge ativo (decorFitsSystemWindows = false), o Manifest
-     * "adjustResize" deixa de funcionar sozinho: o sistema já não empurra
-     * a janela quando o teclado aparece. Aqui aplicamos manualmente o
-     * inset do teclado (ime()) como padding do ScrollView, para que o
-     * conteúdo suba e o campo focado fique visível acima do teclado.
+     * Keyboard avoiding real e determinístico: com edge-to-edge ativo
+     * (decorFitsSystemWindows = false), o Manifest "adjustResize" já não
+     * é suficiente sozinho em todas as versões do Android — aqui
+     * aplicamos manualmente o inset do teclado (ime()) como padding
+     * inferior do ScrollView, para que:
+     * 1. O conteúdo suba imediatamente quando o teclado abre;
+     * 2. O campo focado (nome/email/palavra-passe) fique sempre
+     *    visível acima do teclado (o ScrollView, sendo fillViewport +
+     *    scrollável, garante isto automaticamente assim que o padding
+     *    cresce);
+     * 3. O botão de ação principal (registerButton) nunca fique
+     *    escondido por trás do teclado, porque está dentro do próprio
+     *    ScrollView, logo sobe junto com todo o resto do conteúdo.
+     * Quando o teclado fecha, volta a usar o inset da nav bar do
+     * sistema (gesture bar / botões), nunca ficando com padding a mais
+     * nem a menos.
      */
-    private fun setupKeyboardInsetHandling() {
+    private fun setupKeyboardAvoiding() {
         val scrollView = findViewById<ScrollView>(R.id.emailRegisterScrollView)
         ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, insets ->
             val imeHeight = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
@@ -106,6 +121,11 @@ class EmailRegisterActivity : AppCompatActivity() {
      * registerButton passa a botão PRIMÁRIO Fluent 2 — azul sólido,
      * texto branco. Os três inputs mantêm-se cartões neutros (8dp,
      * consistente com o resto). goToLogin usa a cor de acento.
+     *
+     * backBtn deixa de ter QUALQUER fundo (sem pill, sem cartão) — é só
+     * o ícone Fluent puro sobre o fundo da tela, com ripple sem forma
+     * própria (selectableItemBackgroundBorderless), consistente com o
+     * botão de tema em LoginActivity.
      */
     private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootEmailRegister)
@@ -127,7 +147,10 @@ class EmailRegisterActivity : AppCompatActivity() {
         ThemeApplier.applyCardBackground(emailInput, palette, 8f, this)
         ThemeApplier.applyCardBackground(passwordInput, palette, 8f, this)
         ThemeApplier.applyFluentPrimaryButton(registerButton, isDark, this)
-        ThemeApplier.applyClickableCardBackground(backBtn, palette, 20f, this)
+
+        val backgroundTypedValue = TypedValue()
+        theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true)
+        backBtn.setBackgroundResource(backgroundTypedValue.resourceId)
     }
 
     private fun setupStatusBar(isDark: Boolean) {
