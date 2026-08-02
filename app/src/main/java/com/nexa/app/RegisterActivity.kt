@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
 import com.nexa.app.util.ThemePalette
@@ -30,8 +31,7 @@ class RegisterActivity : AppCompatActivity() {
         applyTheme(palette)
 
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
-        logoIcon.setImageResource(R.drawable.ic_fluent_logo_nexa_80)
-        logoIcon.setColorFilter(palette.textPrimary)
+        SvgImageLoader.load(this, logoIcon, "logo.svg", tintColor = palette.textPrimary)
 
         val iconEmail = findViewById<ImageView>(R.id.iconEmail)
         iconEmail.setImageResource(R.drawable.ic_fluent_mail_24_regular)
@@ -51,11 +51,6 @@ class RegisterActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * btnGoogle e btnEmail passam a botões secundários Fluent 2
-     * (outline azul), consistentes com LoginActivity. goToLogin usa a
-     * cor de acento no texto, como o link equivalente na Microsoft.
-     */
     private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootRegister)
         ThemeApplier.applyBackground(root, palette)

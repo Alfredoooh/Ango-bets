@@ -4,6 +4,7 @@ package com.nexa.app
 import android.content.Intent
 import android.os.Bundle
 import android.util.Patterns
+import android.util.TypedValue
 import android.view.View
 import android.widget.EditText
 import android.widget.ImageView
@@ -22,6 +23,7 @@ import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.LoginRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
 import com.nexa.app.util.ThemePalette
@@ -44,8 +46,6 @@ class EmailLoginActivity : AppCompatActivity() {
         setupStatusBar(isDark)
         setContentView(R.layout.activity_email_login)
 
-        // As propriedades têm de estar inicializadas ANTES de applyTheme(),
-        // que lhes acede diretamente (emailInput.setTextColor, etc.).
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
         loginButton = findViewById(R.id.loginButton)
@@ -55,10 +55,9 @@ class EmailLoginActivity : AppCompatActivity() {
         applyBackBtnTopInset()
         setupKeyboardAvoiding()
 
-        findViewById<ImageView>(R.id.logoIcon).apply {
-            setImageResource(R.drawable.ic_fluent_logo_nexa_48)
-            setColorFilter(palette.textPrimary)
-        }
+        val logoIcon = findViewById<ImageView>(R.id.logoIcon)
+        SvgImageLoader.load(this, logoIcon, "logo.svg", tintColor = palette.textPrimary)
+
         backBtn.setImageResource(R.drawable.ic_fluent_arrow_left_24_regular)
         backBtn.setColorFilter(palette.textPrimary)
 
@@ -71,7 +70,6 @@ class EmailLoginActivity : AppCompatActivity() {
         }
     }
 
-    /** Empurra o botão de voltar para baixo da status bar, sem valor fixo em dp. */
     private fun applyBackBtnTopInset() {
         ViewCompat.setOnApplyWindowInsetsListener(backBtn) { view, insets ->
             val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
@@ -86,23 +84,6 @@ class EmailLoginActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    /**
-     * Keyboard avoiding real e determinístico: com edge-to-edge ativo
-     * (decorFitsSystemWindows = false), o Manifest "adjustResize" já não
-     * é suficiente sozinho em todas as versões do Android — aqui
-     * aplicamos manualmente o inset do teclado (ime()) como padding
-     * inferior do ScrollView, para que:
-     * 1. O conteúdo suba imediatamente quando o teclado abre;
-     * 2. O campo focado fique sempre visível acima do teclado
-     *    (o ScrollView, sendo fillViewport + scrollável, garante isto
-     *    automaticamente assim que o padding cresce);
-     * 3. O botão de ação principal (loginButton) nunca fique escondido
-     *    por trás do teclado, porque está dentro do próprio ScrollView,
-     *    logo sobe junto com todo o resto do conteúdo.
-     * Quando o teclado fecha, volta a usar o inset da nav bar do
-     * sistema (gesture bar / botões), nunca ficando com padding a mais
-     * nem a menos.
-     */
     private fun setupKeyboardAvoiding() {
         val scrollView = findViewById<ScrollView>(R.id.emailLoginScrollView)
         ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, insets ->
@@ -114,20 +95,6 @@ class EmailLoginActivity : AppCompatActivity() {
         ViewCompat.requestApplyInsets(scrollView)
     }
 
-    /**
-     * loginButton passa a botão PRIMÁRIO Fluent 2 — azul sólido, texto
-     * branco (applyOnAccentText, não applyPrimaryText, porque o texto
-     * está sobre um fundo azul, não sobre o fundo da tela). Os campos
-     * de input (email/password) mantêm-se como cartões neutros — no
-     * Fluent 2 os inputs de texto não levam cor de acento, só o botão
-     * de ação final. goToRegister usa a cor de acento, como nos
-     * outros ecrãs.
-     *
-     * backBtn deixa de ter QUALQUER fundo (sem pill, sem cartão) — é só
-     * o ícone Fluent puro sobre o fundo da tela, com ripple sem forma
-     * própria (selectableItemBackgroundBorderless), consistente com o
-     * botão de tema em LoginActivity.
-     */
     private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootEmailLogin)
         ThemeApplier.applyBackground(root, palette)
@@ -146,7 +113,7 @@ class EmailLoginActivity : AppCompatActivity() {
         ThemeApplier.applyCardBackground(passwordInput, palette, 8f, this)
         ThemeApplier.applyFluentPrimaryButton(loginButton, isDark, this)
 
-        val backgroundTypedValue = android.util.TypedValue()
+        val backgroundTypedValue = TypedValue()
         theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, backgroundTypedValue, true)
         backBtn.setBackgroundResource(backgroundTypedValue.resourceId)
     }

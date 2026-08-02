@@ -21,6 +21,7 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
 import com.nexa.app.util.ThemePalette
@@ -80,12 +81,17 @@ class LoginActivity : AppCompatActivity() {
         })
     }
 
-    /** Logo Fluent, mesmo tamanho (80dp) da tela de registo. */
+    /**
+     * Logo continua a vir do SVG local (assets/svg/logo.svg via
+     * SvgImageLoader), tal como o resto do projeto já fazia — não existe
+     * (nem foi criado) nenhum R.drawable.ic_fluent_logo_nexa_*, por isso
+     * NÃO se deve referenciar esse nome. Só os ícones de interface
+     * (mail, google, sol, lua) passaram a Fluent nativo.
+     */
     private fun loadLogo() {
         val palette = ThemeColors.get(isDark)
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
-        logoIcon.setImageResource(R.drawable.ic_fluent_logo_nexa_80)
-        logoIcon.setColorFilter(palette.textPrimary)
+        SvgImageLoader.load(this, logoIcon, "logo.svg", tintColor = palette.textPrimary)
     }
 
     /** Ícone claro -> lua (para ir para escuro); ícone escuro -> sol (para ir para claro). */
@@ -100,10 +106,7 @@ class LoginActivity : AppCompatActivity() {
 
     /**
      * Troca de tema INSTANTÂNEA, sem qualquer animação de transição
-     * (sem circular reveal, sem fade, sem transform). O tema novo é
-     * aplicado diretamente — o único feedback visual da troca é o
-     * conteúdo em si a mudar de cor no frame seguinte, tal como o
-     * WebView já faz noutros apps do Nexa quando o tema muda.
+     * (sem circular reveal, sem fade, sem transform).
      */
     private fun toggleTheme() {
         isDark = !isDark
@@ -117,14 +120,6 @@ class LoginActivity : AppCompatActivity() {
         setupStatusBar(isDark)
     }
 
-    /**
-     * btnGoogle e btnEmail passam a ser botões SECUNDÁRIOS Fluent 2
-     * (outline azul, fundo neutro) em vez de cartões cinzentos sem
-     * destaque — o padrão oficial da Microsoft para opções de login
-     * alternativas junto a uma ação primária. goToRegister usa a cor
-     * de acento diretamente no texto (como o link "Criar conta" no
-     * ecrã de login da Microsoft), em vez do texto neutro anterior.
-     */
     private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootLogin)
         ThemeApplier.applyBackground(root, palette)
@@ -168,7 +163,6 @@ class LoginActivity : AppCompatActivity() {
             try {
                 val result = credentialManager.getCredential(request = request, context = this@LoginActivity)
                 val credential = GoogleIdTokenCredential.createFrom(result.credential.data)
-                // TODO: enviar credential.idToken ao backend, trocar por sessão via SessionManager.saveSession(...).
                 Toast.makeText(this@LoginActivity, "Conta Google selecionada: ${credential.id}", Toast.LENGTH_SHORT).show()
             } catch (e: GetCredentialException) {
                 Toast.makeText(this@LoginActivity, "Login com Google cancelado ou indisponível", Toast.LENGTH_SHORT).show()

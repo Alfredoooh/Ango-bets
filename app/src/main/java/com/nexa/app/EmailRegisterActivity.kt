@@ -23,6 +23,7 @@ import com.nexa.app.api.ApiErrorParser
 import com.nexa.app.api.RegisterRequest
 import com.nexa.app.session.SessionManager
 import com.nexa.app.session.ThemePreference
+import com.nexa.app.util.SvgImageLoader
 import com.nexa.app.util.ThemeApplier
 import com.nexa.app.util.ThemeColors
 import com.nexa.app.util.ThemePalette
@@ -46,7 +47,6 @@ class EmailRegisterActivity : AppCompatActivity() {
         setupStatusBar(isDark)
         setContentView(R.layout.activity_email_register)
 
-        // Inicializar ANTES de applyTheme(), que acede diretamente a estes campos.
         nameInput = findViewById(R.id.nameEditText)
         emailInput = findViewById(R.id.emailEditText)
         passwordInput = findViewById(R.id.passwordEditText)
@@ -57,10 +57,9 @@ class EmailRegisterActivity : AppCompatActivity() {
         applyBackBtnTopInset()
         setupKeyboardAvoiding()
 
-        findViewById<ImageView>(R.id.logoIcon).apply {
-            setImageResource(R.drawable.ic_fluent_logo_nexa_48)
-            setColorFilter(palette.textPrimary)
-        }
+        val logoIcon = findViewById<ImageView>(R.id.logoIcon)
+        SvgImageLoader.load(this, logoIcon, "logo.svg", tintColor = palette.textPrimary)
+
         backBtn.setImageResource(R.drawable.ic_fluent_arrow_left_24_regular)
         backBtn.setColorFilter(palette.textPrimary)
 
@@ -73,7 +72,6 @@ class EmailRegisterActivity : AppCompatActivity() {
         }
     }
 
-    /** Empurra o botão de voltar para baixo da status bar, sem valor fixo em dp. */
     private fun applyBackBtnTopInset() {
         ViewCompat.setOnApplyWindowInsetsListener(backBtn) { view, insets ->
             val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
@@ -88,24 +86,6 @@ class EmailRegisterActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    /**
-     * Keyboard avoiding real e determinístico: com edge-to-edge ativo
-     * (decorFitsSystemWindows = false), o Manifest "adjustResize" já não
-     * é suficiente sozinho em todas as versões do Android — aqui
-     * aplicamos manualmente o inset do teclado (ime()) como padding
-     * inferior do ScrollView, para que:
-     * 1. O conteúdo suba imediatamente quando o teclado abre;
-     * 2. O campo focado (nome/email/palavra-passe) fique sempre
-     *    visível acima do teclado (o ScrollView, sendo fillViewport +
-     *    scrollável, garante isto automaticamente assim que o padding
-     *    cresce);
-     * 3. O botão de ação principal (registerButton) nunca fique
-     *    escondido por trás do teclado, porque está dentro do próprio
-     *    ScrollView, logo sobe junto com todo o resto do conteúdo.
-     * Quando o teclado fecha, volta a usar o inset da nav bar do
-     * sistema (gesture bar / botões), nunca ficando com padding a mais
-     * nem a menos.
-     */
     private fun setupKeyboardAvoiding() {
         val scrollView = findViewById<ScrollView>(R.id.emailRegisterScrollView)
         ViewCompat.setOnApplyWindowInsetsListener(scrollView) { view, insets ->
@@ -117,16 +97,6 @@ class EmailRegisterActivity : AppCompatActivity() {
         ViewCompat.requestApplyInsets(scrollView)
     }
 
-    /**
-     * registerButton passa a botão PRIMÁRIO Fluent 2 — azul sólido,
-     * texto branco. Os três inputs mantêm-se cartões neutros (8dp,
-     * consistente com o resto). goToLogin usa a cor de acento.
-     *
-     * backBtn deixa de ter QUALQUER fundo (sem pill, sem cartão) — é só
-     * o ícone Fluent puro sobre o fundo da tela, com ripple sem forma
-     * própria (selectableItemBackgroundBorderless), consistente com o
-     * botão de tema em LoginActivity.
-     */
     private fun applyTheme(palette: ThemePalette) {
         val root = findViewById<View>(R.id.rootEmailRegister)
         ThemeApplier.applyBackground(root, palette)
