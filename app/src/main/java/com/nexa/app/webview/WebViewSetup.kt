@@ -19,29 +19,101 @@ import com.nexa.app.session.ThemePreference
  * ligação das bridges (tema, sessão, links externos, permissões,
  * seletor de ficheiros/galeria, armazenamento SAF para export).
  *
- * A sessão (token guardado via SessionManager, após login/registo nativo
- * contra o Worker) é injetada diretamente em localStorage do WebApp em
- * onPageStarted e onPageFinished, replicando o mecanismo comprovado que o
- * WebApp (Svelte) já lê em src/shared/api.js / auth store.
- *
- * NOTA: a correção do "appbar a saltar" com o teclado (docs, sheets,
- * whiteboard) deixou de ser feita aqui. Antes havia uma injeção JS
- * global (injectAppbarJumpFix) que corria em TODAS as páginas da app,
- * independentemente da URL, e que forçava window.scrollTo(0,0) no
- * document inteiro sempre que qualquer campo editável recebia foco.
- * Isso duplicava — e sobrepunha-se a — uma lógica equivalente já
- * implementada dentro do próprio DocPage.svelte (Nexa Docs), que trava
- * apenas o scroll do document root e nunca interfere com o scroll
- * interno de containers próprios da página (ex: .canvas-scroll). Ter
- * as duas em paralelo era redundante e, pior, aplicava um
- * comportamento pensado exclusivamente para o editor de Docs a todo o
- * resto do app (Home, Sheets, Whiteboard, ecrãs de login), onde esses
- * outros apps podem ter as suas próprias intenções de scroll no
- * window/document que esta injeção estaria a esmagar sem necessidade.
- * Cada app Svelte que precisar deste comportamento deve implementá-lo
- * localmente, como o Docs já faz.
+ * PROTOCOLO DE ANTI-SALTO DO APPBAR (data-nexa-appbar):
+ * Em vez de forçar scrollTo(0,0) globalmente ou restringir a lógica a
+ * uma URL fixa (ex: só "/docs/"), este ficheiro injeta em TODAS as
+ * páginas um pequeno guardião JS que:
+ *   1. Não faz NADA sozinho — só arma um listener de focusin/focusout.
+ *   2. Ao focar um campo editável, procura no DOM o(s) elemento(s)
+ *      marcados com o atributo data-nexa-appbar="true".
+ *   3. Se não existir nenhum elemento com esse atributo na página
+ *      atual, o guardião não faz absolutamente nada — zero custo,
+ *      zero risco de interferir com Home, Sheets antigos sem o
+ *      atributo, ecrãs de login, etc.
+ *   4. Se existir, mede a posição (getBoundingClientRect().top) desse
+ *      elemento ANTES do foco. Depois do foco (e outra vez após um
+ *      pequeno delay, para cobrir o resize do visualViewport quando o
+ *      teclado abre), volta a medir. Se a posição mudou, é sinal de
+ *      que o document fez scroll por baixo do elemento fixed — só
+ *      NESSE caso força scrollTo(0,0). Se o elemento não se mexeu,
+ *      não faz nada.
+ * Isto significa que:
+ *   - Qualquer app Svelte (Docs, Sheets, Whiteboard, etc.) "adere" ao
+ *     protocolo apenas pondo data-nexa-appbar="true" no elemento do
+ *     appbar/header. Não precisa de nenhuma mudança nativa nova.
+ *   - Nenhum outro elemento (BottomToolbar, modais, FABs) é tocado,
+ *     porque o guardião só mede e corrige o(s) elemento(s)
+ *     explicitamente marcados.
+ *   - Path fica app-agnóstico: já não há string "/docs/" hardcoded
+ *     aqui — a decisão de "este ecrã precisa da proteção" passa a
+ *     viver inteiramente no HTML/Svelte de cada app.
  */
 object WebViewSetup {
+
+    private const val APPBAR_ANTI_JUMP_JS = """
+        (function() {
+            if (window.__nexaAppbarGuardInstalled) { return; }
+            window.__nexaAppbarGuardInstalled = true;
+
+            function isEditableTarget(el) {
+                if (!el) return false;
+                var tag = el.tagName ? el.tagName.toUpperCase() : '';
+                return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable === true;
+            }
+
+            function getGuardedAppbars() {
+                return document.querySelectorAll('[data-nexa-appbar="true"]');
+            }
+
+            function correctIfShifted(previousTops) {
+                var appbars = getGuardedAppbars();
+                if (appbars.length === 0) { return; }
+
+                var shifted = false;
+                appbars.forEach(function(el, i) {
+                    var currentTop = el.getBoundingClientRect().top;
+                    var previousTop = previousTops[i];
+                    if (previousTop !== undefined && Math.abs(currentTop - previousTop) > 0.5) {
+                        shifted = true;
+                    }
+                });
+
+                if (shifted) {
+                    window.scrollTo(0, 0);
+                    if (document.scrollingElement) {
+                        document.scrollingElement.scrollTop = 0;
+                    }
+                }
+            }
+
+            document.addEventListener('focusin', function(event) {
+                if (!isEditableTarget(event.target)) { return; }
+
+                var appbars = getGuardedAppbars();
+                if (appbars.length === 0) { return; }
+
+                var previousTops = [];
+                appbars.forEach(function(el) {
+                    previousTops.push(el.getBoundingClientRect().top);
+                });
+
+                correctIfShifted(previousTops);
+                requestAnimationFrame(function() { correctIfShifted(previousTops); });
+                setTimeout(function() { correctIfShifted(previousTops); }, 60);
+                setTimeout(function() { correctIfShifted(previousTops); }, 250);
+            }, { passive: true });
+
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', function() {
+                    var appbars = getGuardedAppbars();
+                    if (appbars.length === 0) { return; }
+                    var tops = [];
+                    appbars.forEach(function(el) { tops.push(el.getBoundingClientRect().top); });
+                    correctIfShifted(tops);
+                }, { passive: true });
+            }
+        })();
+    """
 
     @SuppressLint("SetJavaScriptEnabled")
     fun configure(
@@ -99,6 +171,7 @@ object WebViewSetup {
                 super.onPageFinished(view, url)
                 injectSession(view, activity)
                 injectTheme(view, activity)
+                injectAppbarAntiJumpGuard(view)
             }
         }
 
@@ -158,5 +231,14 @@ object WebViewSetup {
             """.trimIndent(),
             null
         )
+    }
+
+    /**
+     * Corre em TODAS as páginas, mas fica inerte (não faz nada) em
+     * qualquer página cujo HTML não tenha nenhum elemento com
+     * data-nexa-appbar="true". Não há lista de URLs para manter.
+     */
+    private fun injectAppbarAntiJumpGuard(view: WebView) {
+        view.evaluateJavascript(APPBAR_ANTI_JUMP_JS, null)
     }
 }
