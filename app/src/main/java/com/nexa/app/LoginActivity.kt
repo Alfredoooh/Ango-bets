@@ -30,7 +30,6 @@ import kotlinx.coroutines.launch
 
 class LoginActivity : AppCompatActivity() {
 
-    // TODO: substituir pelo teu Web Client ID do Google Cloud Console.
     private val googleWebClientId = "SUBSTITUI_PELO_TEU_WEB_CLIENT_ID.apps.googleusercontent.com"
 
     private var isDark = false
@@ -81,20 +80,12 @@ class LoginActivity : AppCompatActivity() {
         })
     }
 
-    /**
-     * Logo continua a vir do SVG local (assets/svg/logo.svg via
-     * SvgImageLoader), tal como o resto do projeto já fazia — não existe
-     * (nem foi criado) nenhum R.drawable.ic_fluent_logo_nexa_*, por isso
-     * NÃO se deve referenciar esse nome. Só os ícones de interface
-     * (mail, google, sol, lua) passaram a Fluent nativo.
-     */
     private fun loadLogo() {
         val palette = ThemeColors.get(isDark)
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
-        SvgImageLoader.load(this, logoIcon, "logo.svg", tintColor = palette.textPrimary)
+        SvgImageLoader.loadDp(this, logoIcon, "logo.svg", widthDp = 80, heightDp = 80, tintColor = palette.textPrimary)
     }
 
-    /** Ícone claro -> lua (para ir para escuro); ícone escuro -> sol (para ir para claro). */
     private fun loadThemeToggleIcon() {
         val palette = ThemeColors.get(isDark)
         val themeToggleBtn = findViewById<ImageView>(R.id.themeToggleBtn)
@@ -104,10 +95,6 @@ class LoginActivity : AppCompatActivity() {
         themeToggleBtn.setColorFilter(palette.textPrimary)
     }
 
-    /**
-     * Troca de tema INSTANTÂNEA, sem qualquer animação de transição
-     * (sem circular reveal, sem fade, sem transform).
-     */
     private fun toggleTheme() {
         isDark = !isDark
         val newPalette = ThemeColors.get(isDark)

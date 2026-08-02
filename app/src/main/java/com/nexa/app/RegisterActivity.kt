@@ -31,7 +31,7 @@ class RegisterActivity : AppCompatActivity() {
         applyTheme(palette)
 
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
-        SvgImageLoader.load(this, logoIcon, "logo.svg", tintColor = palette.textPrimary)
+        SvgImageLoader.loadDp(this, logoIcon, "logo.svg", widthDp = 80, heightDp = 80, tintColor = palette.textPrimary)
 
         val iconEmail = findViewById<ImageView>(R.id.iconEmail)
         iconEmail.setImageResource(R.drawable.ic_fluent_mail_24_regular)

@@ -56,7 +56,7 @@ class EmailLoginActivity : AppCompatActivity() {
         setupKeyboardAvoiding()
 
         val logoIcon = findViewById<ImageView>(R.id.logoIcon)
-        SvgImageLoader.load(this, logoIcon, "logo.svg", tintColor = palette.textPrimary)
+        SvgImageLoader.loadDp(this, logoIcon, "logo.svg", widthDp = 48, heightDp = 48, tintColor = palette.textPrimary)
 
         backBtn.setImageResource(R.drawable.ic_fluent_arrow_left_24_regular)
         backBtn.setColorFilter(palette.textPrimary)
