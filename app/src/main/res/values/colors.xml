@@ -1,30 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#2F7BF6</color>
-    <color name="dialog_accent">#2F7BF6</color>
-    <color name="splash_background_light">#FFFFFF</color>
-    <color name="splash_background_dark">#17171A</color>
-    <color name="status_bar_light">#FFFFFF</color>
-    <color name="status_bar_dark">#17171A</color>
-    
-    <color name="white">#FFFFFFFF</color>
-    <color name="primary">#FF2F7BF6</color>
-    <color name="error_red">#FFFF3B30</color>
-    
-    <color name="text_secondary">#FF888888</color>
-    <color name="icon_tint">#FF000000</color>
-    <color name="icon_tint_secondary">#FF888888</color>
-    
-    <color name="appbar_btn_bg">#FFE8E8E8</color>
-    <color name="divider">#FFE5E5EA</color>
-    
-    <color name="drawer_background">#FFFFFFFF</color>
-    <color name="drawer_text">#FF10151C</color>
-    
-    <color name="transparent">#00000000</color>
-    
-    <color name="app_background">#FFFFFFFF</color>
-    <color name="auth_input_fill">#FFF2F2F7</color>
-    <color name="primary_pressed">#FF1F63D6</color>
-    <color name="primary_disabled">#552F7BF6</color>
+  <color name="bg_primary">#0E0E0E</color>
+  <color name="card_bg">#242424</color>
+  <color name="text_primary">#F2F2F2</color>
+  <color name="text_secondary">#8A8A8A</color>
+  <color name="divider">#3A3A3A</color>
+  <color name="link_underline">#B0B0B0</color>
 </resources>

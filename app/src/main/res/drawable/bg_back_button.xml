@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- app/src/main/res/drawable/bg_back_button.xml
-     Círculo translúcido por trás da seta de voltar, estilo iOS/Material,
-     para dar área de toque confortável sem depender do ripple do tema. -->
-<shape xmlns:android="http://schemas.android.com/apk/res/android"
-    android:shape="oval">
-    <solid android:color="@color/appbar_btn_bg" />
-</shape>

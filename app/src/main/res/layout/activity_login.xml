@@ -1,163 +1,149 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- app/src/main/res/layout/activity_login.xml -->
-<FrameLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/loginRoot"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rootLogin"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fitsSystemWindows="true"
-    android:background="@color/app_background">
+    android:layout_height="match_parent">
 
-    <ScrollView
+    <ImageView
+        android:id="@+id/themeToggleBtn"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="56dp"
+        android:layout_marginEnd="16dp"
+        android:padding="10dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:clickable="true"
+        android:focusable="true"
+        android:contentDescription="@null" />
+
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingBottom="40dp">
+
+        <ImageView
+            android:id="@+id/logoIcon"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="24dp"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/welcomeTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:text="Bem-vindo ao Nexa"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/btnGoogle"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginBottom="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:id="@+id/iconGoogle"
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_marginEnd="14dp" />
+            <TextView
+                android:id="@+id/textGoogle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:layout_marginEnd="40dp"
+                android:text="Continuar com o Google"
+                android:textSize="16sp" />
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:padding="28dp"
-            android:paddingTop="72dp">
-
-            <ImageView
-                android:layout_width="64dp"
-                android:layout_height="64dp"
-                android:src="@drawable/logo"
-                android:contentDescription="@string/app_name" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:text="@string/login_title"
-                android:textSize="26sp"
-                android:textStyle="bold"
-                android:textColor="@color/drawer_text" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:text="@string/login_subtitle"
-                android:textSize="14sp"
-                android:textColor="@color/text_secondary" />
-
-            <EditText
-                android:id="@+id/emailEditText"
-                style="@style/PlainAuthInput"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="36dp"
-                android:paddingHorizontal="22dp"
-                android:hint="@string/hint_email"
-                android:textColorHint="@color/text_secondary"
-                android:textColor="@color/drawer_text"
-                android:inputType="textEmailAddress"
-                android:maxLines="1"
-                android:imeOptions="actionNext" />
-
-            <TextView
-                android:id="@+id/emailError"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:layout_marginStart="20dp"
-                android:textColor="@color/error_red"
-                android:textSize="12sp"
-                android:visibility="gone" />
-
-            <EditText
-                android:id="@+id/passwordEditText"
-                style="@style/PlainAuthInput"
-                android:layout_width="match_parent"
-                android:layout_height="54dp"
-                android:layout_marginTop="14dp"
-                android:paddingHorizontal="22dp"
-                android:hint="@string/hint_password"
-                android:textColorHint="@color/text_secondary"
-                android:textColor="@color/drawer_text"
-                android:inputType="textPassword"
-                android:maxLines="1"
-                android:imeOptions="actionDone" />
-
-            <TextView
-                android:id="@+id/passwordError"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:layout_marginStart="20dp"
-                android:textColor="@color/error_red"
-                android:textSize="12sp"
-                android:visibility="gone" />
+            android:layout_marginVertical="12dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
             <View
-                android:layout_width="match_parent"
-                android:layout_height="64dp" />
+                android:id="@+id/dividerLeft"
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
 
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="54dp">
-
-                <Button
-                    android:id="@+id/loginButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="@drawable/bg_btn_primary"
-                    android:text="@string/action_login"
-                    android:textColor="@color/white"
-                    android:textAllCaps="false"
-                    android:textStyle="bold"
-                    android:textSize="16sp"
-                    android:elevation="0dp"
-                    android:stateListAnimator="@null" />
-
-                <com.nexa.app.widgets.GradientRingLoader
-                    android:id="@+id/loginProgress"
-                    android:layout_width="20dp"
-                    android:layout_height="20dp"
-                    android:layout_gravity="center"
-                    android:visibility="gone" />
-
-            </FrameLayout>
-
-            <LinearLayout
+            <TextView
+                android:id="@+id/orText"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
-                android:orientation="horizontal"
-                android:gravity="center">
+                android:layout_marginHorizontal="12dp"
+                android:text="OU"
+                android:textSize="12sp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/login_no_account"
-                    android:textColor="@color/text_secondary" />
-
-                <TextView
-                    android:id="@+id/registerLink"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:text="@string/action_register"
-                    android:textColor="@color/primary"
-                    android:textStyle="bold"
-                    android:padding="4dp"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:background="?attr/selectableItemBackground" />
-
-            </LinearLayout>
-
+            <View
+                android:id="@+id/dividerRight"
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
         </LinearLayout>
 
-    </ScrollView>
+        <LinearLayout
+            android:id="@+id/btnEmail"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="16dp"
+            android:clickable="true"
+            android:focusable="true">
+            <ImageView
+                android:id="@+id/iconEmail"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginEnd="16dp" />
+            <TextView
+                android:id="@+id/textEmail"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:layout_marginEnd="38dp"
+                android:text="Continuar com o Email"
+                android:textSize="16sp" />
+        </LinearLayout>
 
-    <FrameLayout
-        android:id="@+id/snackbarContainer"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clickable="false"
-        android:focusable="false" />
+        <TextView
+            android:id="@+id/goToRegister"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:padding="8dp"
+            android:text="Não tens conta? Criar conta"
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
+        <TextView
+            android:id="@+id/termsText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="Ao continuar, você concorda com os nossos Termos de Serviço e leu a nossa Política de Privacidade. © 2026 Nexa"
+            android:textSize="12sp" />
+
+    </LinearLayout>
 </FrameLayout>

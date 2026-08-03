@@ -1,26 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/homeRoot"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootHome"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <FrameLayout
-        android:id="@+id/webViewContainer"
+    <WebView
+        android:id="@+id/webView"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
     <FrameLayout
         android:id="@+id/loadingOverlay"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/app_background"
-        android:visibility="gone">
+        android:layout_height="match_parent">
 
-        <com.nexa.app.widgets.GradientRingLoader
-            android:id="@+id/loadingRing"
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:layout_gravity="center" />
+        <ImageView
+            android:id="@+id/loadingLogo"
+            android:layout_width="240dp"
+            android:layout_height="240dp"
+            android:layout_gravity="center"
+            android:src="@drawable/logo"
+            android:contentDescription="@null"
+            android:scaleType="fitCenter" />
 
     </FrameLayout>
 
