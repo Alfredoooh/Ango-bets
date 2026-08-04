@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- app/src/main/res/values-night/themes.xml -->
 <resources>
     <style name="Theme.Nexa.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#242424</item>
+        <item name="windowSplashScreenBackground">#0E0E0E</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_dark</item>
         <item name="postSplashScreenTheme">@style/Theme.Nexa</item>
     </style>

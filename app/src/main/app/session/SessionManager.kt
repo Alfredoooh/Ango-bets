@@ -1,4 +1,3 @@
-// app/src/main/java/com/nexa/app/session/SessionManager.kt
 package com.nexa.app.session
 
 import android.content.Context
@@ -14,7 +13,6 @@ object SessionManager {
     private const val KEY_USER_ID = "user_id"
     private const val KEY_NAME = "name"
     private const val KEY_EMAIL = "email"
-    private const val KEY_CREDITS = "credits"
     private const val TAG = "SessionManager"
 
     @Volatile
@@ -40,8 +38,6 @@ object SessionManager {
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
         } catch (e: Exception) {
-            // Falha na encriptação (ex: keystore corrompido após re-install).
-            // Apaga o ficheiro corrompido e usa prefs normais como fallback.
             Log.e(TAG, "EncryptedSharedPreferences falhou, a usar fallback: ${e.message}")
             try {
                 context.deleteSharedPreferences(PREFS_NAME)
@@ -53,20 +49,12 @@ object SessionManager {
         }
     }
 
-    fun saveSession(
-        context: Context,
-        token: String,
-        userId: String,
-        name: String,
-        email: String,
-        credits: Int
-    ) {
+    fun saveSession(context: Context, token: String, userId: String, name: String, email: String) {
         get(context).edit()
             .putString(KEY_TOKEN, token)
             .putString(KEY_USER_ID, userId)
             .putString(KEY_NAME, name)
             .putString(KEY_EMAIL, email)
-            .putInt(KEY_CREDITS, credits)
             .apply()
     }
 
@@ -78,16 +66,9 @@ object SessionManager {
 
     fun getEmail(context: Context): String? = get(context).getString(KEY_EMAIL, null)
 
-    fun getCredits(context: Context): Int = get(context).getInt(KEY_CREDITS, 0)
-
     fun isLoggedIn(context: Context): Boolean = getToken(context) != null
 
     fun clear(context: Context) {
         get(context).edit().clear().apply()
-    }
-
-    fun authHeader(context: Context): String? {
-        val token = getToken(context) ?: return null
-        return "Bearer $token"
     }
 }

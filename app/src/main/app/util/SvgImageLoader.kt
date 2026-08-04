@@ -1,4 +1,3 @@
-// app/src/main/java/com/nexa/app/util/SvgImageLoader.kt
 package com.nexa.app.util
 
 import android.content.Context
@@ -9,19 +8,8 @@ import android.graphics.PorterDuffColorFilter
 import android.widget.ImageView
 import com.caverock.androidsvg.SVG
 
-/**
- * Carrega SVGs reais (não drawable/xml) a partir de assets/
- * usando androidsvg. Não faz cache — cada chamada renderiza de novo,
- * conforme decisão de manter a lib leve e sem camada de cache própria.
- */
 object SvgImageLoader {
 
-    /**
-     * @param assetPath caminho relativo dentro de assets/, ex: "google.svg"
-     * @param tintColor opcional — quando fornecido, aplica tint sólido (ex: ícones monocromáticos
-     *        como a mão do logo). Ícones com cor própria (Google, Facebook, Microsoft, Apple)
-     *        devem ser chamados sem tint.
-     */
     fun load(
         context: Context,
         imageView: ImageView,
@@ -54,7 +42,6 @@ object SvgImageLoader {
         }
     }
 
-    /** Versão que aceita dp em vez de px, convertendo com a densidade do context. */
     fun loadDp(
         context: Context,
         imageView: ImageView,
