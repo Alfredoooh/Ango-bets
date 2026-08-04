@@ -37,7 +37,7 @@ object SessionManager {
                 EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                 EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             )
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "EncryptedSharedPreferences falhou, a usar fallback: ${e.message}")
             try {
                 context.deleteSharedPreferences(PREFS_NAME)
