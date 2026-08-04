@@ -1,4 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nexa</string>
+    
+    <string name="settings_title">Configurações</string>
+    <string name="tab_chat">Chat</string>
+    <string name="tab_edit">Edit</string>
+    
+    <string name="settings_section_appearance">Aparência</string>
+    <string name="settings_theme_light">Tema claro</string>
+    <string name="settings_theme_dark">Tema escuro</string>
+    <string name="settings_theme_auto">Automático (sistema)</string>
+    
+    <string name="settings_section_general">Geral</string>
+    <string name="settings_language">Idioma</string>
+    <string name="settings_language_value">Português</string>
+    <string name="settings_notifications">Notificações</string>
+    
+    <string name="chat_input_hint">Escreve uma mensagem…</string>
+    
+    <string name="editor_bold">Negrito</string>
+    <string name="editor_italic">Itálico</string>
+    <string name="editor_underline">Sublinhado</string>
+    <string name="editor_color">Cor</string>
+    <string name="editor_table">Tabela</string>
+    <string name="editor_image">Imagem</string>
 </resources>

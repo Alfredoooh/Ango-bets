@@ -13,6 +13,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.drawerlayout.widget.DrawerLayout
 import com.nexa.app.util.SvgImageLoader
+import com.nexa.app.util.ThemePreferenceManager
 
 class HomeActivity : AppCompatActivity() {
 
@@ -21,6 +22,10 @@ class HomeActivity : AppCompatActivity() {
     private lateinit var drawerPanel: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Aplica o tema guardado antes de super.onCreate()/setContentView()
+        // para o primeiro frame já nascer com o tema correto, evitando
+        // qualquer "flash" visual de tema errado ao entrar na Home.
+        ThemePreferenceManager.applyStoredTheme(this)
         super.onCreate(savedInstanceState)
 
         setupStatusBar()

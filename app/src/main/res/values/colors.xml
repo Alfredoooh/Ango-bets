@@ -6,4 +6,23 @@
   <color name="text_secondary">#6E6E6E</color>
   <color name="divider">#DDDDDD</color>
   <color name="accent">#0067C0</color>
+  
+  <color name="toggle_track_on">#0067C0</color>
+  <color name="toggle_track_off">#D0D0D0</color>
+  <color name="toggle_thumb">#FFFFFF</color>
+  
+  <color name="sheet_bg">#FFFFFF</color>
+  <color name="sheet_scrim">#66000000</color>
+  <color name="sheet_handle">#D0D0D0</color>
+  
+  <color name="toolbar_bg">#F7F7F7</color>
+  <color name="toolbar_icon">#10151C</color>
+  <color name="toolbar_icon_active">#0067C0</color>
+  <color name="toolbar_divider">#DDDDDD</color>
+  
+  <color name="tab_selected">#0067C0</color>
+  <color name="tab_unselected">#9A9A9A</color>
+  <color name="tab_bar_bg">#FFFFFF</color>
+  
+  <color name="chip_bg">#EDEDED</color>
 </resources>

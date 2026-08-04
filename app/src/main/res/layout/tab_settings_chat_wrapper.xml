@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_primary">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <include layout="@layout/tab_settings_chat" android:id="@+id/chatSettingsList" />
+
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/chatInputBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/tab_bar_bg"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp">
+
+        <EditText
+            android:id="@+id/chatInputField"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_pill"
+            android:paddingHorizontal="16dp"
+            android:hint="@string/chat_input_hint"
+            android:textColorHint="@color/text_secondary"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:imeOptions="actionSend"
+            android:inputType="text" />
+
+    </LinearLayout>
+
+</LinearLayout>

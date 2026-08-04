@@ -40,7 +40,8 @@
             android:name=".SettingsActivity"
             android:exported="false"
             android:theme="@style/Theme.Nexa"
-            android:configChanges="orientation|screenSize|keyboardHidden" />
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
 
     </application>
 </manifest>

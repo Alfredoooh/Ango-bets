@@ -12,11 +12,15 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.nexa.app.session.SessionManager
 import com.nexa.app.util.SvgImageLoader
+import com.nexa.app.util.ThemePreferenceManager
 
 class LoginActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
+        // Aplica o tema guardado antes de super.onCreate()/setContentView()
+        // para o primeiro frame já nascer com o tema correto.
+        ThemePreferenceManager.applyStoredTheme(this)
         super.onCreate(savedInstanceState)
 
         if (SessionManager.isLoggedIn(this)) {
@@ -35,9 +39,28 @@ class LoginActivity : AppCompatActivity() {
         val themeToggleBtn = findViewById<ImageView>(R.id.themeToggleBtn)
         SvgImageLoader.loadDp(this, themeToggleBtn, "theme.svg", widthDp = 24, heightDp = 24, tintColor = textColor)
 
+        // Este botão existia no layout mas nunca tinha listener ligado —
+        // agora cicla entre Claro → Escuro → Automático a cada toque,
+        // como atalho rápido sem ter de entrar em Settings.
+        themeToggleBtn.setOnClickListener {
+            cicleTheme()
+        }
+
         findViewById<TextView>(R.id.btnStartNoLogin).setOnClickListener {
             goToHome()
         }
+    }
+
+    private fun cicleTheme() {
+        val current = ThemePreferenceManager.getThemeMode(this)
+        val next = when (current) {
+            ThemePreferenceManager.THEME_LIGHT -> ThemePreferenceManager.THEME_DARK
+            ThemePreferenceManager.THEME_DARK -> ThemePreferenceManager.THEME_AUTO
+            else -> ThemePreferenceManager.THEME_LIGHT
+        }
+        ThemePreferenceManager.setThemeMode(this, next)
+        // setDefaultNightMode recria a Activity automaticamente para
+        // aplicar as resources corretas — comportamento esperado.
     }
 
     private fun setupStatusBar() {

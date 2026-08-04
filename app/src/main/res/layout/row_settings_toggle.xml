@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="52dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="4dp">
+
+    <TextView
+        android:id="@+id/toggleLabel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="Notificações"
+        android:textColor="@color/text_primary"
+        android:textSize="15sp" />
+
+    <com.nexa.app.widget.CustomSwitch
+        android:id="@+id/toggleSwitch"
+        android:layout_width="52dp"
+        android:layout_height="30dp" />
+
+</LinearLayout>
